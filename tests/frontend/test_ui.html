@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Frontend UI Tests — analyze-spectrum</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #ccc; padding: 16px; }
+    .pass { color: #4c4; }
+    .fail { color: #f44; font-weight: bold; }
+    .suite { color: #8bf; margin-top: 12px; }
+    #summary { margin-top: 16px; font-size: 1.2em; }
+  </style>
+</head>
+<body>
+  <!-- Minimal DOM matching index.html structure (required by main.js) -->
+  <button id="theme-toggle" class="theme-toggle"></button>
+  <h1>Spectrum Analyzer</h1>
+  <form id="analyze-form" class="input-bar">
+    <input id="url-input" type="text" placeholder="YouTube URL or local file path">
+    <button id="browse-btn" type="button">Browse</button>
+    <button id="submit-btn" type="submit">Analyze</button>
+    <button id="add-btn" type="button">+ Add Track</button>
+    <button id="load-btn" type="button">Load JSON</button>
+  </form>
+  <div id="track-list"></div>
+  <div id="compare-bar" class="compare-bar" style="display:none">
+    <button id="clear-btn" type="button">Clear All</button>
+  </div>
+  <div id="status"></div>
+  <div id="results"></div>
+
+  <div id="test-output"></div>
+  <div id="summary"></div>
+
+  <!-- Load vendor stubs (chart functions are not under test) -->
+  <script>
+    // Stub uPlot — not needed for UI state tests
+    window.uPlot = function() { this.destroy = function(){}; };
+  </script>
+
+  <!-- Stub chart renderers — must return objects matching real API -->
+  <script>
+    window.renderSpectrum = function(){ return { destroy: function(){}, ctx: null }; };
+    window.renderOctave = function(){};
+    window.renderTransfer = function(){};
+    window.renderLowEnd = function(){};
+    window.renderMidHigh = function(){};
+  </script>
+
+  <!-- Load the actual frontend code -->
+  <script src="../../frontend/main.js"></script>
+
+  <!-- Test runner -->
+  <script src="test_ui.js"></script>
+</body>
+</html>

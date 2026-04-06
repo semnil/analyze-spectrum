@@ -1,0 +1,66 @@
+Third-Party Licenses for EQ Analyzer
+======================================
+
+This application bundles the following third-party software.
+
+----------------------------------------------------------------------
+FFmpeg / FFprobe
+----------------------------------------------------------------------
+License: GNU General Public License v2.0 or later (GPL-2.0-or-later)
+Website: https://ffmpeg.org/
+Source:  https://github.com/FFmpeg/FFmpeg
+Builds:  https://github.com/BtbN/FFmpeg-Builds
+
+FFmpeg is free software licensed under the GPL. The full text of the
+GPL is available at: https://www.gnu.org/licenses/gpl-2.0.html
+
+The source code for the version of FFmpeg included in this distribution
+can be obtained from the URLs above.
+
+----------------------------------------------------------------------
+yt-dlp
+----------------------------------------------------------------------
+License: The Unlicense (public domain)
+Website: https://github.com/yt-dlp/yt-dlp
+
+----------------------------------------------------------------------
+Python
+----------------------------------------------------------------------
+License: Python Software Foundation License (PSF-2.0)
+Website: https://www.python.org/
+Copyright (c) 2001-2026 Python Software Foundation. All rights reserved.
+
+----------------------------------------------------------------------
+NumPy
+----------------------------------------------------------------------
+License: BSD 3-Clause License
+Website: https://numpy.org/
+Copyright (c) 2005-2026, NumPy Developers. All rights reserved.
+
+----------------------------------------------------------------------
+SciPy
+----------------------------------------------------------------------
+License: BSD 3-Clause License
+Website: https://scipy.org/
+Copyright (c) 2001-2026, SciPy Developers. All rights reserved.
+
+----------------------------------------------------------------------
+pywebview
+----------------------------------------------------------------------
+License: BSD 3-Clause License
+Website: https://pywebview.flowrl.com/
+Copyright (c) Roman Sirokov. All rights reserved.
+
+----------------------------------------------------------------------
+uPlot
+----------------------------------------------------------------------
+License: MIT License
+Website: https://github.com/leeoniya/uPlot
+Copyright (c) Leon Sorokin. All rights reserved.
+
+----------------------------------------------------------------------
+pythonnet
+----------------------------------------------------------------------
+License: MIT License
+Website: https://github.com/pythonnet/pythonnet
+Copyright (c) the pythonnet contributors. All rights reserved.

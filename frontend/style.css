@@ -1,0 +1,407 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #fafafa;
+  --bg-card: #fff;
+  --text: #333;
+  --text-secondary: #666;
+  --text-muted: #888;
+  --text-label: #999;
+  --accent: #1976D2;
+  --accent-dark: #1565C0;
+  --accent-deep: #0D47A1;
+  --border: #ddd;
+  --border-light: #eee;
+  --track-bg: #E3F2FD;
+  --th-bg: #BBDEFB;
+  --input-border: #90CAF9;
+  --btn-disabled: #90CAF9;
+  --copy-bg: #eee;
+  --copy-border: #ccc;
+  --chart-grid: #eee;
+  --chart-grid-strong: #ddd;
+  --chart-zero: #999;
+  --drop-bg: rgba(25, 118, 210, 0.12);
+}
+
+[data-theme="dark"] {
+  --bg: #1a1a2e;
+  --bg-card: #16213e;
+  --text: #e0e0e0;
+  --text-secondary: #aaa;
+  --text-muted: #888;
+  --text-label: #777;
+  --accent: #42a5f5;
+  --accent-dark: #1e88e5;
+  --accent-deep: #64b5f6;
+  --border: #2a2a4a;
+  --border-light: #252545;
+  --track-bg: #1e2a4a;
+  --th-bg: #1e3a5f;
+  --input-border: #2a4a6a;
+  --btn-disabled: #2a3a5a;
+  --copy-bg: #2a2a4a;
+  --copy-border: #3a3a5a;
+  --chart-grid: #2a2a4a;
+  --chart-grid-strong: #333355;
+  --chart-zero: #666;
+  --drop-bg: rgba(66, 165, 245, 0.15);
+}
+
+body {
+  font-family: "Segoe UI", "Meiryo", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 24px;
+  font-size: 1.4rem;
+  color: var(--accent);
+}
+
+/* Theme toggle */
+.theme-toggle {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 100;
+  color: var(--text);
+  line-height: 1;
+}
+
+.theme-toggle:hover { border-color: var(--accent); }
+
+.input-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.input-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 2px solid var(--input-border);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.input-bar input:focus { border-color: var(--accent); }
+
+.input-bar button {
+  padding: 10px 20px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.input-bar button:hover:not(:disabled) { background: var(--accent-dark); }
+.input-bar button:disabled { background: var(--btn-disabled); cursor: not-allowed; opacity: 0.5; }
+.input-bar button.cancelling { background: #c62828; opacity: 1; }
+.input-bar button.cancelling:hover { background: #b71c1c; }
+
+#browse-btn { background: #546E7A; }
+#browse-btn:hover:not(:disabled) { background: #455A64; }
+
+#add-btn { background: #388E3C; }
+#add-btn:hover:not(:disabled) { background: #2E7D32; }
+
+#load-btn { background: var(--accent-deep); }
+#load-btn:hover:not(:disabled) { background: var(--accent-dark); }
+
+/* Track list for compare mode */
+#track-list {
+  margin-bottom: 8px;
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin-bottom: 4px;
+  background: var(--track-bg);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.track-item .track-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-item .remove-track {
+  background: none;
+  border: none;
+  color: #D32F2F;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+}
+.track-item .remove-track:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.compare-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.compare-bar button {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #fff;
+}
+
+#clear-btn { background: #757575; }
+#clear-btn:hover:not(:disabled) { background: #616161; }
+#clear-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+#status {
+  text-align: center;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  min-height: 20px;
+}
+
+#status.error { color: #ef5350; user-select: text; }
+
+.copy-btn {
+  margin-left: 8px;
+  padding: 2px 10px;
+  background: var(--copy-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--copy-border);
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.copy-btn:hover { opacity: 0.8; }
+
+/* Summary table */
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+  font-size: 13px;
+}
+
+.summary-table th {
+  background: var(--th-bg);
+  padding: 6px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.summary-table td {
+  padding: 6px 12px;
+  text-align: center;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.summary-table td.label-cell {
+  text-align: left;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.has-tip {
+  cursor: help;
+  text-decoration: underline dotted var(--text-muted);
+  text-underline-offset: 3px;
+}
+
+.tip-popup {
+  position: fixed;
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  white-space: normal;
+  width: 300px;
+  text-align: left;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+/* Chart containers */
+.chart-row {
+  margin-bottom: 24px;
+}
+
+.chart-row canvas {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+}
+
+.chart-pair {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.chart-pair > div { flex: 1; }
+
+.chart-pair canvas {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+}
+
+#results { display: none; }
+#results.visible { display: block; }
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.result-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent-deep);
+}
+
+.meta-info {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.save-btn {
+  padding: 4px 14px;
+  background: var(--accent-dark);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.save-btn:hover { background: var(--accent-deep); }
+
+.chart-title {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+/* Color palette for multi-track */
+.legend-bar {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 1px;
+}
+
+/* Drag & drop overlay */
+body.drag-over::after {
+  content: "Drop audio file here";
+  position: fixed;
+  inset: 0;
+  background: var(--drop-bg);
+  border: 3px dashed var(--accent);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--accent);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* Context menu for input fields */
+.ctx-menu {
+  position: fixed;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  padding: 4px 0;
+  z-index: 9999;
+  min-width: 120px;
+}
+.ctx-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.ctx-menu button:hover { background: var(--drop-bg); }
+.ctx-menu button:disabled { color: var(--text-muted); cursor: default; }
+.ctx-menu button:disabled:hover { background: none; }
+
+/* uPlot dark mode overrides */
+[data-theme="dark"] .u-wrap { background: var(--bg-card); }
+[data-theme="dark"] .u-title { color: var(--text) !important; }
+[data-theme="dark"] .u-legend th,
+[data-theme="dark"] .u-legend td { color: var(--text-secondary) !important; }
+[data-theme="dark"] .u-series > * { color: var(--text-secondary) !important; }

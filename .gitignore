@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+.eggs/
+*.pcm
+build_assets/bin/
+installer_output/
+.pytest_cache/
+.coverage
