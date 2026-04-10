@@ -21,7 +21,14 @@ function renderSpectrum(container, tracks) {
   }
 
   var seriesData = [logFreqs];
-  var seriesOpts = [{}];
+  var seriesOpts = [{
+    label: "Frequency",
+    value: function(self, val) {
+      if (val == null) return "--";
+      var freq = Math.pow(10, val);
+      return freq >= 1000 ? (freq / 1000).toFixed(2) + " kHz" : freq.toFixed(1) + " Hz";
+    },
+  }];
 
   for (var t = 0; t < tracks.length; t++) {
     var psd = tracks[t].spectrum.psd_db;
@@ -37,6 +44,10 @@ function renderSpectrum(container, tracks) {
       stroke: color,
       width: tracks.length === 1 ? 1.5 : 1.2,
       fill: tracks.length === 1 ? color + "18" : undefined,
+      value: function(self, val) {
+        if (val == null) return "--";
+        return val.toFixed(1) + " dB";
+      },
     });
   }
 
