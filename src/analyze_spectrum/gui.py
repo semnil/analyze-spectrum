@@ -526,7 +526,8 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(413, "File too large (max 500 MB)")
             return
 
-        raw_name = self.headers.get("X-Filename", "dropped_file")
+        from urllib.parse import unquote
+        raw_name = unquote(self.headers.get("X-Filename", "dropped_file"))
         name = sanitize_filename(raw_name)
         _, ext = os.path.splitext(raw_name)
         ext = ext.lower()

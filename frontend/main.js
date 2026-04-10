@@ -1109,7 +1109,7 @@ window.addEventListener("drop", async (e) => {
       method: "POST",
       headers: {
         "Content-Type": "application/octet-stream",
-        "X-Filename": file.name,
+        "X-Filename": encodeURIComponent(file.name),
       },
       body: file,
     });
