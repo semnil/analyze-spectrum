@@ -1,7 +1,7 @@
 ; Inno Setup script for analyze-spectrum
 
 #define MyAppName "Spectrum Analyzer"
-#define MyAppVersion "0.9.0"
+#define MyAppVersion "0.9.1"
 #define MyAppExeName "analyze-spectrum.exe"
 
 [Setup]
