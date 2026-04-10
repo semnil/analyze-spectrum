@@ -17,7 +17,7 @@ def probe_info(path: str) -> tuple[int, float]:
         ["ffprobe", "-v", "quiet", "-print_format", "json",
          "-show_streams", "-select_streams", "a:0",
          "-show_format", path],
-        capture_output=True, text=True, **_subprocess_kwargs(),
+        capture_output=True, text=True, encoding="utf-8", **_subprocess_kwargs(),
     )
     if r.returncode != 0:
         stderr_tail = (r.stderr or "")[-500:]

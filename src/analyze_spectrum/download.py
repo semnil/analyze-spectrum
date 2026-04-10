@@ -30,7 +30,7 @@ def resolve_source(source: str, workdir: str) -> tuple[str, str]:
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(cmd, check=True, capture_output=True, text=True,
-                              **_subprocess_kwargs())
+                              encoding="utf-8", **_subprocess_kwargs())
     except subprocess.CalledProcessError as e:
         stderr_tail = (e.stderr or "")[-500:]
         raise RuntimeError(f"{cmd[0]} failed (exit {e.returncode}): {stderr_tail}") from e
