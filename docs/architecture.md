@@ -394,7 +394,7 @@ flowchart TD
 
     BUNDLE --> ISS{"--installer?"}
     ISS -->|Yes| INNO["Inno Setup<br/>(installer.iss)"]
-    INNO --> SETUP["SpectrumAnalyzer-0.9.0-setup.exe"]
+    INNO --> SETUP["SpectrumAnalyzer-X.Y.Z-setup.exe"]
 ```
 
 ### 6.2 Bundle Structure
@@ -435,6 +435,7 @@ dist/analyze-spectrum/
 ### 7.2 入力検証
 
 - subprocess は list 形式で実行 (shell injection 防止)
+- yt-dlp stdout は `_decode_stdout()` で UTF-8 → CP932 フォールバックデコード (タイトル表示用、DOM は `textContent` 経由)
 - POST body は 10MB 上限 (JSON)、50MB (base64 画像)、500MB (ファイルアップロード)
 - アップロードファイル名は `sanitize_filename()` で無害化 (`\/:*?"<>|` → `_`、先頭末尾の `.` 除去)
 - アップロード拡張子はホワイトリスト (`.wav`, `.mp3`, `.m4a` 等 13 種)
