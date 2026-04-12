@@ -1,0 +1,3 @@
+[submodule "vendor/py-desktop-app-common"]
+	path = vendor/py-desktop-app-common
+	url = https://github.com/semnil/py-desktop-app-common
