@@ -432,6 +432,8 @@ def main():
                         help="Also build Inno Setup installer")
     parser.add_argument("--skip-download", action="store_true",
                         help="Skip downloading/updating external assets")
+    parser.add_argument("--skip-build", action="store_true",
+                        help="Skip PyInstaller build (assumes dist/ already exists)")
     parser.add_argument("--update-checksums", action="store_true",
                         help="Download assets and update checksums.json")
     args = parser.parse_args()
@@ -443,11 +445,11 @@ def main():
     if not args.skip_download:
         download_assets()
 
-    print("\nVerifying checksums...")
-    _verify_checksums()
-
-    check_prerequisites()
-    build_pyinstaller()
+    if not args.skip_build:
+        print("\nVerifying checksums...")
+        _verify_checksums()
+        check_prerequisites()
+        build_pyinstaller()
 
     if args.installer:
         build_installer()

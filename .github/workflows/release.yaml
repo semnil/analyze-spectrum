@@ -224,7 +224,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Build DMG 💿
-        run: python build.py --installer --skip-download
+        run: python build.py --installer --skip-download --skip-build
 
       - name: Notarize DMG 📮
         if: steps.check-signing.outputs.signed == 'true'
