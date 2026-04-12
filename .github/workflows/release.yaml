@@ -201,14 +201,22 @@ jobs:
           </plist>
           PLIST
 
-          find "$APP/Contents" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
-            xargs -0 -I {} codesign --force --timestamp --options runtime \
-              --entitlements /tmp/entitlements.plist \
-              --sign "$IDENTITY" {}
-          find "$APP/Contents/MacOS" -type f -print0 | \
-            xargs -0 -I {} codesign --force --timestamp --options runtime \
-              --entitlements /tmp/entitlements.plist \
-              --sign "$IDENTITY" {}
+          # Sign every Mach-O file inside the bundle (nested tools, dylibs, .so).
+          # Entitlements are only for the main executable; nested binaries get
+          # hardened runtime without the JIT / library-validation exceptions.
+          find "$APP" -type f | while read -r f; do
+            if file "$f" 2>/dev/null | grep -q "Mach-O"; then
+              codesign --force --timestamp --options runtime \
+                --sign "$IDENTITY" "$f"
+            fi
+          done
+
+          # Main executable with entitlements
+          codesign --force --timestamp --options runtime \
+            --entitlements /tmp/entitlements.plist \
+            --sign "$IDENTITY" "$APP/Contents/MacOS/analyze-spectrum"
+
+          # Finally the bundle itself
           codesign --force --timestamp --options runtime \
             --entitlements /tmp/entitlements.plist \
             --sign "$IDENTITY" "$APP"
@@ -225,12 +233,31 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
         run: |
+          set -e
           DMG=installer_output/Spectrum-Analyzer.dmg
-          xcrun notarytool submit "$DMG" \
+
+          SUBMIT_JSON=$(xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
+            --wait --output-format json)
+          echo "--- Submit response ---"
+          echo "$SUBMIT_JSON"
+
+          SUBMIT_ID=$(echo "$SUBMIT_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['id'])")
+          STATUS=$(echo "$SUBMIT_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['status'])")
+
+          echo "--- Notarization log ($SUBMIT_ID) ---"
+          xcrun notarytool log "$SUBMIT_ID" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" || true
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization status: $STATUS"
+            exit 1
+          fi
+
           xcrun stapler staple "$DMG"
           xcrun stapler validate "$DMG"
 
