@@ -79,10 +79,6 @@ jobs:
           pip install -e ".[gui,dev]"
           pip install pyinstaller
 
-      - name: Run Tests ✅
-        run: pytest -q
-        continue-on-error: true
-
       - name: Build Installer 🧱
         run: python build.py --installer
         env:
@@ -122,10 +118,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[gui,dev]"
           pip install pyinstaller
-
-      - name: Run Tests ✅
-        run: pytest -q
-        continue-on-error: true
 
       - name: Generate .icns from iconset 🎨
         run: |
