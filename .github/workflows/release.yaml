@@ -85,6 +85,8 @@ jobs:
 
       - name: Build Installer 🧱
         run: python build.py --installer
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Upload Artifacts 📡
         uses: actions/upload-artifact@v4
@@ -172,6 +174,8 @@ jobs:
 
       - name: Build .app Bundle 🧱
         run: python build.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Codesign .app 🔏
         if: steps.check-signing.outputs.signed == 'true'

@@ -135,8 +135,18 @@ def _make_executable(path: Path) -> None:
         path.chmod(path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _github_api_open(url: str):
+    """Open a GitHub API URL, adding auth header if GITHUB_TOKEN is set (avoids 60/hr rate limit)."""
+    req = urllib.request.Request(url)
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    return urllib.request.urlopen(req)
+
+
 def _get_ytdlp_latest_tag() -> str:
-    with urllib.request.urlopen(
+    with _github_api_open(
         "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
     ) as r:
         return json.loads(r.read())["tag_name"]
@@ -166,7 +176,7 @@ def _download_deno():
     deno_exe = f"deno{_EXE}"
     dest = BIN_DIR / deno_exe
     print("Fetching latest deno release info...")
-    with urllib.request.urlopen(
+    with _github_api_open(
         "https://api.github.com/repos/denoland/deno/releases/latest"
     ) as r:
         release = json.loads(r.read())
@@ -200,7 +210,7 @@ def _download_deno():
 def _get_ffmpeg_win_url() -> str:
     """Get the download URL for the latest ffmpeg win64 build."""
     print("Fetching latest ffmpeg release info (BtbN/FFmpeg-Builds)...")
-    with urllib.request.urlopen(
+    with _github_api_open(
         "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases"
     ) as r:
         releases = json.loads(r.read())
