@@ -1,14 +1,15 @@
-"""Build script for analyze-spectrum Windows installer.
+"""Build script for analyze-spectrum.
 
 Usage:
     python build.py                     # Download assets + verify + PyInstaller
-    python build.py --installer         # + Inno Setup installer
+    python build.py --installer         # + platform installer (Inno Setup / DMG)
     python build.py --skip-download     # Skip asset download (use existing)
     python build.py --update-checksums  # Download assets + update checksums.json
 
 Prerequisites:
     pip install pyinstaller
-    Inno Setup 6 (for --installer flag): https://jrsoftware.org/isinfo.php
+    (Windows) Inno Setup 6: https://jrsoftware.org/isinfo.php
+    (macOS)   create-dmg: brew install create-dmg
 """
 
 import argparse
@@ -17,23 +18,30 @@ import io
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
+import tarfile
 import urllib.request
 import zipfile
 from pathlib import Path
 
+IS_WINDOWS = sys.platform == "win32"
+IS_MAC = sys.platform == "darwin"
+
 ROOT = Path(__file__).resolve().parent
 SPEC = ROOT / "analyze-spectrum.spec"
 ISS = ROOT / "installer.iss"
-DIST = ROOT / "dist" / "analyze-spectrum"
+DIST_BUNDLE = ROOT / "dist" / "analyze-spectrum"
+DIST_APP = ROOT / "dist" / "Spectrum Analyzer.app"
 BIN_DIR = ROOT / "build_assets" / "bin"
 VENDOR_DIR = ROOT / "frontend" / "vendor"
 CHECKSUMS_FILE = ROOT / "build_assets" / "checksums.json"
 
 UPLOT_VERSION = "1.6.31"
 
-REQUIRED_BINS = ["ffmpeg.exe", "ffprobe.exe", "yt-dlp.exe"]
+_EXE = ".exe" if IS_WINDOWS else ""
+REQUIRED_BINS = [f"ffmpeg{_EXE}", f"ffprobe{_EXE}", f"yt-dlp{_EXE}"]
 
 
 def _sha256(path: Path) -> str:
@@ -60,12 +68,20 @@ def _save_checksums(checksums: dict):
     print(f"\nChecksums saved: {CHECKSUMS_FILE}")
 
 
+_PLATFORM_KEY = "windows" if IS_WINDOWS else "macos" if IS_MAC else "linux"
+
+
 def _verify_checksums():
-    """Verify all downloaded assets against checksums.json."""
-    checksums = _load_checksums()
-    if not checksums:
+    """Verify downloaded assets for the current platform against checksums.json."""
+    all_checksums = _load_checksums()
+    if not all_checksums:
         print("WARNING: checksums.json not found -- skipping verification")
         print("  Run 'python build.py --update-checksums' to generate it")
+        return
+
+    checksums = all_checksums.get(_PLATFORM_KEY)
+    if not checksums:
+        print(f"WARNING: no checksums for platform '{_PLATFORM_KEY}' -- skipping")
         return
 
     errors = []
@@ -74,8 +90,6 @@ def _verify_checksums():
             if not file_key.startswith("sha256_"):
                 continue
             filename = file_key.replace("sha256_", "", 1)
-            if filename in ("zip",):
-                continue
             if key == "uplot":
                 path = VENDOR_DIR / filename
             else:
@@ -116,6 +130,11 @@ def download_assets() -> str:
     return ytdlp_tag
 
 
+def _make_executable(path: Path) -> None:
+    if not IS_WINDOWS:
+        path.chmod(path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+
 def _get_ytdlp_latest_tag() -> str:
     with urllib.request.urlopen(
         "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
@@ -124,25 +143,28 @@ def _get_ytdlp_latest_tag() -> str:
 
 
 def _download_ytdlp() -> str:
-    """Download latest yt-dlp.exe. Returns the version tag."""
-    dest = BIN_DIR / "yt-dlp.exe"
+    """Download latest yt-dlp binary for the current platform. Returns the version tag."""
+    asset_name = "yt-dlp.exe" if IS_WINDOWS else "yt-dlp_macos" if IS_MAC else "yt-dlp"
+    dest = BIN_DIR / f"yt-dlp{_EXE}"
     print("Fetching latest yt-dlp release info...")
     tag = _get_ytdlp_latest_tag()
 
     if dest.exists():
-        print(f"  yt-dlp.exe exists, updating to {tag}...")
+        print(f"  {dest.name} exists, updating to {tag}...")
     else:
         print(f"  Downloading yt-dlp {tag}...")
 
-    url = f"https://github.com/yt-dlp/yt-dlp/releases/download/{tag}/yt-dlp.exe"
+    url = f"https://github.com/yt-dlp/yt-dlp/releases/download/{tag}/{asset_name}"
     urllib.request.urlretrieve(url, dest)
+    _make_executable(dest)
     print(f"  -> {dest} ({dest.stat().st_size // 1024 // 1024} MB)")
     return tag
 
 
 def _download_deno():
-    """Download latest deno.exe (required by yt-dlp for YouTube JS extraction)."""
-    dest = BIN_DIR / "deno.exe"
+    """Download latest deno binary (required by yt-dlp for YouTube JS extraction)."""
+    deno_exe = f"deno{_EXE}"
+    dest = BIN_DIR / deno_exe
     print("Fetching latest deno release info...")
     with urllib.request.urlopen(
         "https://api.github.com/repos/denoland/deno/releases/latest"
@@ -151,30 +173,39 @@ def _download_deno():
     tag = release["tag_name"]
 
     if dest.exists():
-        print(f"  deno.exe exists, updating to {tag}...")
+        print(f"  {deno_exe} exists, updating to {tag}...")
     else:
         print(f"  Downloading deno {tag}...")
 
-    url = f"https://github.com/denoland/deno/releases/download/{tag}/deno-x86_64-pc-windows-msvc.zip"
+    if IS_WINDOWS:
+        asset = "deno-x86_64-pc-windows-msvc.zip"
+    elif IS_MAC:
+        # Universal2 is not provided; grab arm64 for Apple Silicon runners.
+        asset = "deno-aarch64-apple-darwin.zip"
+    else:
+        asset = "deno-x86_64-unknown-linux-gnu.zip"
+
+    url = f"https://github.com/denoland/deno/releases/download/{tag}/{asset}"
     with urllib.request.urlopen(url) as r:
         data = io.BytesIO(r.read())
 
+    member = "deno.exe" if IS_WINDOWS else "deno"
     with zipfile.ZipFile(data) as zf:
-        with zf.open("deno.exe") as src, open(dest, "wb") as dst:
+        with zf.open(member) as src, open(dest, "wb") as dst:
             shutil.copyfileobj(src, dst)
+    _make_executable(dest)
     print(f"  -> {dest} ({dest.stat().st_size // 1024 // 1024} MB)")
 
 
-def _get_ffmpeg_url() -> str:
+def _get_ffmpeg_win_url() -> str:
     """Get the download URL for the latest ffmpeg win64 build."""
-    print("Fetching latest ffmpeg release info...")
+    print("Fetching latest ffmpeg release info (BtbN/FFmpeg-Builds)...")
     with urllib.request.urlopen(
         "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases"
     ) as r:
         releases = json.loads(r.read())
 
     # Prefer LGPL essentials build (smaller, no GPL-only codecs)
-    # Fallback to GPL if LGPL not found
     for prefer in ("lgpl", "gpl"):
         for release in releases:
             for asset in release.get("assets", []):
@@ -188,9 +219,18 @@ def _get_ffmpeg_url() -> str:
 
 
 def _download_ffmpeg():
-    """Download latest ffmpeg/ffprobe Windows build."""
-    url = _get_ffmpeg_url()
-    print(f"Downloading ffmpeg (win64)...")
+    """Download latest ffmpeg/ffprobe build for the current platform."""
+    if IS_WINDOWS:
+        _download_ffmpeg_windows()
+    elif IS_MAC:
+        _download_ffmpeg_macos()
+    else:
+        raise RuntimeError(f"Unsupported platform: {sys.platform}")
+
+
+def _download_ffmpeg_windows():
+    url = _get_ffmpeg_win_url()
+    print("Downloading ffmpeg (win64)...")
     with urllib.request.urlopen(url) as r:
         data = io.BytesIO(r.read())
 
@@ -204,6 +244,22 @@ def _download_ffmpeg():
                 print(f"  -> {dest} ({dest.stat().st_size // 1024 // 1024} MB)")
 
 
+def _download_ffmpeg_macos():
+    """Download ffmpeg/ffprobe universal2 binaries from evermeet.cx."""
+    for name in ("ffmpeg", "ffprobe"):
+        print(f"Downloading {name} (macOS universal2)...")
+        url = f"https://evermeet.cx/ffmpeg/getrelease/{name}/zip"
+        with urllib.request.urlopen(url) as r:
+            data = io.BytesIO(r.read())
+        with zipfile.ZipFile(data) as zf:
+            member = next(m for m in zf.namelist() if Path(m).name == name)
+            dest = BIN_DIR / name
+            with zf.open(member) as src, open(dest, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+        _make_executable(dest)
+        print(f"  -> {dest} ({dest.stat().st_size // 1024 // 1024} MB)")
+
+
 def _download_uplot():
     """Download uPlot JS/CSS."""
     base = f"https://cdn.jsdelivr.net/npm/uplot@{UPLOT_VERSION}/dist"
@@ -215,44 +271,42 @@ def _download_uplot():
 
 
 def update_checksums():
-    """Download assets and compute checksums.json."""
+    """Download assets and compute checksums.json for the current platform."""
     ytdlp_tag = download_assets()
 
-    print("\nComputing checksums...")
-    checksums = {}
+    print(f"\nComputing checksums for platform '{_PLATFORM_KEY}'...")
+    platform_entry = {}
 
-    # yt-dlp
-    ytdlp_path = BIN_DIR / "yt-dlp.exe"
-    checksums["yt-dlp"] = {
+    ytdlp_name = f"yt-dlp{_EXE}"
+    deno_name = f"deno{_EXE}"
+    ffmpeg_names = (f"ffmpeg{_EXE}", f"ffprobe{_EXE}")
+
+    platform_entry["yt-dlp"] = {
         "version": ytdlp_tag,
-        "sha256_yt-dlp.exe": _sha256(ytdlp_path),
+        f"sha256_{ytdlp_name}": _sha256(BIN_DIR / ytdlp_name),
     }
-    print(f"  yt-dlp.exe ({tag}): {checksums['yt-dlp']['sha256_yt-dlp.exe'][:16]}...")
+    print(f"  {ytdlp_name} ({ytdlp_tag}): {platform_entry['yt-dlp'][f'sha256_{ytdlp_name}'][:16]}...")
 
-    # deno
-    deno_path = BIN_DIR / "deno.exe"
-    checksums["deno"] = {
-        "sha256_deno.exe": _sha256(deno_path),
+    platform_entry["deno"] = {
+        f"sha256_{deno_name}": _sha256(BIN_DIR / deno_name),
     }
-    print(f"  deno.exe: {checksums['deno']['sha256_deno.exe'][:16]}...")
+    print(f"  {deno_name}: {platform_entry['deno'][f'sha256_{deno_name}'][:16]}...")
 
-    # ffmpeg / ffprobe
-    checksums["ffmpeg"] = {}
-    for name in ("ffmpeg.exe", "ffprobe.exe"):
-        path = BIN_DIR / name
-        h = _sha256(path)
-        checksums["ffmpeg"][f"sha256_{name}"] = h
+    platform_entry["ffmpeg"] = {}
+    for name in ffmpeg_names:
+        h = _sha256(BIN_DIR / name)
+        platform_entry["ffmpeg"][f"sha256_{name}"] = h
         print(f"  {name}: {h[:16]}...")
 
-    # uPlot
-    checksums["uplot"] = {"version": UPLOT_VERSION}
+    platform_entry["uplot"] = {"version": UPLOT_VERSION}
     for filename in ("uPlot.iife.min.js", "uPlot.min.css"):
-        path = VENDOR_DIR / filename
-        h = _sha256(path)
-        checksums["uplot"][f"sha256_{filename}"] = h
+        h = _sha256(VENDOR_DIR / filename)
+        platform_entry["uplot"][f"sha256_{filename}"] = h
         print(f"  {filename}: {h[:16]}...")
 
-    _save_checksums(checksums)
+    all_checksums = _load_checksums()
+    all_checksums[_PLATFORM_KEY] = platform_entry
+    _save_checksums(all_checksums)
 
 
 def check_prerequisites():
@@ -284,12 +338,59 @@ def build_pyinstaller():
         [sys.executable, "-m", "PyInstaller", str(SPEC), "--noconfirm"],
         check=True,
     )
-    print(f"\nBuild output: {DIST}")
-    print(f"Executable: {DIST / 'analyze-spectrum.exe'}")
+    out = DIST_APP if IS_MAC else DIST_BUNDLE
+    print(f"\nBuild output: {out}")
 
 
 def build_installer():
-    """Run Inno Setup to create the installer."""
+    """Dispatch to the platform-specific installer builder."""
+    if IS_WINDOWS:
+        _build_inno()
+    elif IS_MAC:
+        _build_dmg()
+    else:
+        print(f"No installer builder configured for {sys.platform}.")
+
+
+def _build_dmg():
+    """Run create-dmg to package the macOS .app into a DMG."""
+    if not DIST_APP.exists():
+        print(f"\n.app bundle not found: {DIST_APP}. Skipping DMG creation.")
+        return
+
+    create_dmg = shutil.which("create-dmg")
+    if not create_dmg:
+        print("\ncreate-dmg not found. Install with: brew install create-dmg")
+        return
+
+    output_dir = ROOT / "installer_output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dmg_path = output_dir / "Spectrum-Analyzer.dmg"
+    if dmg_path.exists():
+        dmg_path.unlink()
+
+    print("\n" + "=" * 60)
+    print("  Building DMG with create-dmg...")
+    print("=" * 60)
+    subprocess.run(
+        [
+            create_dmg,
+            "--volname", "Spectrum Analyzer",
+            "--window-size", "600", "400",
+            "--icon-size", "100",
+            "--icon", "Spectrum Analyzer.app", "150", "180",
+            "--app-drop-link", "450", "180",
+            "--no-internet-enable",
+            str(dmg_path),
+            str(DIST_APP),
+        ],
+        check=True,
+    )
+    print(f"\nInstaller output: {dmg_path}")
+
+
+def _build_inno():
+    """Run Inno Setup to create the Windows installer."""
     iscc = shutil.which("iscc")
     if not iscc:
         local_appdata = os.environ.get("LOCALAPPDATA", "")
