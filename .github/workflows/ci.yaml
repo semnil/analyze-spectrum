@@ -1,0 +1,47 @@
+name: CI
+run-name: ${{ github.ref_name }} CI ✅
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test 🧪
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set Up Python 🐍
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install System Dependencies 🔧
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python Dependencies 📦
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[gui,dev]"
+          pip install yt-dlp playwright
+
+      - name: Install Playwright Chromium 🌐
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run Tests ✅
+        run: pytest -q
