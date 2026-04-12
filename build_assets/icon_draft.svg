@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Glow effect for the spectrum curve -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Subtle vertical gradient for background depth -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242540"/>
+      <stop offset="1" stop-color="#141225"/>
+    </linearGradient>
+
+    <!-- Curve stroke gradient (violet-blue -> light violet -> violet-blue) -->
+    <linearGradient id="curveGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"   stop-color="#5a7adb"/>
+      <stop offset="0.5" stop-color="#7ea3f7"/>
+      <stop offset="1"   stop-color="#5a7adb"/>
+    </linearGradient>
+
+    <!-- Fill under the curve (soft area) -->
+    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7ea3f7" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#7ea3f7" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded background (22% radius = ~225px) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="225" ry="225" fill="url(#bgGrad)"/>
+
+  <!-- Faint grid: 4 horizontal guides (dB lines) -->
+  <g stroke="#ffffff" stroke-opacity="0.04" stroke-width="2">
+    <line x1="120" y1="320" x2="904" y2="320"/>
+    <line x1="120" y1="440" x2="904" y2="440"/>
+    <line x1="120" y1="560" x2="904" y2="560"/>
+    <line x1="120" y1="680" x2="904" y2="680"/>
+  </g>
+
+  <!-- Baseline -->
+  <line x1="120" y1="800" x2="904" y2="800"
+        stroke="#ffffff" stroke-opacity="0.25" stroke-width="3"
+        stroke-linecap="round"/>
+
+  <!-- Spectrum curve fill (soft area) -->
+  <path d="M 120,620
+           C 180,560 210,520 237,500
+           C 270,470 295,410 316,380
+           C 345,330 370,280 394,260
+           C 425,290 450,360 473,380
+           C 500,340 525,290 551,290
+           C 580,320 605,360 630,380
+           C 660,430 685,480 708,500
+           C 740,540 765,590 787,620
+           C 830,680 870,720 904,740
+           L 904,800 L 120,800 Z"
+        fill="url(#areaGrad)"/>
+
+  <!-- Spectrum curve stroke with glow -->
+  <path d="M 120,620
+           C 180,560 210,520 237,500
+           C 270,470 295,410 316,380
+           C 345,330 370,280 394,260
+           C 425,290 450,360 473,380
+           C 500,340 525,290 551,290
+           C 580,320 605,360 630,380
+           C 660,430 685,480 708,500
+           C 740,540 765,590 787,620
+           C 830,680 870,720 904,740"
+        fill="none"
+        stroke="url(#curveGrad)"
+        stroke-width="14"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        filter="url(#glow)"/>
+</svg>
