@@ -586,50 +586,59 @@ _BG_LIGHT = "#fafafa"
 _BG_DARK = "#1a1a2e"
 
 
-def _system_prefers_dark() -> bool:
-    """Check if the OS is set to dark mode (Windows registry)."""
+def _read_theme_from_leveldb(storage_key: str, ls_dir: Path) -> str | None:
+    """Scan a Chromium/WebKit LevelDB dir for a persisted theme value.
+
+    Returns 'light' / 'dark' / None.  Tolerates corrupted log files.
+    """
     try:
-        import winreg
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-        ) as key:
-            val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-        return val == 0
+        for ldb in sorted(ls_dir.glob("*.log"), reverse=True):
+            raw = ldb.read_bytes()
+            idx = raw.find(storage_key.encode())
+            if idx == -1:
+                continue
+            tail = raw[idx + len(storage_key):idx + len(storage_key) + 40]
+            if b"dark" in tail:
+                return "dark"
+            if b"light" in tail:
+                return "light"
     except Exception:
-        return False
+        pass
+    return None
 
 
 def _resolve_background_color(storage_key: str) -> str:
     """Resolve the pywebview initial background color from the theme setting.
 
-    Reads the WebView2 localStorage via the LevelDB profile to match
-    the user's persisted theme choice.  Falls back to OS preference
-    for 'auto' or when the profile cannot be read.
+    Reads the WebView localStorage from the platform-specific profile path.
+    Falls back to OS preference for 'auto' or when the profile is unreadable.
     """
-    mode = "auto"
-    try:
-        # WebView2 stores localStorage in a LevelDB under the default profile
+    from desktop_app_common.platform import IS_MAC, IS_WINDOWS
+    from desktop_app_common.theme import is_dark_mode
+
+    mode: str | None = None
+    if IS_WINDOWS:
         profile = Path(os.environ.get("LOCALAPPDATA", "")) / "pywebview" / "Default"
         ls_dir = profile / "Local Storage" / "leveldb"
         if ls_dir.is_dir():
-            for ldb in sorted(ls_dir.glob("*.log"), reverse=True):
-                raw = ldb.read_bytes()
-                idx = raw.find(storage_key.encode())
-                if idx == -1:
-                    continue
-                # LevelDB encodes value after key with length prefix + type bytes;
-                # 40 bytes is enough to capture "light"/"dark"/"auto" with overhead
-                tail = raw[idx + len(storage_key):idx + len(storage_key) + 40]
-                if b"dark" in tail:
-                    mode = "dark"
-                elif b"light" in tail:
-                    mode = "light"
-                break
-    except Exception:
-        pass
-    if mode == "auto":
-        return _BG_DARK if _system_prefers_dark() else _BG_LIGHT
+            mode = _read_theme_from_leveldb(storage_key, ls_dir)
+    elif IS_MAC:
+        # pywebview on macOS uses WKWebView; WebKit stores localStorage under
+        # ~/Library/WebKit/<bundle-id>/WebsiteData/LocalStorage.  Paths vary
+        # across OS versions, so try a few candidates.
+        home = Path.home()
+        candidates = [
+            home / "Library/WebKit/pywebview/WebsiteData/LocalStorage",
+            home / "Library/Application Support/pywebview/WebsiteData/LocalStorage",
+        ]
+        for root in candidates:
+            if root.is_dir():
+                mode = _read_theme_from_leveldb(storage_key, root)
+                if mode:
+                    break
+
+    if mode is None:
+        return _BG_DARK if is_dark_mode() else _BG_LIGHT
     return _BG_DARK if mode == "dark" else _BG_LIGHT
 
 
@@ -655,9 +664,9 @@ def main():
     )
 
     def _disable_external_drop():
-        # Disable WebView2 native file drop (causes unwanted navigation).
+        # Disable native file drop (causes unwanted navigation).
         # JavaScript drop handler in main.js handles D&D via /upload endpoint.
-        # Try both the webview property and CoreWebView2 settings.
+        # On macOS (WKWebView) the JS-side stopImmediatePropagation suffices.
         try:
             _window.gui.webview.AllowExternalDrop = False
         except Exception:
@@ -667,8 +676,10 @@ def main():
         except Exception:
             pass
 
-    _window.events.shown += _disable_external_drop
-    _window.events.loaded += _disable_external_drop
+    from desktop_app_common.platform import IS_WINDOWS
+    if IS_WINDOWS:
+        _window.events.shown += _disable_external_drop
+        _window.events.loaded += _disable_external_drop
     webview.start()
     server.shutdown()
 

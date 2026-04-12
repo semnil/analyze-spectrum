@@ -1,19 +1,13 @@
 """analyze-spectrum: audio spectral analysis tool."""
 
-import subprocess
 import sys
+from pathlib import Path
+
+# Make the py-desktop-app-common submodule importable as `desktop_app_common`.
+_VENDOR = Path(__file__).resolve().parents[2] / "vendor" / "py-desktop-app-common" / "src"
+if _VENDOR.is_dir() and str(_VENDOR) not in sys.path:
+    sys.path.insert(0, str(_VENDOR))
+
+from desktop_app_common.platform import subprocess_kwargs as _subprocess_kwargs  # noqa: E402,F401
 
 __version__ = "0.9.2"
-
-
-def _subprocess_kwargs() -> dict:
-    """Return platform-specific kwargs for subprocess calls.
-
-    On frozen Windows builds (PyInstaller), hide the console window
-    spawned by subprocess for ffmpeg / yt-dlp.
-    """
-    if sys.platform == "win32" and getattr(sys, "frozen", False):
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        return {"startupinfo": si}
-    return {}
