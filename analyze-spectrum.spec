@@ -74,7 +74,6 @@ exe = EXE(
     upx=not IS_MAC,
     console=False,
     icon=_ICON,
-    target_arch="universal2" if IS_MAC else None,
 )
 
 coll = COLLECT(
