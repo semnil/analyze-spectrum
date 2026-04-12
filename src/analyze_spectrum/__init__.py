@@ -10,4 +10,4 @@ if _VENDOR.is_dir() and str(_VENDOR) not in sys.path:
 
 from desktop_app_common.platform import subprocess_kwargs as _subprocess_kwargs  # noqa: E402,F401
 
-__version__ = "0.9.4"
+__version__ = "0.9.5"
