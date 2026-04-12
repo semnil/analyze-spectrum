@@ -41,7 +41,7 @@ CHECKSUMS_FILE = ROOT / "build_assets" / "checksums.json"
 UPLOT_VERSION = "1.6.31"
 
 _EXE = ".exe" if IS_WINDOWS else ""
-REQUIRED_BINS = [f"ffmpeg{_EXE}", f"ffprobe{_EXE}", f"yt-dlp{_EXE}"]
+REQUIRED_BINS = [f"ffmpeg{_EXE}", f"ffprobe{_EXE}", f"deno{_EXE}"]
 
 
 def _sha256(path: Path) -> str:
@@ -118,16 +118,14 @@ def _verify_checksums():
         print("All checksums verified.")
 
 
-def download_assets() -> str:
-    """Download or update all external assets. Returns yt-dlp version tag."""
+def download_assets() -> None:
+    """Download or update all external assets."""
     BIN_DIR.mkdir(parents=True, exist_ok=True)
     VENDOR_DIR.mkdir(parents=True, exist_ok=True)
 
-    ytdlp_tag = _download_ytdlp()
     _download_deno()
     _download_ffmpeg()
     _download_uplot()
-    return ytdlp_tag
 
 
 def _make_executable(path: Path) -> None:
@@ -143,32 +141,6 @@ def _github_api_open(url: str):
         req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Accept", "application/vnd.github+json")
     return urllib.request.urlopen(req)
-
-
-def _get_ytdlp_latest_tag() -> str:
-    with _github_api_open(
-        "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
-    ) as r:
-        return json.loads(r.read())["tag_name"]
-
-
-def _download_ytdlp() -> str:
-    """Download latest yt-dlp binary for the current platform. Returns the version tag."""
-    asset_name = "yt-dlp.exe" if IS_WINDOWS else "yt-dlp_macos" if IS_MAC else "yt-dlp"
-    dest = BIN_DIR / f"yt-dlp{_EXE}"
-    print("Fetching latest yt-dlp release info...")
-    tag = _get_ytdlp_latest_tag()
-
-    if dest.exists():
-        print(f"  {dest.name} exists, updating to {tag}...")
-    else:
-        print(f"  Downloading yt-dlp {tag}...")
-
-    url = f"https://github.com/yt-dlp/yt-dlp/releases/download/{tag}/{asset_name}"
-    urllib.request.urlretrieve(url, dest)
-    _make_executable(dest)
-    print(f"  -> {dest} ({dest.stat().st_size // 1024 // 1024} MB)")
-    return tag
 
 
 def _download_deno():
@@ -282,20 +254,13 @@ def _download_uplot():
 
 def update_checksums():
     """Download assets and compute checksums.json for the current platform."""
-    ytdlp_tag = download_assets()
+    download_assets()
 
     print(f"\nComputing checksums for platform '{_PLATFORM_KEY}'...")
     platform_entry = {}
 
-    ytdlp_name = f"yt-dlp{_EXE}"
     deno_name = f"deno{_EXE}"
     ffmpeg_names = (f"ffmpeg{_EXE}", f"ffprobe{_EXE}")
-
-    platform_entry["yt-dlp"] = {
-        "version": ytdlp_tag,
-        f"sha256_{ytdlp_name}": _sha256(BIN_DIR / ytdlp_name),
-    }
-    print(f"  {ytdlp_name} ({ytdlp_tag}): {platform_entry['yt-dlp'][f'sha256_{ytdlp_name}'][:16]}...")
 
     platform_entry["deno"] = {
         f"sha256_{deno_name}": _sha256(BIN_DIR / deno_name),

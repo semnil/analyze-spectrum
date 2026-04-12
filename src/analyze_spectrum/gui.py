@@ -643,7 +643,7 @@ def _resolve_background_color(storage_key: str) -> str:
 
 
 def main():
-    # When frozen, add bundled binaries (ffmpeg, ffprobe, yt-dlp) to PATH
+    # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):
         bin_dir = str(Path(sys._MEIPASS) / "bin")
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")

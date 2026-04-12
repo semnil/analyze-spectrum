@@ -1,9 +1,10 @@
-"""Download audio via yt-dlp and probe media info via ffprobe."""
+"""Download audio via yt-dlp Python API and probe media info via ffprobe."""
 
 import re
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from yt_dlp import YoutubeDL
 
 from analyze_spectrum import _subprocess_kwargs
 
@@ -36,14 +37,6 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
         raise RuntimeError(f"{cmd[0]} failed (exit {e.returncode}): {stderr_tail}") from e
 
 
-def _decode_stdout(raw: bytes) -> str:
-    """Decode subprocess stdout trying UTF-8 first, then CP932 fallback."""
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return raw.decode("cp932", errors="replace")
-
-
 def sanitize_filename(name: str) -> str:
     """Remove or replace characters that are unsafe for filenames."""
     name = re.sub(r'[\\/:*?"<>|]', "_", name)
@@ -51,33 +44,28 @@ def sanitize_filename(name: str) -> str:
     return name[:200] if name else "untitled"
 
 
-def fetch_title(url: str) -> str:
-    """Fetch video title without downloading."""
-    try:
-        r = subprocess.run(
-            ["yt-dlp", "--print", "title", "--no-download", url],
-            check=True, capture_output=True, **_subprocess_kwargs(),
-        )
-        return _decode_stdout(r.stdout).strip().splitlines()[0]
-    except Exception:
-        return "Untitled"
-
-
 def download_audio(url: str, workdir: str) -> tuple[str, str]:
-    """Download audio track with yt-dlp and return (file_path, title)."""
+    """Download audio track via yt-dlp Python API and return (file_path, title)."""
     template = str(Path(workdir) / "%(id)s.%(ext)s")
+    opts = {
+        "format": "bestaudio/best",
+        "outtmpl": template,
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "opus",
+            "preferredquality": "0",
+        }],
+    }
+    try:
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except Exception as e:
+        raise RuntimeError(f"yt-dlp failed: {e}") from e
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        title_future = pool.submit(fetch_title, url)
-        pool.submit(_run, [
-            "yt-dlp", "-x",
-            "--audio-format", "opus",
-            "--audio-quality", "0",
-            "-o", template,
-            url,
-        ]).result()
-
-    title = title_future.result()
+    title = (info or {}).get("title") or "Untitled"
     files = [f for f in Path(workdir).iterdir() if f.is_file()]
     if files:
         return str(files[0]), title

@@ -12,7 +12,7 @@ _EXE = ".exe" if IS_WINDOWS else ""
 _BINARIES = [
     (os.path.join(ROOT, f"build_assets/bin/ffmpeg{_EXE}"), "bin"),
     (os.path.join(ROOT, f"build_assets/bin/ffprobe{_EXE}"), "bin"),
-    (os.path.join(ROOT, f"build_assets/bin/yt-dlp{_EXE}"), "bin"),
+    (os.path.join(ROOT, f"build_assets/bin/deno{_EXE}"), "bin"),
 ]
 
 a = Analysis(
@@ -92,12 +92,12 @@ if IS_MAC:
         name="Spectrum Analyzer.app",
         icon=_ICON,
         bundle_identifier="com.semnil.spectrum-analyzer",
-        version="0.9.4",
+        version="0.9.5",
         info_plist={
             "CFBundleName": "Spectrum Analyzer",
             "CFBundleDisplayName": "Spectrum Analyzer",
-            "CFBundleShortVersionString": "0.9.4",
-            "CFBundleVersion": "0.9.4",
+            "CFBundleShortVersionString": "0.9.5",
+            "CFBundleVersion": "0.9.5",
             "LSMinimumSystemVersion": "11.0",
             "NSHighResolutionCapable": True,
             "LSEnvironment": {"PYTHONIOENCODING": "utf-8"},

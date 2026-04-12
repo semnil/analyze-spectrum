@@ -23,7 +23,7 @@ graph LR
 
     A -->|"HTTP<br/>127.0.0.1:random"| B
     B -->|"NDJSON stream"| C
-    C -->|"yt-dlp / local file"| D
+    C -->|"yt_dlp API / local file"| D
     D -->|"ffmpeg → mono f32le 48kHz"| E
     E -->|"JSON result"| B
     B -->|"NDJSON event"| A
@@ -38,7 +38,7 @@ graph TD
         MAIN["__main__.py"]
         CLI["cli.py<br/>argparse + orchestration"]
         GUI["gui.py<br/>pywebview + HTTPServer"]
-        DL["download.py<br/>yt-dlp, is_url, resolve_source"]
+        DL["download.py<br/>yt_dlp.YoutubeDL, is_url, resolve_source"]
         PCM["pcm.py<br/>ffmpeg → PCM"]
         ANA["analysis.py<br/>Welch PSD, 1/3 oct, metrics"]
     end
@@ -80,7 +80,7 @@ graph TD
 flowchart TD
     INPUT["Input<br/>YouTube URL / Local File"]
     RESOLVE{"is_url?"}
-    YTDLP["yt-dlp -x<br/>(audio extraction)"]
+    YTDLP["yt_dlp.YoutubeDL<br/>(audio extraction)"]
     LOCAL["Local file path"]
     PROBE["ffprobe<br/>(duration)"]
     MIDDLE{"--duration<br/>specified?"}
@@ -378,7 +378,6 @@ flowchart TD
     BUILD["python build.py"]
     DL_ASSETS["Download Assets"]
 
-    DL_ASSETS --> YTDLP["yt-dlp.exe<br/>(GitHub Releases)"]
     DL_ASSETS --> DENO["deno.exe<br/>(GitHub Releases)"]
     DL_ASSETS --> FFMPEG["ffmpeg.exe / ffprobe.exe<br/>(BtbN/FFmpeg-Builds)"]
     DL_ASSETS --> UPLOT["uPlot JS/CSS<br/>(jsDelivr CDN)"]
@@ -389,7 +388,7 @@ flowchart TD
 
     PYINST --> BUNDLE["dist/analyze-spectrum/"]
     BUNDLE --> EXE["analyze-spectrum.exe"]
-    BUNDLE --> BIN["bin/<br/>ffmpeg, ffprobe, yt-dlp, deno"]
+    BUNDLE --> BIN["bin/<br/>ffmpeg, ffprobe, deno"]
     BUNDLE --> FE["frontend/<br/>HTML, JS, CSS, vendor"]
 
     BUNDLE --> ISS{"--installer?"}
@@ -405,7 +404,6 @@ dist/analyze-spectrum/
 ├── bin/
 │   ├── ffmpeg.exe
 │   ├── ffprobe.exe
-│   ├── yt-dlp.exe
 │   └── deno.exe
 ├── frontend/
 │   ├── index.html
@@ -435,7 +433,7 @@ dist/analyze-spectrum/
 ### 7.2 入力検証
 
 - subprocess は list 形式で実行 (shell injection 防止)
-- yt-dlp stdout は `_decode_stdout()` で UTF-8 → CP932 フォールバックデコード (タイトル表示用、DOM は `textContent` 経由)
+- yt-dlp は Python API (`yt_dlp.YoutubeDL`) 経由のため subprocess stdout のデコード不要。タイトルは `extract_info()` の戻り値 dict から取得 (DOM は `textContent` 経由で表示)
 - POST body は 10MB 上限 (JSON)、50MB (base64 画像)、500MB (ファイルアップロード)
 - アップロードファイル名は `sanitize_filename()` で無害化 (`\/:*?"<>|` → `_`、先頭末尾の `.` 除去)
 - アップロード拡張子はホワイトリスト (`.wav`, `.mp3`, `.m4a` 等 13 種)
@@ -456,7 +454,7 @@ dist/analyze-spectrum/
 
 ### 7.5 ビルド・配布
 
-- ビルド時アセット (ffmpeg, yt-dlp, deno, uPlot) は SHA256 チェックサム検証
+- ビルド時アセット (ffmpeg, ffprobe, deno, uPlot) は SHA256 チェックサム検証 (yt-dlp は Python 依存のため対象外)
 - Frozen build は `_MEIPASS/bin` に PATH を限定
 
 ### 7.6 既知の制限
@@ -508,7 +506,7 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 | `tests/test_analysis.py` | unit | 解析コア (Welch PSD, 1/3 oct, metrics) |
 | `tests/test_pcm.py` | unit | ffmpeg → PCM 変換 |
 | `tests/test_cli.py` | unit | argparse + CLI 統合 |
-| `tests/test_download.py` | unit | yt-dlp download, ffprobe duration |
+| `tests/test_download.py` | unit | yt_dlp.YoutubeDL API, ffprobe duration |
 | `tests/test_gui.py` | unit | gui.py (モック使用) |
 | `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン (28 tests) |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner |

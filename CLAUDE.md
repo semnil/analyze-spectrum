@@ -10,7 +10,7 @@ analyze-loudness と同一アーキテクチャ (pywebview + ローカル HTTP �
 graph LR
     A["pywebview<br/>(WebView2)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
     B -->|"NDJSON stream"| C["Analysis Pipeline"]
-    C --> D["yt-dlp -x / local file"]
+    C --> D["yt_dlp.YoutubeDL API / local file"]
     D --> E["ffmpeg → PCM<br/>(mono + stereo float32, 48kHz)"]
     E --> F["scipy.signal.welch<br/>(spectral analysis)"]
     F --> G["JSON response<br/>{summary, spectrum, bands}"]
@@ -61,7 +61,7 @@ analyze-spectrum/
 │   ├── analysis.py             # spectral analysis core
 │   ├── cli.py                  # argparse + CLI orchestration
 │   ├── gui.py                  # pywebview + local HTTP server
-│   ├── download.py             # yt-dlp download, ffprobe duration
+│   ├── download.py             # yt_dlp.YoutubeDL API, ffprobe duration
 │   └── pcm.py                  # ffmpeg → PCM conversion (mono + stereo)
 ├── frontend/
 │   ├── index.html
@@ -92,7 +92,7 @@ analyze-spectrum/
 ├── analyze-spectrum.spec
 ├── installer.iss
 ├── THIRD_PARTY_LICENSES.txt
-└── build_assets/bin/           # ffmpeg, ffprobe, yt-dlp, deno (git 管理外)
+└── build_assets/bin/           # ffmpeg, ffprobe, deno (git 管理外)
 ```
 
 ## CLI usage
@@ -115,7 +115,7 @@ analyze-spectrum "https://..." --duration 2
 
 ### CLI dependencies
 
-- `yt-dlp` — URL download
+- `yt-dlp` — URL download (Python API 経由)
 - `ffmpeg` / `ffprobe` — PCM conversion + duration probe + channel detection
 - `numpy`, `scipy` — spectral analysis
 - `matplotlib` — CLI plot output (optional)
@@ -141,7 +141,8 @@ python build.py --installer  # + Inno Setup installer (.exe)
 
 - `pywebview` — optional dependency
 - `numpy`, `scipy` — spectral analysis
-- ffmpeg, ffprobe, yt-dlp, deno — bundled in build_assets/bin/
+- `yt-dlp` — Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
+- ffmpeg, ffprobe, deno — bundled in build_assets/bin/
 
 ## GUI endpoints
 
@@ -241,6 +242,10 @@ python build.py --installer  # + Inno Setup installer (.exe)
 | True Peak oversample | 4x | ITU-R BS.1770, chunked (30s) for memory |
 
 ## Design decisions
+
+### yt-dlp Python API (not bundled binary)
+
+`yt_dlp.YoutubeDL` を Python ライブラリとして直接呼び出し、`FFmpegExtractAudio` postprocessor で音声抽出。バイナリ同梱を避けることで、macOS 向けの codesign 再署名で発生する Team ID 不一致問題 (onefile バイナリ内部の Python.framework が再署名できず hardened runtime で拒否される) を根本的に回避している。
 
 ### PCM 変換方式
 

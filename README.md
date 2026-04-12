@@ -53,7 +53,7 @@ Analyze ボタンで単体分析、"+ Add Track" で複数トラックを登録�
 ```
 pywebview (WebView2) ──HTTP──> Local HTTP Server (gui.py)
                                   │
-                                  ├── yt-dlp (URL download)
+                                  ├── yt_dlp.YoutubeDL API (URL download)
                                   ├── ffmpeg → PCM (mono + stereo float32, 48kHz)
                                   └── scipy.signal.welch → analysis results
 ```
@@ -97,9 +97,10 @@ python build.py --installer
 `build.py` が以下を自動ダウンロード:
 
 - ffmpeg / ffprobe (BtbN/FFmpeg-Builds)
-- yt-dlp (GitHub Releases)
 - deno (GitHub Releases, yt-dlp の YouTube JS 抽出に必要)
 - uPlot (jsDelivr CDN)
+
+yt-dlp は Python 依存 (`pyproject.toml`) として管理され、PyInstaller が自動的にバンドルする。
 
 SHA256 チェックサム検証あり (`python build.py --update-checksums` で更新)。
 
@@ -111,7 +112,7 @@ analyze-spectrum/
 │   ├── analysis.py        # Welch PSD, 1/3 oct, metrics
 │   ├── cli.py             # CLI entry point
 │   ├── gui.py             # pywebview + HTTP server
-│   ├── download.py        # yt-dlp, source resolution
+│   ├── download.py        # yt_dlp.YoutubeDL API, source resolution
 │   └── pcm.py             # ffmpeg → PCM (mono + stereo)
 ├── frontend/
 │   ├── index.html
@@ -132,12 +133,12 @@ analyze-spectrum/
 
 - numpy >= 1.26
 - scipy >= 1.12
+- yt-dlp
 - pywebview >= 5.0 (GUI only)
 
 ### External Tools
 
 - ffmpeg / ffprobe
-- yt-dlp (URL analysis)
 
 ## Testing
 
