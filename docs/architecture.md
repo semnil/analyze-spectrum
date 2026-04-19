@@ -327,6 +327,25 @@ sequenceDiagram
     FE->>U: "Cancelled."
 ```
 
+**キャンセル時の既知挙動** (既知の制限):
+
+キャンセルは次の NDJSON イベント送信タイミングでのみ検知される。
+すなわち以下のような長時間ブロックする同期処理は、キャンセル後も
+**そのステージが完了するまで継続**する:
+
+- `ffmpeg` / `ffprobe` の子プロセス (`subprocess.run`) — プロセスに
+  シグナルを送らないため、PCM 抽出・ラウドネス測定が最後まで走る
+- `scipy.signal.welch` / `resample_poly` — NumPy/SciPy の C ループは
+  Python シグナルを受け取らない
+- `yt_dlp.YoutubeDL.extract_info(download=True)` — 現在ダウンロード中の
+  チャンクまで継続
+
+キャンセル直後のユーザー体感は即座に "Cancelled." だが、バックグラウンドの
+CPU / ネットワーク使用率はステージ完了まで残る。この挙動を改善するには
+子プロセスに `Popen` + `terminate()` を介したキャンセル伝播を実装する
+必要があり、複雑度とメモリ解放タイミングのトレードオフから現在は
+採用していない。
+
 ### 4.7 Theme System
 
 3 段階テーマ切替 (Light → Dark → Auto → Light):

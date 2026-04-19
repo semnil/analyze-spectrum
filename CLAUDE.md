@@ -243,6 +243,10 @@ python build.py --installer  # + Inno Setup installer (.exe)
 
 ## Design decisions
 
+### アクセントカラー
+
+analyze-spectrum はブルー系 (`--accent: #1565C0`)、analyze-loudness はパープル系 (`--accent: #9C27B0`)。ドメインで色を分離: ブルー = 周波数スペクトル、パープル = ラウドネス (音量)。CSS 変数名は両プロジェクトで異なる (`--text` vs `--fg`, `--bg-card` vs `--surface`, `--text-secondary` vs `--fg-muted`)。将来 `py-desktop-app-common` で共通化する際に統一する。
+
 ### yt-dlp Python API (not bundled binary)
 
 `yt_dlp.YoutubeDL` を Python ライブラリとして直接呼び出し、`FFmpegExtractAudio` postprocessor で音声抽出。バイナリ同梱を避けることで、macOS 向けの codesign 再署名で発生する Team ID 不一致問題 (onefile バイナリ内部の Python.framework が再署名できず hardened runtime で拒否される) を根本的に回避している。
