@@ -158,11 +158,13 @@ function makeNdjsonResponse(type, data) {
   addBtn.click();
   assertEqual(compareSources.length, 2, "Add second track");
 
-  // Remove second track — should collapse to urlInput
+  // Remove second track — remaining track stays in compareSources (no
+  // auto-collapse).  Keeps the visual track list and internal state aligned.
   var removeBtns = document.querySelectorAll(".remove-track");
   removeBtns[1].click();
-  assertEqual(compareSources.length, 0, "After removing one of two, compareSources is empty");
-  assertEqual(urlInput.value, "file_A.wav", "Remaining track moved to urlInput");
+  assertEqual(compareSources.length, 1, "After removing one of two, one track remains");
+  assertEqual(compareSources[0], "file_A.wav", "Remaining track is file_A");
+  assertEqual(urlInput.value, "", "URL input untouched by remove");
 
   // ================================================
   suite("Duplicate track rejected");
@@ -287,9 +289,12 @@ function makeNdjsonResponse(type, data) {
   loadBtn.click();
   await new Promise(function(r) { setTimeout(r, 200); });
 
-  // Single outdated source — moved to urlInput for re-analysis on next submit
-  assertEqual(urlInput.value, "https://example.com/test.mp4", "Source set in URL input");
-  assertEqual(compareSources.length, 0, "No compare tracks for single source");
+  // Outdated data is queued (not cached server-side) so Submit re-analyzes.
+  // The source goes into compareSources, not urlInput, keeping the queue-add
+  // path consistent with multi load.
+  assertEqual(urlInput.value, "", "URL input cleared by queue-add");
+  assertEqual(compareSources.length, 1, "Outdated source queued as track");
+  assertEqual(compareSources[0], "https://example.com/test.mp4", "Source queued");
   window.confirm = _origConfirm;
 
   // ================================================
@@ -340,8 +345,10 @@ function makeNdjsonResponse(type, data) {
   loadBtn.click();
   await new Promise(function(r) { setTimeout(r, 200); });
 
-  // Declined re-analysis — data displayed as-is (single load path)
-  assertEqual(urlInput.value, "old_file.wav", "Source shown in URL input");
+  // Declined re-analysis — data displayed as-is. compareSources / urlInput
+  // are left untouched so the user keeps whatever they were preparing.
+  assertEqual(urlInput.value, "", "URL input untouched by declined load");
+  assertEqual(compareSources.length, 0, "compareSources untouched by declined load");
   window.confirm = _origConfirm;
 
   // ================================================
@@ -370,10 +377,13 @@ function makeNdjsonResponse(type, data) {
   addBtn.click();
   assertEqual(compareSources.length, 2, "Setup: 2 tracks added");
 
-  // Delete B (index 1) — collapses to urlInput
+  // Delete B (index 1) — A stays in compareSources (no auto-collapse), so
+  // the post-delete state matches what "1 track added" looks like.  Load
+  // single JSON below should now behave identically to that case.
   document.querySelectorAll(".remove-track")[1].click();
-  assertEqual(urlInput.value, "A.wav", "Setup: A moved to urlInput");
-  assertEqual(compareSources.length, 0, "Setup: compareSources empty");
+  assertEqual(urlInput.value, "", "Setup: urlInput stays empty after remove");
+  assertEqual(compareSources.length, 1, "Setup: A remains in compareSources");
+  assertEqual(compareSources[0], "A.wav", "Setup: remaining track is A");
 
   // Load single JSON
   mockFetch(function() {
@@ -387,7 +397,7 @@ function makeNdjsonResponse(type, data) {
   await new Promise(function(r) { setTimeout(r, 200); });
 
   assertEqual(compareSources.length, 2, "A + C = 2 tracks");
-  assertIncludes(compareSources, "A.wav", "A preserved from pending");
+  assertIncludes(compareSources, "A.wav", "A preserved from existing track");
   assertIncludes(compareSources, "C.wav", "C added from load");
   assertEqual(urlInput.value, "", "URL cleared in compare mode");
 
@@ -462,16 +472,18 @@ function makeNdjsonResponse(type, data) {
   assertEqual(urlInput.value, "C.wav", "urlInput value preserved");
 
   // ================================================
-  suite("P1: Remove track collapses when urlInput empty");
+  suite("Remove track keeps remaining without collapse");
   // ================================================
 
   resetState();
   urlInput.value = "A.wav"; addBtn.click();
   urlInput.value = "B.wav"; addBtn.click();
-  // urlInput is now empty after second add
+  // urlInput is empty after second add. Auto-collapse was removed so the
+  // remaining track stays visible in the queue.
   document.querySelectorAll(".remove-track")[1].click();
-  assertEqual(compareSources.length, 0, "Collapsed to urlInput");
-  assertEqual(urlInput.value, "A.wav", "Remaining track moved to urlInput");
+  assertEqual(compareSources.length, 1, "One track remains in queue");
+  assertEqual(compareSources[0], "A.wav", "Remaining track is A");
+  assertEqual(urlInput.value, "", "urlInput stays empty");
 
   // ================================================
   suite("P3: Submit label updates with urlInput (input event)");

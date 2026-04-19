@@ -1,6 +1,7 @@
 """Integration tests: real HTTPServer + analysis pipeline (no pywebview)."""
 
 import json
+import shutil
 import sys
 import threading
 from http.server import HTTPServer
@@ -14,6 +15,14 @@ if "webview" not in sys.modules:
     sys.modules["webview"] = MagicMock()
 
 import analyze_spectrum.gui as _gui_mod  # noqa: E402
+
+# Integration suite drives the real analysis pipeline, which shells out to
+# ffprobe/ffmpeg.  Skip the whole module when either binary is missing so CI
+# machines without the bundled build_assets/bin on PATH do not fail.
+pytestmark = pytest.mark.skipif(
+    shutil.which("ffprobe") is None or shutil.which("ffmpeg") is None,
+    reason="ffprobe/ffmpeg not available",
+)
 
 
 @pytest.fixture(scope="module")
@@ -38,21 +47,34 @@ def _clear_cache():
 
 
 def _post(base_url, path, body=None):
-    """Send a POST request and return (status, parsed_body)."""
-    import urllib.request
+    """Send a POST request and return (status, body).
+
+    Uses http.client directly to avoid a urllib-vs-HTTPServer keep-alive race
+    where the server closes the connection before urllib finishes reading the
+    response body, producing a sporadic ConnectionResetError.
+    """
+    from http.client import HTTPConnection
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(base_url)
     data = json.dumps(body or {}).encode()
-    req = urllib.request.Request(
-        base_url + path,
-        data=data,
-        headers={"Content-Type": "application/json"},
-    )
+    conn = HTTPConnection(parsed.hostname, parsed.port, timeout=30)
     try:
-        resp = urllib.request.urlopen(req)
+        conn.request(
+            "POST",
+            path,
+            body=data,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(data)),
+                "Connection": "close",
+            },
+        )
+        resp = conn.getresponse()
         raw = resp.read().decode()
         return resp.status, raw
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode()
-        return e.code, raw
+    finally:
+        conn.close()
 
 
 def _parse_ndjson(raw: str) -> list[dict]:

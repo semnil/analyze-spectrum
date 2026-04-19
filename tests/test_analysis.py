@@ -187,8 +187,41 @@ class TestAnalyzeTrack:
         assert set(result.band_energy.keys()) == expected_keys
 
     def test_empty_array_raises(self):
-        with pytest.raises(ValueError, match="must not be empty"):
+        with pytest.raises(ValueError, match="at least 2 samples"):
             analyze_track(np.array([], dtype=np.float32))
+
+    def test_single_sample_raises(self):
+        with pytest.raises(ValueError, match="at least 2 samples"):
+            analyze_track(np.array([0.1], dtype=np.float32))
+
+    def test_nan_inf_samples_serialize_strict_json(self):
+        """NaN/±Inf samples must not leak into the JSON output."""
+        import json
+        data = _white_noise(duration=2.0).copy()
+        data[100:200] = np.nan
+        data[300:400] = np.inf
+        data[500:600] = -np.inf
+        result = analyze_track(data, label="nan_inf")
+        d = result.to_dict()
+        # allow_nan=False must not raise
+        json_str = json.dumps(d, allow_nan=False)
+        assert "NaN" not in json_str
+        assert "Infinity" not in json_str
+
+
+    def test_silent_input_returns_none_metrics(self):
+        data = np.zeros(SAMPLE_RATE * 2, dtype=np.float32)
+        result = analyze_track(data, label="silent")
+        assert result.low_intel_ratio_db is None
+        assert result.presence_mid_ratio_db is None
+        assert result.brightness_db is None
+        d = result.to_dict()
+        assert d["summary"]["low_intel_ratio_db"] is None
+
+    def test_two_samples_minimum(self):
+        data = np.array([0.1, -0.1], dtype=np.float32)
+        result = analyze_track(data, label="tiny")
+        assert result.duration_sec > 0
 
 
 class TestCompareTracks:

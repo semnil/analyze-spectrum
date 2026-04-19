@@ -47,7 +47,13 @@
     window.renderMidHigh = function(){};
   </script>
 
+  <!-- Ensure deterministic language for assertions -->
+  <script>
+    try { localStorage.setItem("spectrum-lang", "en"); } catch (_) {}
+  </script>
+
   <!-- Load the actual frontend code -->
+  <script src="../../frontend/i18n.js"></script>
   <script src="../../frontend/main.js"></script>
 
   <!-- Test runner -->

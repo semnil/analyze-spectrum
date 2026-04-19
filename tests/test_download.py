@@ -22,6 +22,22 @@ class TestSanitizeFilename:
         name = "a" * 300
         assert len(sanitize_filename(name)) == 200
 
+    def test_null_byte_and_control_chars(self):
+        # Null byte / control characters must be replaced so open() does not
+        # fail with ValueError('embedded null byte').
+        assert "\x00" not in sanitize_filename("evil\x00name.wav")
+        assert "\x01" not in sanitize_filename("a\x01b\x1fc")
+
+    def test_path_traversal_no_separators(self):
+        result = sanitize_filename("../../etc/passwd")
+        assert "/" not in result
+        assert "\\" not in result
+
+    def test_path_traversal_windows_no_separators(self):
+        result = sanitize_filename("..\\..\\Windows\\system32\\cmd.exe")
+        assert "\\" not in result
+        assert "/" not in result
+
 
 class TestComputeMiddle:
     def test_short_source(self):
@@ -46,3 +62,7 @@ class TestComputeMiddle:
     def test_negative_duration_raises(self):
         with pytest.raises(ValueError, match="positive"):
             compute_middle(120, -1.0)
+
+    def test_negative_total_sec_raises(self):
+        with pytest.raises(ValueError, match="positive"):
+            compute_middle(-10, 1.0)

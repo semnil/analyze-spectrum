@@ -75,6 +75,12 @@ class TestAnalyzeHandler:
         assert isinstance(handler._parse_duration({"duration": 0}), str)
         assert isinstance(handler._parse_duration({"duration": "abc"}), str)
 
+    def test_parse_duration_non_scalar(self, _mock_webview):
+        gui_mod = _mock_webview
+        handler = gui_mod.AnalyzeHandler.__new__(gui_mod.AnalyzeHandler)
+        assert isinstance(handler._parse_duration({"duration": [1]}), str)
+        assert isinstance(handler._parse_duration({"duration": {"v": 1}}), str)
+
     def test_audio_types_defined(self, _mock_webview):
         gui_mod = _mock_webview
         types = gui_mod.AnalyzeHandler._AUDIO_TYPES
