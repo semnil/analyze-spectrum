@@ -1,5 +1,6 @@
 """Spectral analysis: Welch PSD, 1/3 octave bands, intelligibility metrics."""
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -57,7 +58,7 @@ class SpectrumResult:
     band_energy_db: np.ndarray
 
     # Summary metrics
-    low_intel_ratio_db: float
+    low_intel_ratio_db: float | None
     spectral_centroid_hz: float
     hpf_3db_hz: float | None
     hpf_6db_hz: float | None
@@ -65,14 +66,14 @@ class SpectrumResult:
     crest_factor_db: float = 0.0
     true_peak_dbtp: float = 0.0
     spectral_tilt_db_oct: float = 0.0
-    presence_mid_ratio_db: float = 0.0
-    brightness_db: float = 0.0
+    presence_mid_ratio_db: float | None = 0.0
+    brightness_db: float | None = 0.0
     hf_rolloff_hz: float | None = None
     band_energy: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-safe dictionary."""
-        return {
+        d = {
             "label": self.label,
             "sample_rate": self.sample_rate,
             "duration_sec": round(self.duration_sec, 3),
@@ -88,7 +89,8 @@ class SpectrumResult:
                 "energy_db": np.round(self.band_energy_db, 1).tolist(),
             },
             "summary": {
-                "low_intel_ratio_db": round(self.low_intel_ratio_db, 1),
+                "low_intel_ratio_db": (round(self.low_intel_ratio_db, 1)
+                                       if self.low_intel_ratio_db is not None else None),
                 "spectral_centroid_hz": round(self.spectral_centroid_hz, 0),
                 "hpf_3db_hz": (round(self.hpf_3db_hz)
                                if self.hpf_3db_hz is not None else None),
@@ -98,13 +100,31 @@ class SpectrumResult:
                                           if self.rolloff_db_per_decade is not None else None),
                 "crest_factor_db": round(self.crest_factor_db, 1),
                 "spectral_tilt_db_oct": round(self.spectral_tilt_db_oct, 1),
-                "presence_mid_ratio_db": round(self.presence_mid_ratio_db, 1),
-                "brightness_db": round(self.brightness_db, 1),
+                "presence_mid_ratio_db": (round(self.presence_mid_ratio_db, 1)
+                                          if self.presence_mid_ratio_db is not None else None),
+                "brightness_db": (round(self.brightness_db, 1)
+                                  if self.brightness_db is not None else None),
                 "hf_rolloff_hz": (round(self.hf_rolloff_hz)
                                   if self.hf_rolloff_hz is not None else None),
                 "band_energy": {k: round(v, 1) for k, v in self.band_energy.items()},
             },
         }
+        return _json_safe(d)
+
+
+def _json_safe(obj):
+    """Recursively replace non-finite floats (NaN/Infinity) with None.
+
+    RFC 8259 JSON does not permit NaN / Infinity tokens.  Browser JSON.parse
+    rejects them, so analysis outputs must be sanitized before serialization.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(v) for v in obj]
+    return obj
 
 
 @dataclass
@@ -115,17 +135,21 @@ class CompareResult:
     transfer_functions: list[dict]  # [{label, freqs, delta_db}]
 
     def to_dict(self) -> dict:
-        return {
+        return _json_safe({
             "tracks": [t.to_dict() for t in self.tracks],
             "transfer_functions": [
                 {
                     "label": tf["label"],
                     "freqs": tf["freqs"].tolist(),
                     "delta_db": np.round(tf["delta_db"], 2).tolist(),
+                    # Preserve sample-rate-mismatch warnings set by
+                    # compare_tracks so the frontend can surface them; the
+                    # key is optional, so only include it when present.
+                    **({"warning": tf["warning"]} if "warning" in tf else {}),
                 }
                 for tf in self.transfer_functions
             ],
-        }
+        })
 
 
 def _db(x: float | np.ndarray) -> float | np.ndarray:
@@ -249,17 +273,9 @@ def estimate_hpf(
         return None, None, None
     passband_level = np.mean(psd_db[pb_mask])
 
-    low_mask = (freqs >= 20) & (freqs <= passband[0])
+    low_mask = (freqs >= 20) & (freqs < passband[0])
     f_low = freqs[low_mask]
     db_low = psd_db[low_mask]
-
-    # -3dB crossing
-    below_3 = np.where(db_low < passband_level - 3)[0]
-    hpf_3db = float(f_low[below_3[-1]]) if len(below_3) > 0 else None
-
-    # -6dB crossing
-    below_6 = np.where(db_low < passband_level - 6)[0]
-    hpf_6db = float(f_low[below_6[-1]]) if len(below_6) > 0 else None
 
     # Rolloff slope (dB/decade) via linear regression on log-freq
     slope_mask = (freqs >= 40) & (freqs <= 120)
@@ -269,6 +285,20 @@ def estimate_hpf(
         rolloff = float(slope)
     else:
         rolloff = None
+
+    # Suppress false positives: if rolloff slope is shallower than ~6 dB/dec
+    # (positive slopes indicate signal energy rising into the passband, not a
+    # filter; near-flat slopes are noise floor), there is no meaningful HPF.
+    if rolloff is None or rolloff < 6:
+        return None, None, rolloff
+
+    # -3dB crossing
+    below_3 = np.where(db_low < passband_level - 3)[0]
+    hpf_3db = float(f_low[below_3[-1]]) if len(below_3) > 0 else None
+
+    # -6dB crossing
+    below_6 = np.where(db_low < passband_level - 6)[0]
+    hpf_6db = float(f_low[below_6[-1]]) if len(below_6) > 0 else None
 
     return hpf_3db, hpf_6db, rolloff
 
@@ -378,27 +408,48 @@ def analyze_track(
     Returns:
         SpectrumResult with all computed metrics.
     """
-    if len(data) == 0:
-        raise ValueError("data must not be empty")
+    if len(data) < 2:
+        raise ValueError("data must have at least 2 samples")
+
+    # Sanitize non-finite samples (some codecs / float32 WAV can yield NaN / ±Inf)
+    # so downstream stats never produce JSON-incompatible values.
+    data = np.nan_to_num(data, nan=0.0, posinf=1.0, neginf=-1.0)
+    if stereo_data is not None:
+        stereo_data = np.nan_to_num(stereo_data, nan=0.0, posinf=1.0, neginf=-1.0)
 
     duration = len(data) / sr
     rms = float(20 * np.log10(np.sqrt(np.mean(data ** 2)) + 1e-20))
     peak = float(20 * np.log10(np.max(np.abs(data)) + 1e-20))
     tp_source = stereo_data if stereo_data is not None else data
     true_peak = compute_true_peak(tp_source, sr)
-    crest = true_peak - rms
+    # Silence guard: when rms is at the floor (≤ -120 dBFS), crest factor
+    # becomes meaningless (true_peak - (-120)) and can yield nonsensical
+    # triple-digit dB values.  Report 0.0 dB instead.
+    is_silent = rms <= -120
+    if is_silent:
+        crest = 0.0
+    else:
+        crest = true_peak - rms
 
     freqs, psd = compute_welch(data, sr)
     psd_db = _db(psd)
 
     band_energy_db = compute_third_octave_bands(freqs, psd)
-    ratio = compute_low_intel_ratio(freqs, psd)
     centroid = compute_spectral_centroid(freqs, psd)
     hpf_3, hpf_6, rolloff = estimate_hpf(freqs, psd_db)
     tilt = compute_spectral_tilt(freqs, psd_db)
-    pres_mid = compute_presence_mid_ratio(freqs, psd)
-    bright = compute_brightness(freqs, psd)
     hf_roll = estimate_hf_rolloff(freqs, psd_db)
+    # For silent input, band-ratio metrics collapse to _db(1e-20 / 1e-20) ≈
+    # -200 dB which is noise, not a real measurement.  Report None so the
+    # frontend can render "N/A" instead of a misleading fixed value.
+    if is_silent:
+        ratio = None
+        pres_mid = None
+        bright = None
+    else:
+        ratio = compute_low_intel_ratio(freqs, psd)
+        pres_mid = compute_presence_mid_ratio(freqs, psd)
+        bright = compute_brightness(freqs, psd)
 
     bands = {}
     for name, (lo, hi) in BAND_DEFS.items():
@@ -444,17 +495,25 @@ def compare_tracks(
     ref = results[0]
     tfs = []
     for other in results[1:]:
-        if len(other.freqs) == len(ref.freqs):
-            delta = other.psd_db - ref.psd_db
-            freqs = ref.freqs
+        # Clip the reference frequency grid to the common Nyquist band when
+        # sample rates differ, so we never extrapolate above the other
+        # track's Nyquist frequency.
+        nyquist = min(float(ref.freqs[-1]), float(other.freqs[-1]))
+        grid = ref.freqs[ref.freqs <= nyquist]
+        if len(other.freqs) == len(grid) and np.array_equal(other.freqs, grid):
+            delta = other.psd_db[:len(grid)] - ref.psd_db[:len(grid)]
         else:
-            # Interpolate onto the reference frequency grid
-            delta = np.interp(ref.freqs, other.freqs, other.psd_db) - ref.psd_db
-            freqs = ref.freqs
-        tfs.append({
+            delta = np.interp(grid, other.freqs, other.psd_db) - ref.psd_db[:len(grid)]
+        tf = {
             "label": f"{other.label} − {ref.label}",
-            "freqs": freqs,
+            "freqs": grid,
             "delta_db": delta,
-        })
+        }
+        if ref.sample_rate != other.sample_rate:
+            tf["warning"] = (
+                f"sample rate mismatch ({ref.sample_rate} vs "
+                f"{other.sample_rate}); clipped to {nyquist:.0f} Hz"
+            )
+        tfs.append(tf)
 
     return CompareResult(tracks=results, transfer_functions=tfs)

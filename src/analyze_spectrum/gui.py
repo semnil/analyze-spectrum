@@ -2,38 +2,79 @@
 
 import atexit
 import base64
+import glob
 import json
+import math
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
 import time
+import traceback
+from collections import OrderedDict
 from datetime import datetime, timezone
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
 import webview
 
-from analyze_spectrum import __version__
-from analyze_spectrum.analysis import analyze_track
+from analyze_spectrum import SCHEMA_VERSION as _SCHEMA_VERSION, __version__, make_meta as _make_meta
+from analyze_spectrum.analysis import _json_safe, analyze_track
 from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
-
-# Schema version: increment when the analysis result JSON structure changes
-# in a way that requires re-analysis (new metrics, changed field semantics).
-_SCHEMA_VERSION = 1
 
 # Temporary directory for uploaded (drag & drop) files, cleaned up on exit
 _upload_dir = tempfile.mkdtemp(prefix="spectrum_uploads_")
 atexit.register(shutil.rmtree, _upload_dir, True)
 
-# Analysis result cache — avoids re-analysis for same source + duration
+# Analysis result cache — avoids re-analysis for same source + duration.
+# LRU ordering + bounded capacity prevent unbounded disk growth across a
+# long-running session.
 _cache_dir = tempfile.mkdtemp(prefix="spectrum_cache_")
 atexit.register(shutil.rmtree, _cache_dir, True)
-_result_cache: dict[tuple, str] = {}  # (source, duration, [mtime]) -> json path
-_result_cache_data: dict[tuple, dict] = {}  # in-memory cache to avoid disk re-reads
+
+
+def _cleanup_orphan_tempdirs() -> None:
+    """Remove spectrum_* temp directories left by a previous hard-killed run.
+
+    TemporaryDirectory's `with` block cleans up on normal exit, but if the
+    webview window is force-closed while a worker is inside PCM extraction
+    the directory can survive across sessions.  Sweep them once at shutdown,
+    excluding the current process's own tmpdirs.  An mtime threshold of
+    1 hour guards against deleting tmpdirs owned by a parallel running
+    instance whose files are still fresh.
+    """
+    own = {_upload_dir, _cache_dir}
+    seen = set()
+    now = time.time()
+    for prefix in ("spectrum_", "spectrum_cache_", "spectrum_uploads_"):
+        for path in glob.glob(os.path.join(tempfile.gettempdir(), prefix + "*")):
+            if path in own or path in seen:
+                continue
+            seen.add(path)
+            try:
+                if os.path.islink(path) or not os.path.isdir(path):
+                    continue
+                if now - os.path.getmtime(path) <= 3600:
+                    continue
+                shutil.rmtree(path, ignore_errors=True)
+            except OSError:
+                pass
+
+
+atexit.register(_cleanup_orphan_tempdirs)
+_CACHE_MAX_ENTRIES = 10
+_result_cache: "OrderedDict[tuple, str]" = OrderedDict()  # key -> json path
+_result_cache_data: "OrderedDict[tuple, dict]" = OrderedDict()  # key -> data
+# External /load payloads are kept separate so /analyze can force recomputation
+# without being shadowed by a stale user-supplied JSON for the same source.
+_loaded_cache_data: "OrderedDict[tuple, dict]" = OrderedDict()
+# ThreadingHTTPServer may run concurrent requests; guard cache mutations.
+_cache_lock = threading.Lock()
+_dialog_lock = threading.Lock()
 
 
 def _cache_key(source: str, duration: float | None) -> tuple:
@@ -48,13 +89,33 @@ def _cache_key(source: str, duration: float | None) -> tuple:
 
 def _cache_get(source: str, duration: float | None) -> dict | None:
     key = _cache_key(source, duration)
-    data = _result_cache_data.get(key)
-    if data is not None:
-        return data
-    path = _result_cache.get(key)
-    if path and os.path.exists(path):
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        _result_cache_data[key] = data
+    with _cache_lock:
+        data = _result_cache_data.get(key)
+        if data is not None:
+            _result_cache_data.move_to_end(key)
+            if key in _result_cache:
+                _result_cache.move_to_end(key)
+            return data
+        loaded = _loaded_cache_data.get(key)
+        if loaded is not None:
+            _loaded_cache_data.move_to_end(key)
+            return loaded
+        path = _result_cache.get(key)
+        if path:
+            _result_cache.move_to_end(key)
+    if path:
+        try:
+            text = Path(path).read_text(encoding="utf-8")
+        except (FileNotFoundError, OSError):
+            return None
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        with _cache_lock:
+            if _result_cache.get(key) == path:
+                _result_cache_data[key] = data
+                _result_cache_data.move_to_end(key)
         return data
     return None
 
@@ -65,52 +126,98 @@ _cache_seq = 0
 def _cache_put(source: str, duration: float | None, result_dict: dict) -> str:
     global _cache_seq
     key = _cache_key(source, duration)
-    _cache_seq += 1
-    fname = f"cache_{_cache_seq:04d}.json"
-    path = os.path.join(_cache_dir, fname)
+    evicted_paths: list[str] = []
+    with _cache_lock:
+        # Any /load-derived entry for this key is stale now; drop it so the
+        # freshly computed result is used instead.
+        _loaded_cache_data.pop(key, None)
+        # Evict the previous on-disk copy for this key to prevent orphan files
+        # accumulating in _cache_dir across re-analyses of the same source.
+        old_path = _result_cache.get(key)
+        if old_path:
+            evicted_paths.append(old_path)
+        _cache_seq += 1
+        fname = f"cache_{_cache_seq:04d}.json"
+        path = os.path.join(_cache_dir, fname)
+        _result_cache[key] = path
+        _result_cache.move_to_end(key)
+        _result_cache_data[key] = result_dict
+        _result_cache_data.move_to_end(key)
+        # LRU eviction: drop oldest entries until within capacity.  Also
+        # evict any /load-derived payload for the same key; otherwise a
+        # subsequent /analyze would see the stale loaded copy instead of
+        # recomputing.
+        while len(_result_cache) > _CACHE_MAX_ENTRIES:
+            old_key, old_p = _result_cache.popitem(last=False)
+            _result_cache_data.pop(old_key, None)
+            _loaded_cache_data.pop(old_key, None)
+            evicted_paths.append(old_p)
     Path(path).write_text(
-        json.dumps(result_dict, ensure_ascii=False), encoding="utf-8",
+        json.dumps(result_dict, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
     )
-    _result_cache[key] = path
-    _result_cache_data[key] = result_dict
+    for p in evicted_paths:
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
     return path
-
-
-def _make_meta(source: str) -> dict:
-    return {
-        "schema_version": _SCHEMA_VERSION,
-        "version": __version__,
-        "analyzed_at": datetime.now(timezone.utc).isoformat(),
-        "source": source,
-    }
 
 
 def _cache_file(source: str, duration: float | None) -> str | None:
     key = _cache_key(source, duration)
-    path = _result_cache.get(key)
+    with _cache_lock:
+        path = _result_cache.get(key)
+        if path:
+            _result_cache.move_to_end(key)
     return path if path and os.path.exists(path) else None
 
 
 def _transfer_functions_from_dicts(track_dicts: list[dict]) -> list[dict]:
-    """Compute transfer functions from serialized track dicts."""
+    """Compute transfer functions from serialized track dicts.
+
+    When sample rates differ between tracks, clip the reference frequency
+    grid to the common Nyquist band so we never extrapolate above the other
+    track's highest bin.
+    """
     if len(track_dicts) < 2:
         return []
     ref = track_dicts[0]
     ref_freqs = np.array(ref["spectrum"]["freqs"])
     ref_psd = np.array(ref["spectrum"]["psd_db"])
+    ref_sr = ref.get("sample_rate")
+    # Empty / malformed spectra would raise IndexError on ref_freqs[-1].  Skip
+    # transfer-function computation so the compare view still renders tracks.
+    if ref_freqs.size == 0:
+        return []
     tfs = []
     for other in track_dicts[1:]:
         o_freqs = np.array(other["spectrum"]["freqs"])
         o_psd = np.array(other["spectrum"]["psd_db"])
-        if len(o_freqs) == len(ref_freqs):
-            delta = o_psd - ref_psd
+        o_sr = other.get("sample_rate")
+        if o_freqs.size == 0:
+            continue
+        nyquist = min(float(ref_freqs[-1]), float(o_freqs[-1]))
+        grid_mask = ref_freqs <= nyquist
+        grid = ref_freqs[grid_mask]
+        ref_psd_clipped = ref_psd[grid_mask]
+        if len(o_freqs) == len(grid) and np.array_equal(o_freqs, grid):
+            delta = o_psd[:len(grid)] - ref_psd_clipped
         else:
-            delta = np.interp(ref_freqs, o_freqs, o_psd) - ref_psd
-        tfs.append({
+            delta = np.interp(grid, o_freqs, o_psd) - ref_psd_clipped
+        tf = {
             "label": f"{other['label']} \u2212 {ref['label']}",
-            "freqs": ref_freqs.tolist(),
+            "freqs": grid.tolist(),
             "delta_db": np.round(delta, 2).tolist(),
-        })
+        }
+        if ref_sr is None or o_sr is None:
+            tf["warning"] = "sample_rate unknown; frequency comparison may be approximate"
+        elif ref_sr != o_sr:
+            tf["warning"] = (
+                f"sample rate mismatch ({ref_sr} vs {o_sr}); "
+                f"clipped to {nyquist:.0f} Hz"
+            )
+        tfs.append(tf)
     return tfs
 
 
@@ -138,11 +245,30 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
 
     _MAX_BODY = 10 * 1024 * 1024  # 10 MB
     _MAX_IMAGE_BODY = 50 * 1024 * 1024  # 50 MB (base64 PNG can be large)
+    _MAX_LOAD_BYTES = 10 * 1024 * 1024  # 10 MB cap for /load JSON files
+    _ALLOWED_HOSTS = ("127.0.0.1", "localhost")
+
+    def _check_host(self) -> bool:
+        """Reject requests whose Host header is not a loopback literal.
+
+        Defends against DNS rebinding: a malicious page could ask the browser
+        to resolve an attacker-controlled name to 127.0.0.1 and talk to this
+        server. Rejecting non-loopback Host literals blocks that.
+        """
+        host = self.headers.get("Host", "")
+        host_name = host.split(":", 1)[0] if host else ""
+        if host_name not in self._ALLOWED_HOSTS:
+            self.send_error(403, "Forbidden: invalid Host")
+            return False
+        return True
 
     def _read_json_body(self, max_size: int | None = None) -> dict | None:
         """Read and parse JSON body. Returns None on parse failure."""
         limit = max_size or self._MAX_BODY
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            return None
         if length <= 0:
             return {}
         if length > limit:
@@ -159,7 +285,15 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return None
         return result if isinstance(result, str) else result[0]
 
+    def do_GET(self):
+        if not self._check_host():
+            return
+        super().do_GET()
+
     def do_POST(self):
+        if not self._check_host():
+            return
+        _STREAM_ENDPOINTS = ("/analyze", "/compare")
         handlers = {
             "/analyze": self._handle_analyze,
             "/compare": self._handle_compare,
@@ -170,10 +304,20 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             "/upload": self._handle_upload,
         }
         handler = handlers.get(self.path)
-        if handler:
+        if not handler:
+            self.send_error(404)
+            return
+        if self.path in _STREAM_ENDPOINTS:
             handler()
         else:
-            self.send_error(404)
+            try:
+                handler()
+            except Exception:
+                traceback.print_exc()
+                try:
+                    self._json_error(500, "Internal server error")
+                except Exception:
+                    pass
 
     def _parse_duration(self, body: dict) -> float | None | str:
         """Parse and validate duration from request body.
@@ -183,17 +327,30 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         duration = body.get("duration")
         if duration is None:
             return None
+        # Reject bool explicitly: Python's `bool ⊂ int`, so float(True) == 1.0
+        # would silently accept {"duration": true} from the JSON body.
+        if isinstance(duration, bool):
+            return "'duration' must be a number, not bool"
         try:
             duration = float(duration)
+            if not math.isfinite(duration):
+                return "'duration' must be a finite number"
             if duration <= 0:
                 return "'duration' must be a positive number"
+            if duration < 0.01:
+                return "'duration' must be >= 0.01 minutes"
             return duration
         except (ValueError, TypeError):
             return "'duration' must be a number"
 
     def _start_ndjson(self):
+        # Stream NDJSON progress + final result.
+        # No Content-Length / Transfer-Encoding: chunked, so require close
+        # to make message framing unambiguous.
+        self.close_connection = True
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Connection", "close")
         self.end_headers()
 
     def _run_ndjson(self, fn, *args):
@@ -208,11 +365,41 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 self._send_event("error", error=str(e))
             except _ClientDisconnected:
                 return
+        except subprocess.CalledProcessError as e:
+            # Do not leak full ffmpeg/ffprobe stderr (may contain local paths,
+            # codec internals, or long stack traces).  Keep only the last 200
+            # bytes for diagnostics.
+            stderr_tail = ""
+            if e.stderr:
+                tail = e.stderr[-200:]
+                if isinstance(tail, bytes):
+                    tail = tail.decode("utf-8", errors="replace")
+                stderr_tail = tail.strip()
+            msg = "ffmpeg failed during PCM extraction"
+            if stderr_tail:
+                msg = f"{msg}: {stderr_tail}"
+            try:
+                self._send_event("error", error=msg)
+            except _ClientDisconnected:
+                return
         except Exception as e:
             try:
                 self._send_event("error", error=f"Analysis failed: {e}")
             except _ClientDisconnected:
                 return
+
+    @staticmethod
+    def _reject_bad_scheme(source: str) -> str | None:
+        """Return error message if source looks URL-like but not http/https.
+
+        Bare filesystem paths are allowed through (resolved as local files).
+        This blocks file://, javascript:, ftp://, etc. before the NDJSON
+        stream starts.
+        """
+        if "://" in source or source.startswith("javascript:"):
+            if not source.startswith(("http://", "https://")):
+                return "'url' must use http or https scheme"
+        return None
 
     def _handle_analyze(self):
         body = self._read_json_body()
@@ -223,6 +410,19 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
 
         if not source or not isinstance(source, str):
             self._json_error(400, "Missing or invalid 'url' field")
+            return
+
+        # Strip whitespace-only payloads which resolve_source would otherwise
+        # hand off to yt-dlp / the filesystem, producing a confusing error
+        # mid-stream instead of a clean 400.
+        source = source.strip()
+        if not source:
+            self._json_error(400, "Missing or invalid 'url' field")
+            return
+
+        bad = self._reject_bad_scheme(source)
+        if bad:
+            self._json_error(400, bad)
             return
 
         duration = self._parse_duration(body)
@@ -246,6 +446,16 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         if len(sources) > 6:
             self._json_error(400, "Maximum 6 tracks for comparison")
             return
+
+        if not all(isinstance(s, str) and s.strip() for s in sources):
+            self._json_error(400, "All sources must be non-empty strings")
+            return
+
+        for s in sources:
+            bad = self._reject_bad_scheme(s)
+            if bad:
+                self._json_error(400, bad)
+                return
 
         duration = self._parse_duration(body)
         if isinstance(duration, str):
@@ -359,7 +569,10 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, "Invalid JSON body")
             return
         data = body.get("data")
-        filename = body.get("filename", "spectrum_result.json")
+        # Sanitize the suggested filename before showing the native dialog so
+        # crafted labels (path separators, control chars) cannot preseed a
+        # save path outside the user's chosen directory.
+        filename = sanitize_filename(body.get("filename", "spectrum_result.json"))
         source = body.get("source")
         duration = body.get("duration")
 
@@ -367,14 +580,15 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, "Missing 'data' field")
             return
 
-        try:
-            result = _window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                save_filename=filename,
-                file_types=("JSON Files (*.json)",),
-            )
-        except Exception:
-            result = None
+        with _dialog_lock:
+            try:
+                result = _window.create_file_dialog(
+                    webview.SAVE_DIALOG,
+                    save_filename=filename,
+                    file_types=("JSON Files (*.json)",),
+                )
+            except Exception:
+                result = None
 
         save_path = self._dialog_path(result)
         if not save_path:
@@ -387,7 +601,8 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 shutil.copy2(cache_file, save_path)
             else:
                 Path(save_path).write_text(
-                    json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+                    json.dumps(data, indent=2, ensure_ascii=False, allow_nan=False),
+                    encoding="utf-8",
                 )
         except OSError as e:
             self._json_error(500, f"Failed to write file: {e}")
@@ -400,20 +615,21 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, "Invalid JSON body")
             return
         data_url = body.get("dataUrl", "")
-        filename = body.get("filename", "spectrum_result.png")
+        filename = sanitize_filename(body.get("filename", "spectrum_result.png"))
 
         if not data_url or not data_url.startswith("data:image/png;base64,"):
             self._json_error(400, "Missing or invalid 'dataUrl' field")
             return
 
-        try:
-            result = _window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                save_filename=filename,
-                file_types=("PNG Images (*.png)",),
-            )
-        except Exception:
-            result = None
+        with _dialog_lock:
+            try:
+                result = _window.create_file_dialog(
+                    webview.SAVE_DIALOG,
+                    save_filename=filename,
+                    file_types=("PNG Images (*.png)",),
+                )
+            except Exception:
+                result = None
 
         save_path = self._dialog_path(result)
         if not save_path:
@@ -428,14 +644,15 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         self._json_response(200, {"saved": True, "path": save_path})
 
     def _handle_load(self):
-        try:
-            result = _window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                file_types=("JSON Files (*.json)",),
-                allow_multiple=True,
-            )
-        except Exception:
-            result = None
+        with _dialog_lock:
+            try:
+                result = _window.create_file_dialog(
+                    webview.OPEN_DIALOG,
+                    file_types=("JSON Files (*.json)",),
+                    allow_multiple=True,
+                )
+            except Exception:
+                result = None
 
         if not result:
             self._json_response(200, {"loaded": False})
@@ -444,6 +661,22 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         file_paths = result if isinstance(result, (list, tuple)) else [result]
         items = []
         for fp in file_paths:
+            if not Path(fp).is_file():
+                self._json_error(400, f"Not a file: {Path(fp).name}")
+                return
+            # Reject oversize JSON upfront rather than OOM on read_text.
+            try:
+                size = os.path.getsize(fp)
+            except OSError as e:
+                self._json_error(400, f"Failed to read file: {e}")
+                return
+            if size > self._MAX_LOAD_BYTES:
+                self._json_error(
+                    400,
+                    f"JSON file exceeds {self._MAX_LOAD_BYTES // (1024 * 1024)} MB: "
+                    f"{Path(fp).name}",
+                )
+                return
             try:
                 text = Path(fp).read_text(encoding="utf-8")
                 data = json.loads(text)
@@ -463,10 +696,21 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         if len(items) == 1:
             data = items[0]
             resp = {"loaded": True, "type": "single", "data": data}
-            # Schema version check for single file load
-            schema_ver = data.get("meta", {}).get("schema_version", 0)
+            # Schema version check for single file load.  Treat meta as an
+            # empty dict when missing or explicitly null so chained .get()
+            # calls never raise AttributeError on old / hand-edited JSON.
+            meta = data.get("meta")
+            if not isinstance(meta, dict):
+                meta = {}
+            schema_ver = meta.get("schema_version", 0)
+            # Defend against malformed JSON: coerce non-int values to 0 so the
+            # '<' comparison below cannot raise TypeError (str vs int).
+            if not isinstance(schema_ver, int) or isinstance(schema_ver, bool):
+                schema_ver = 0
             if schema_ver < _SCHEMA_VERSION:
-                source = data.get("meta", {}).get("source", "")
+                source = meta.get("source", "")
+                if not isinstance(source, str):
+                    source = ""
                 source_available = False
                 if source:
                     if is_url(source):
@@ -486,24 +730,41 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def _cache_loaded(data: dict):
-        """Cache loaded JSON data for reuse."""
-        if "spectrum" in data:
-            src = data.get("meta", {}).get("source")
-            if src:
-                _cache_put(src, None, data)
+        """Cache loaded JSON data for reuse within the current session only.
+
+        External JSON is kept in the in-memory LRU map so the UI can restore
+        it, but is NOT written to _cache_dir — we do not want to persist
+        user-supplied payloads (which may be large or out-of-spec) across
+        app restarts or pollute disk as the user browses files.
+        """
+        if "spectrum" not in data:
+            return
+        meta = data.get("meta")
+        if not isinstance(meta, dict):
+            return
+        src = meta.get("source")
+        if not isinstance(src, str) or not src:
+            return
+        key = _cache_key(src, None)
+        with _cache_lock:
+            _loaded_cache_data[key] = data
+            _loaded_cache_data.move_to_end(key)
+            while len(_loaded_cache_data) > _CACHE_MAX_ENTRIES:
+                _loaded_cache_data.popitem(last=False)
 
     _AUDIO_TYPES = (
         "Audio/Video Files (*.wav;*.mp3;*.m4a;*.flac;*.ogg;*.opus;*.wma;*.aac;*.aiff;*.aif;*.webm;*.mkv;*.mp4)",
     )
 
     def _handle_browse(self):
-        try:
-            result = _window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                file_types=self._AUDIO_TYPES,
-            )
-        except Exception:
-            result = None
+        with _dialog_lock:
+            try:
+                result = _window.create_file_dialog(
+                    webview.OPEN_DIALOG,
+                    file_types=self._AUDIO_TYPES,
+                )
+            except Exception:
+                result = None
 
         file_path = self._dialog_path(result)
         if not file_path:
@@ -518,7 +779,11 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
     }
 
     def _handle_upload(self):
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            self._json_error(400, "Invalid Content-Length")
+            return
         if length <= 0:
             self._json_error(400, "Empty file")
             return
@@ -529,7 +794,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         from urllib.parse import unquote
         raw_name = unquote(self.headers.get("X-Filename", "dropped_file"))
         name = sanitize_filename(raw_name)
-        _, ext = os.path.splitext(raw_name)
+        _, ext = os.path.splitext(name)
         ext = ext.lower()
         if ext not in self._ALLOWED_EXTENSIONS:
             self._json_error(400, f"Unsupported file type: {ext or '(none)'}")
@@ -538,18 +803,36 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             name = name + ext
 
         dest = os.path.join(_upload_dir, name)
-        if os.path.exists(dest):
-            base_name, base_ext = os.path.splitext(name)
-            dest = os.path.join(_upload_dir, f"{base_name}_{int(time.time())}{base_ext}")
+        if os.path.commonpath([_upload_dir, os.path.abspath(dest)]) != _upload_dir:
+            self._json_error(400, "Invalid filename")
+            return
+        try:
+            if os.path.exists(dest):
+                base_name, base_ext = os.path.splitext(name)
+                n = 1
+                while True:
+                    dest = os.path.join(_upload_dir, f"{base_name}_{n}{base_ext}")
+                    if not os.path.exists(dest):
+                        break
+                    n += 1
 
-        remaining = length
-        with open(dest, "wb") as f:
-            while remaining > 0:
-                chunk = self.rfile.read(min(remaining, 65536))
-                if not chunk:
-                    break
-                f.write(chunk)
-                remaining -= len(chunk)
+            remaining = length
+            with open(dest, "wb") as f:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(remaining, 65536))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    remaining -= len(chunk)
+        except (OSError, ValueError):
+            # crafted X-Filename (null byte, path traversal, permission, etc.)
+            try:
+                if os.path.exists(dest):
+                    os.unlink(dest)
+            except OSError:
+                pass
+            self._json_error(400, "Invalid filename")
+            return
 
         if remaining > 0:
             try:
@@ -562,16 +845,30 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         self._json_response(200, {"uploaded": True, "path": dest})
 
     def _json_response(self, status, obj):
+        # Previously, a NaN/Inf hidden inside externally-loaded JSON would
+        # raise ValueError here and drop the TCP connection mid-response,
+        # which WebKit surfaces as a terse "Load failed" with no diagnostics.
+        # Sanitize on retry instead so the client always sees a proper JSON
+        # body and the traceback is preserved in stderr for debugging.
+        try:
+            body = json.dumps(obj, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        except (ValueError, TypeError):
+            traceback.print_exc()
+            body = json.dumps(
+                _json_safe(obj), ensure_ascii=False, allow_nan=False
+            ).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+        self.wfile.write(body)
 
     def _json_error(self, status, message):
         self._json_response(status, {"error": message})
 
     def _send_event(self, event_type, **kwargs):
-        line = json.dumps({"type": event_type, **kwargs}, ensure_ascii=False)
+        line = json.dumps({"type": event_type, **kwargs},
+                          ensure_ascii=False, allow_nan=False)
         try:
             self.wfile.write((line + "\n").encode("utf-8"))
             self.wfile.flush()
@@ -592,7 +889,8 @@ def _read_theme_from_leveldb(storage_key: str, ls_dir: Path) -> str | None:
     Returns 'light' / 'dark' / None.  Tolerates corrupted log files.
     """
     try:
-        for ldb in sorted(ls_dir.glob("*.log"), reverse=True):
+        candidates = list(ls_dir.glob("*.log")) + list(ls_dir.glob("*.ldb"))
+        for ldb in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
             raw = ldb.read_bytes()
             idx = raw.find(storage_key.encode())
             if idx == -1:
@@ -648,7 +946,7 @@ def main():
         bin_dir = str(Path(sys._MEIPASS) / "bin")
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
 
-    server = HTTPServer(("127.0.0.1", 0), AnalyzeHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), AnalyzeHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
