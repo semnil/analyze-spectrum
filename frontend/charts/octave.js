@@ -107,11 +107,6 @@ function renderOctave(canvas, tracks) {
   ctx.fillText("Energy (dB)", 0, 0);
   ctx.restore();
 
-  // Title
-  ctx.font = "bold 13px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("1/3 Octave Band Analysis (25 Hz - 10 kHz)", w / 2, 20);
-
   // Legend (if multi-track)
   if (nTracks > 1) {
     ctx.font = "10px sans-serif";

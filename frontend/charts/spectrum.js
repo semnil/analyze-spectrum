@@ -59,7 +59,6 @@ function renderSpectrum(container, tracks) {
   var opts = {
     width: container.clientWidth,
     height: 380,
-    title: "Power Spectral Density (Welch)",
     scales: {
       x: {
         time: false,

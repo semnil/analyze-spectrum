@@ -6,14 +6,21 @@ let isBusy = false;
 let activeAbort = null;
 let lastSource = null;
 let lastDuration = null;
+// Sources reflected by the currently rendered lastData (single = [src],
+// compare = [...track sources]).  Compared against compareSources to detect
+// when track edits or loads make the visible chart inconsistent.
+let _displayedSources = [];
 
+// Color-blind friendly hues (blue / orange / purple / cyan) first so the
+// first four tracks remain distinguishable for deuteranopia / protanopia
+// viewers; red / green come last.
 const TRACK_COLORS = [
-  "#1976D2", "#D32F2F", "#388E3C", "#F57C00", "#7B1FA2", "#00838F"
+  "#1976D2", "#F57C00", "#7B1FA2", "#00838F", "#D32F2F", "#388E3C"
 ];
 
-// Dark mode colors (brighter for dark backgrounds)
+// Dark mode colors (brighter for dark backgrounds), same ordering rationale.
 const TRACK_COLORS_DARK = [
-  "#64b5f6", "#ef5350", "#66bb6a", "#ffa726", "#ce93d8", "#4dd0e1"
+  "#64b5f6", "#ffa726", "#ce93d8", "#4dd0e1", "#ef5350", "#66bb6a"
 ];
 
 // Theme management: "light" | "dark" | "auto" (follows system)
@@ -33,7 +40,7 @@ function getThemeColors() {
   return {
     text: dark ? "#e0e0e0" : "#333",
     textSecondary: dark ? "#aaa" : "#666",
-    textMuted: dark ? "#777" : "#999",
+    textMuted: dark ? "#a0a0b0" : "#666",
     grid: dark ? "#2a2a4a" : "#eee",
     gridStrong: dark ? "#333355" : "#ddd",
     zero: dark ? "#666" : "#999",
@@ -43,14 +50,19 @@ function getThemeColors() {
 }
 
 var _THEME_ICONS = { light: "\u2600", dark: "\u263E", auto: "\u25D0" };
-var _THEME_TITLES = { light: "Light (click: Dark)", dark: "Dark (click: Auto)", auto: "Auto (click: Light)" };
 
 function _applyTheme() {
   var resolved = _themeMode === "auto" ? (_systemDark() ? "dark" : "light") : _themeMode;
   document.documentElement.setAttribute("data-theme", resolved);
   var btn = document.getElementById("theme-toggle");
-  btn.textContent = _THEME_ICONS[_themeMode];
-  btn.title = _THEME_TITLES[_themeMode];
+  if (!btn) return;
+  btn.textContent = "";
+  var icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = _THEME_ICONS[_themeMode];
+  btn.appendChild(icon);
+  btn.title = window.i18n.t("theme.title." + _themeMode);
+  btn.setAttribute("aria-label", window.i18n.t("theme.aria_state." + _themeMode));
 }
 
 function setThemeMode(mode) {
@@ -73,6 +85,21 @@ function _reRenderCharts() {
   }
 }
 
+// Resize uPlot + Canvas charts on window resize.  uPlot needs an explicit
+// setSize; Canvas charts (octave / lowend / midhigh / transfer) render once
+// at a fixed width so we re-run the full renderer against lastData.
+let _resizeTimer = null;
+window.addEventListener("resize", function() {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(function() {
+    activeUPlots.forEach(function(u) {
+      var wrap = u.root.parentElement;
+      if (wrap) u.setSize({width: wrap.clientWidth, height: u.height});
+    });
+    if (lastData) _reRenderCharts();
+  }, 200);
+});
+
 // Init theme
 (function() {
   var saved = localStorage.getItem("spectrum-theme");
@@ -81,9 +108,57 @@ function _reRenderCharts() {
 })();
 
 // Cycle: light -> dark -> auto -> light
-document.getElementById("theme-toggle").addEventListener("click", function() {
-  var next = { light: "dark", dark: "auto", auto: "light" };
-  setThemeMode(next[_themeMode]);
+function _attachThemeToggle() {
+  var btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+  btn.addEventListener("click", function() {
+    var next = { light: "dark", dark: "auto", auto: "light" };
+    setThemeMode(next[_themeMode]);
+  });
+  _applyTheme();
+}
+if (document.getElementById("theme-toggle")) {
+  _attachThemeToggle();
+} else {
+  document.addEventListener("DOMContentLoaded", _attachThemeToggle);
+}
+
+// Language toggle (EN <-> JA)
+function _applyLangButton() {
+  var btn = document.getElementById("lang-toggle");
+  if (!btn) return;
+  var cur = window.i18n.lang();
+  btn.textContent = window.i18n.t("lang.label." + cur);
+  btn.title = window.i18n.t("lang.title." + cur);
+}
+function _attachLangToggle() {
+  var btn = document.getElementById("lang-toggle");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    var next = window.i18n.lang() === "ja" ? "en" : "ja";
+    window.i18n.setLang(next);
+  });
+  _applyLangButton();
+}
+if (document.getElementById("lang-toggle")) {
+  _attachLangToggle();
+} else {
+  document.addEventListener("DOMContentLoaded", _attachLangToggle);
+}
+function _applyDropText() {
+  document.body.setAttribute("data-drop-text", window.i18n.t("drop.overlay"));
+}
+_applyDropText();
+
+window.i18n.onChange(function () {
+  _applyLangButton();
+  _applyTheme();
+  _applyDropText();
+  if (!isBusy && submitBtn) submitBtn.textContent = _submitLabel();
+  // Re-emit the active error so "Error: " prefix and Copy button follow
+  // the new language without waiting for the next failure.
+  if (_lastErrorMessage != null) showError(_lastErrorMessage);
+  _reRenderCharts();
 });
 
 // Follow system changes when in auto mode
@@ -121,18 +196,44 @@ const resultsEl = document.getElementById("results");
     e.preventDefault();
     menu = document.createElement("div");
     menu.className = "ctx-menu";
+    menu.setAttribute("role", "menu");
+    var start = el.selectionStart;
+    var end = el.selectionEnd;
+    var hasSelection = start !== end;
+    var hasClipboard = !!navigator.clipboard;
     var items = [
-      { label: "Cut", fn: () => { document.execCommand("cut"); } },
-      { label: "Copy", fn: () => { document.execCommand("copy"); }, disabled: el.selectionStart === el.selectionEnd },
-      { label: "Paste", fn: () => { navigator.clipboard.readText().then((t) => { document.execCommand("insertText", false, t); }).catch(() => {}); } },
-      { label: "Select All", fn: () => { el.select(); } },
+      { label: window.i18n.t("ctx.cut"), fn: () => {
+          if (start === end) return;
+          var sel = el.value.slice(start, end);
+          navigator.clipboard.writeText(sel);
+          el.setRangeText("", start, end, "end");
+        }, disabled: !hasSelection || !hasClipboard },
+      { label: window.i18n.t("ctx.copy"), fn: () => {
+          navigator.clipboard.writeText(el.value.slice(start, end));
+        }, disabled: !hasSelection || !hasClipboard },
+      { label: window.i18n.t("ctx.paste"), fn: () => {
+          navigator.clipboard.readText().then((t) => {
+            el.setRangeText(t, start, end, "end");
+          }).catch(() => {});
+        }, disabled: !hasClipboard },
+      { label: window.i18n.t("ctx.select_all"), fn: () => { el.select(); } },
     ];
-    items.forEach((it) => {
+    items.forEach((it, i) => {
       var btn = document.createElement("button");
       btn.textContent = it.label;
+      btn.setAttribute("role", "menuitem");
+      btn.dataset.idx = String(i);
       if (it.disabled) btn.disabled = true;
       btn.addEventListener("mousedown", (ev) => { ev.preventDefault(); el.focus(); it.fn(); closeMenu(); });
       menu.appendChild(btn);
+    });
+    menu.addEventListener("keydown", (ev) => {
+      var btns = Array.from(menu.querySelectorAll("button:not(:disabled)"));
+      var idx = btns.indexOf(document.activeElement);
+      if (ev.key === "ArrowDown") { ev.preventDefault(); btns[(idx + 1) % btns.length].focus(); }
+      else if (ev.key === "ArrowUp") { ev.preventDefault(); btns[(idx - 1 + btns.length) % btns.length].focus(); }
+      else if (ev.key === "Escape") { closeMenu(); el.focus(); }
+      else if (ev.key === "Enter") { ev.preventDefault(); if (idx >= 0) { el.focus(); items[parseInt(btns[idx].dataset.idx)].fn(); closeMenu(); } }
     });
     menu.style.left = e.clientX + "px";
     menu.style.top = e.clientY + "px";
@@ -140,8 +241,74 @@ const resultsEl = document.getElementById("results");
     var rect = menu.getBoundingClientRect();
     if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 4) + "px";
     if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 4) + "px";
+    var firstEnabled = menu.querySelector("button:not(:disabled)");
+    if (firstEnabled) firstEnabled.focus();
   });
 })();
+
+// Custom confirm modal — replaces window.confirm so we can show richer content.
+// Falls back to window.confirm when tests stub it (detected via string contains).
+function _confirmModal(message, detail) {
+  // Test shim: when tests override window.confirm, reuse it for determinism.
+  if (window.confirm !== _origConfirm) {
+    return Promise.resolve(window.confirm(message + (detail ? "\n\n" + window.i18n.t("modal.source_label") + detail : "")));
+  }
+  return new Promise((resolve) => {
+    var backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    var box = document.createElement("div");
+    box.className = "modal-box";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    var msg = document.createElement("p");
+    msg.className = "modal-message";
+    msg.textContent = message;
+    box.appendChild(msg);
+    if (detail) {
+      var d = document.createElement("p");
+      d.className = "modal-detail";
+      d.textContent = window.i18n.t("modal.source_label") + detail;
+      box.appendChild(d);
+    }
+    var btns = document.createElement("div");
+    btns.className = "modal-buttons";
+    var cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = window.i18n.t("modal.cancel");
+    cancel.className = "modal-cancel";
+    var ok = document.createElement("button");
+    ok.type = "button";
+    ok.textContent = window.i18n.t("modal.ok");
+    ok.className = "modal-ok";
+    btns.appendChild(cancel);
+    btns.appendChild(ok);
+    box.appendChild(btns);
+    backdrop.appendChild(box);
+    document.body.appendChild(backdrop);
+    function close(v) { document.removeEventListener("keydown", trap); backdrop.remove(); resolve(v); }
+    cancel.addEventListener("click", () => close(false));
+    ok.addEventListener("click", () => close(true));
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) close(false);
+    });
+    var focusable = [cancel, ok];
+    document.addEventListener("keydown", function trap(e) {
+      if (e.key === "Escape") {
+        close(false);
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        var idx = focusable.indexOf(document.activeElement);
+        if (e.shiftKey) idx = (idx <= 0) ? focusable.length - 1 : idx - 1;
+        else idx = (idx + 1) % focusable.length;
+        focusable[idx].focus();
+      }
+    });
+    ok.focus();
+  });
+}
+var _origConfirm = window.confirm;
 
 function clearResults() {
   activeUPlots.forEach(u => u.destroy());
@@ -150,10 +317,37 @@ function clearResults() {
   resultsEl.className = "";
   resultsEl.innerHTML = "";
   lastData = null;
+  _displayedSources = [];
+}
+
+function _setDisplayedSources(arr) {
+  _displayedSources = (arr || []).filter(function(s) { return !!s; });
+}
+
+// If the rendered chart no longer reflects compareSources, drop it so the
+// user is not misled by a stale chart attached to an edited track list.
+function _maybeInvalidateResults() {
+  if (!lastData) return;
+  if (lastData.tracks) {
+    if (_displayedSources.length !== compareSources.length) {
+      clearResults();
+      return;
+    }
+    for (var i = 0; i < compareSources.length; i++) {
+      if (_displayedSources[i] !== compareSources[i]) {
+        clearResults();
+        return;
+      }
+    }
+  } else {
+    // single render: any track edits move the user toward compare prep,
+    // making the single chart no longer the relevant view.
+    if (compareSources.length > 0) clearResults();
+  }
 }
 
 function safeName(label) {
-  return (label || "untitled").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+  return (label || "untitled").replace(/[\x00-\x1f\\/:*?"<>|]/g, "_").slice(0, 80);
 }
 
 function _tryAddTrack(src) {
@@ -172,7 +366,7 @@ function _effectiveTrackCount() {
 }
 
 function _submitLabel() {
-  return _effectiveTrackCount() >= 2 ? "Compare" : "Analyze";
+  return _effectiveTrackCount() >= 2 ? window.i18n.t("btn.compare") : window.i18n.t("btn.analyze");
 }
 
 function setBusy(busy) {
@@ -182,26 +376,81 @@ function setBusy(busy) {
   addBtn.disabled = busy;
   clearBtn.disabled = busy;
   if (busy) {
-    submitBtn.textContent = "Cancel";
+    submitBtn.textContent = window.i18n.t("btn.cancel");
     submitBtn.classList.add("cancelling");
+    submitBtn.setAttribute("aria-label", window.i18n.t("btn.cancel.aria"));
+    statusEl.classList.add("loading");
+    statusEl.setAttribute("aria-busy", "true");
   } else {
     submitBtn.textContent = _submitLabel();
     submitBtn.classList.remove("cancelling");
+    submitBtn.removeAttribute("aria-label");
+    statusEl.classList.remove("loading");
+    statusEl.removeAttribute("aria-busy");
     activeAbort = null;
   }
   submitBtn.disabled = false;
-  // Update track remove buttons (disabled during processing)
+  // Update track remove / reorder buttons (disabled during processing)
   document.querySelectorAll(".remove-track").forEach((btn) => {
+    btn.disabled = busy;
+  });
+  document.querySelectorAll(".reorder-track").forEach((btn) => {
+    if (btn.classList.contains("reorder-placeholder")) return;
     btn.disabled = busy;
   });
 }
 
+
+function _swapTracks(i, j) {
+  if (j < 0 || j >= compareSources.length) return;
+
+  // FLIP animation: record initial positions before DOM update
+  var prevItems = trackList.querySelectorAll(".track-item");
+  var prevRectI = prevItems[i] ? prevItems[i].getBoundingClientRect() : null;
+  var prevRectJ = prevItems[j] ? prevItems[j].getBoundingClientRect() : null;
+
+  var tmp = compareSources[i];
+  compareSources[i] = compareSources[j];
+  compareSources[j] = tmp;
+  if (lastData && lastData.tracks && i < lastData.tracks.length && j < lastData.tracks.length) {
+    var tt = lastData.tracks[i];
+    lastData.tracks[i] = lastData.tracks[j];
+    lastData.tracks[j] = tt;
+    updateCompareUI();
+    _reRenderCharts();
+  } else {
+    updateCompareUI();
+  }
+
+  var nextItems = trackList.querySelectorAll(".track-item");
+  _flipTrackRow(nextItems[j], prevRectI);
+  _flipTrackRow(nextItems[i], prevRectJ);
+}
+
+function _flipTrackRow(el, prevRect) {
+  if (!el || !prevRect) return;
+  var nextRect = el.getBoundingClientRect();
+  var dy = prevRect.top - nextRect.top;
+  if (!dy) return;
+  el.style.transition = "none";
+  el.style.transform = "translateY(" + dy + "px)";
+  el.getBoundingClientRect();
+  el.style.transition = "transform 220ms ease";
+  el.style.transform = "";
+  el.addEventListener("transitionend", function cleanup(ev) {
+    if (ev.propertyName !== "transform") return;
+    el.style.transition = "";
+    el.style.transform = "";
+    el.removeEventListener("transitionend", cleanup);
+  });
+}
 
 function updateCompareUI() {
   trackList.innerHTML = "";
   for (let i = 0; i < compareSources.length; i++) {
     const item = document.createElement("div");
     item.className = "track-item";
+    item.setAttribute("role", "listitem");
     const swatch = document.createElement("span");
     swatch.className = "legend-swatch";
     swatch.style.background = getThemeColors().trackColors[i % TRACK_COLORS.length];
@@ -213,17 +462,47 @@ function updateCompareUI() {
     label.className = "track-label";
     label.textContent = compareSources[i];
     item.appendChild(label);
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "reorder-track";
+    upBtn.textContent = "\u2191";
+    upBtn.setAttribute("aria-label", window.i18n.t("track.move_up_prefix") + compareSources[i] + window.i18n.t("track.move_up_suffix"));
+    if (i === 0) {
+      upBtn.classList.add("reorder-placeholder");
+      upBtn.disabled = true;
+      upBtn.setAttribute("aria-hidden", "true");
+      upBtn.tabIndex = -1;
+    } else {
+      upBtn.disabled = isBusy;
+    }
+    upBtn.addEventListener("click", () => _swapTracks(i, i - 1));
+    item.appendChild(upBtn);
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "reorder-track";
+    downBtn.textContent = "\u2193";
+    downBtn.setAttribute("aria-label", window.i18n.t("track.move_down_prefix") + compareSources[i] + window.i18n.t("track.move_down_suffix"));
+    if (i === compareSources.length - 1) {
+      downBtn.classList.add("reorder-placeholder");
+      downBtn.disabled = true;
+      downBtn.setAttribute("aria-hidden", "true");
+      downBtn.tabIndex = -1;
+    } else {
+      downBtn.disabled = isBusy;
+    }
+    downBtn.addEventListener("click", () => _swapTracks(i, i + 1));
+    item.appendChild(downBtn);
     const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
     removeBtn.className = "remove-track";
     removeBtn.textContent = "\u00d7";
+    removeBtn.tabIndex = 0;
+    removeBtn.setAttribute("aria-label", window.i18n.t("track.remove_prefix") + compareSources[i] + window.i18n.t("track.remove_suffix"));
     removeBtn.disabled = isBusy;
     removeBtn.addEventListener("click", () => {
       compareSources.splice(i, 1);
-      if (compareSources.length === 1 && !urlInput.value.trim()) {
-        urlInput.value = compareSources[0];
-        compareSources.length = 0;
-      }
       updateCompareUI();
+      _maybeInvalidateResults();
     });
     item.appendChild(removeBtn);
     trackList.appendChild(item);
@@ -245,6 +524,14 @@ function cancelActive() {
   }
 }
 
+function _setStatusNormal() {
+  // Keep the .loading modifier so the spinner persists across status updates.
+  statusEl.classList.remove("error");
+  statusEl.setAttribute("role", "status");
+  statusEl.setAttribute("aria-live", "polite");
+  _lastErrorMessage = null;
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (isBusy) { cancelActive(); return; }
@@ -255,7 +542,7 @@ form.addEventListener("submit", async (e) => {
     urlInput.value = "";
     updateCompareUI();
   } else if (pending && compareSources.length >= 6) {
-    showError("Maximum 6 tracks for comparison");
+    showError(window.i18n.t("err.max_tracks"));
     return;
   }
 
@@ -267,8 +554,8 @@ form.addEventListener("submit", async (e) => {
     if (!singleSource) return;
   }
 
-  statusEl.textContent = isCompare ? "Starting comparison..." : "Starting...";
-  statusEl.className = "";
+  statusEl.textContent = isCompare ? window.i18n.t("status.starting_comparison") : window.i18n.t("status.starting");
+  _setStatusNormal();
   setBusy(true);
   clearResults();
 
@@ -305,8 +592,8 @@ form.addEventListener("submit", async (e) => {
     }
   } catch (err) {
     if (err.name === "AbortError") {
-      statusEl.textContent = "Cancelled.";
-      statusEl.className = "";
+      statusEl.textContent = window.i18n.t("status.cancelled");
+      _setStatusNormal();
     } else {
       showError(err.message);
     }
@@ -324,6 +611,11 @@ browseBtn.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showError(err.error || `HTTP ${resp.status}`);
+      return;
+    }
     const result = await resp.json();
     if (result.selected) {
       urlInput.value = result.path;
@@ -338,17 +630,18 @@ addBtn.addEventListener("click", () => {
   const url = urlInput.value.trim();
   if (!url) return;
   if (compareSources.length >= 6) {
-    showError("Maximum 6 tracks for comparison");
+    showError(window.i18n.t("err.max_tracks"));
     return;
   }
   if (compareSources.indexOf(url) !== -1) {
-    showError("This track is already added");
+    showError(window.i18n.t("err.duplicate_track"));
     return;
   }
   compareSources.push(url);
   urlInput.value = "";
   urlInput.focus();
   updateCompareUI();
+  _maybeInvalidateResults();
 });
 
 // Clear all tracks
@@ -357,15 +650,15 @@ clearBtn.addEventListener("click", () => {
   updateCompareUI();
   clearResults();
   statusEl.textContent = "";
-  statusEl.className = "";
+  _setStatusNormal();
 });
 
 // Load JSON
 loadBtn.addEventListener("click", async () => {
   if (isBusy) return;
   setBusy(true);
-  statusEl.textContent = "Opening file...";
-  statusEl.className = "";
+  statusEl.textContent = window.i18n.t("status.opening_file");
+  _setStatusNormal();
 
   try {
     const resp = await fetch(window.location.origin + "/load", {
@@ -373,6 +666,11 @@ loadBtn.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showError(err.error || `HTTP ${resp.status}`);
+      return;
+    }
     const result = await resp.json();
 
     if (result.error) {
@@ -384,83 +682,68 @@ loadBtn.addEventListener("click", async () => {
       return;
     }
 
-    // Schema version check — offer re-analysis for outdated single files
+    // Loaded sources are routed through one of three paths so the resulting
+    // UI state is predictable regardless of pre-existing tracks:
+    //   1. solo render: only when the user starts from a clean slate
+    //      (no tracks, no pending input).  Renders the single chart and
+    //      mirrors the source into urlInput so a re-analyze is one click away.
+    //   2. queue add: every other case.  Pending input + each loaded source
+    //      are appended to compareSources; the chart area is left untouched
+    //      except via _maybeInvalidateResults when the visible chart no
+    //      longer matches the queue.
+    //   3. as-is render: outdated schema, declined re-analysis.  Best-effort
+    //      display of legacy data without touching compareSources / urlInput.
+
     if (result.schema_outdated) {
       var src = result.source || "";
       if (!result.source_available) {
-        showError("旧バージョンのデータです。元のファイルが見つからないため再解析できません: " + src);
+        showError(window.i18n.t("err.outdated_no_source") + src);
         return;
       }
-      if (!window.confirm(
-        "旧形式のデータです。最新形式で再解析しますか?\n\nSource: " + src
-      )) {
-        // User declined — display as-is (best effort), fall through
+      var accepted = await _confirmModal(
+        window.i18n.t("modal.outdated_prompt"),
+        src
+      );
+      if (accepted) {
+        // Outdated data is not cached server-side — queue the source so the
+        // user can re-analyze fresh via Analyze/Compare.
+        _loadAddToQueue([src]);
       } else {
-        // Add source as track — outdated data is not cached, so
-        // next Analyze/Compare will re-analyze fresh.
-        var pending = urlInput.value.trim();
-        if (pending) _tryAddTrack(pending);
-        var added = _tryAddTrack(src);
-        if (compareSources.length >= 2) {
-          urlInput.value = "";
-          updateCompareUI();
-          var msg = compareSources.length + " tracks ready for comparison";
-          if (!added && src) msg += " (max 6 tracks)";
-          statusEl.textContent = msg;
-          statusEl.className = "";
-        } else if (compareSources.length === 1) {
-          urlInput.value = compareSources.pop();
-          updateCompareUI();
-        }
-        return;
-      }
-    }
-
-    // Preserve any pending source in urlInput before Load overwrites it
-    var pending = urlInput.value.trim();
-    if (_tryAddTrack(pending)) {
-      urlInput.value = "";
-    }
-
-    if (result.type === "multi") {
-      var skipped = 0;
-      for (var i = 0; i < result.items.length; i++) {
-        var item = result.items[i];
-        var s = item.meta && item.meta.source;
-        if (s && !_tryAddTrack(s)) skipped++;
-      }
-      urlInput.value = "";
-      updateCompareUI();
-      var msg = `${compareSources.length} tracks ready for comparison`;
-      if (skipped > 0) msg += ` (${skipped} skipped: max 6 tracks)`;
-      statusEl.textContent = msg;
-      statusEl.className = "";
-    } else {
-      // Single file loaded: add its source to track list for comparison
-      var src = result.data.meta && result.data.meta.source;
-      var added = _tryAddTrack(src);
-      if (compareSources.length >= 2) {
-        urlInput.value = "";
-        updateCompareUI();
-        var msg = `${compareSources.length} tracks ready for comparison`;
-        if (!added && src) msg += " (max 6 tracks)";
-        statusEl.textContent = msg;
-        statusEl.className = "";
-      } else {
+        // Best-effort display of legacy fields. compareSources / urlInput
+        // are left intact; the user remains in whatever state they were in.
         clearResults();
-        if (src) {
-          urlInput.value = src;
-          lastSource = src;
-        }
-        // Restore pending to urlInput if it was the only track
-        if (compareSources.length === 1) {
-          urlInput.value = compareSources[0];
-          compareSources.length = 0;
-        }
         lastDuration = null;
         statusEl.textContent = "";
         renderSingle(result.data);
       }
+      return;
+    }
+
+    if (result.type === "multi") {
+      var loadedSources = [];
+      for (var i = 0; i < result.items.length; i++) {
+        var item = result.items[i];
+        var s = item.meta && item.meta.source;
+        if (s) loadedSources.push(s);
+      }
+      _loadAddToQueue(loadedSources);
+      return;
+    }
+
+    // single, latest schema
+    var src = result.data.meta && result.data.meta.source;
+    var initiallyEmpty = compareSources.length === 0 && !urlInput.value.trim();
+    if (initiallyEmpty) {
+      clearResults();
+      if (src) {
+        urlInput.value = src;
+        lastSource = src;
+      }
+      lastDuration = null;
+      statusEl.textContent = "";
+      renderSingle(result.data);
+    } else {
+      _loadAddToQueue(src ? [src] : []);
     }
   } catch (err) {
     showError(err.message);
@@ -468,6 +751,30 @@ loadBtn.addEventListener("click", async () => {
     setBusy(false);
   }
 });
+
+// Append loaded sources (plus any pending urlInput value) to compareSources.
+// Reports total queued and how many were skipped due to dup/cap.
+function _loadAddToQueue(loadedSources) {
+  var pending = urlInput.value.trim();
+  if (pending) _tryAddTrack(pending);
+  urlInput.value = "";
+  var skipped = 0;
+  for (var i = 0; i < loadedSources.length; i++) {
+    if (!_tryAddTrack(loadedSources[i])) skipped++;
+  }
+  updateCompareUI();
+  _maybeInvalidateResults();
+  if (compareSources.length >= 2) {
+    var msg = compareSources.length + window.i18n.t("status.tracks_ready");
+    if (skipped > 0) {
+      msg += " (" + skipped + window.i18n.t("status.skipped_max_suffix");
+    }
+    statusEl.textContent = msg;
+  } else {
+    statusEl.textContent = "";
+  }
+  _setStatusNormal();
+}
 
 async function readNdjsonStream(resp, resultType, signal) {
   resultType = resultType || "result";
@@ -510,7 +817,12 @@ async function readNdjsonStream(resp, resultType, signal) {
     throw err;
   }
 
-  if (!result) throw new Error("No result received from server");
+  // Stream closed cleanly but no result event was emitted — typically a
+  // TCP reset or the server dropped the connection before flushing the
+  // final line.  Surface this as "Connection interrupted" rather than the
+  // older generic "No result" message which misled users into thinking the
+  // analysis simply returned nothing.
+  if (!result) throw new Error(window.i18n.t("err.stream_interrupted"));
   return result;
 }
 
@@ -520,6 +832,8 @@ function _addCanvasChart(title, height, renderFn, renderArg) {
   _chartTitle(div, title);
   const canvas = document.createElement("canvas");
   canvas.style.height = height;
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute("aria-label", title);
   div.appendChild(canvas);
   resultsEl.appendChild(div);
   renderFn(canvas, renderArg);
@@ -533,7 +847,11 @@ function _addSpectrumChart(title, tracks) {
   resultsEl.appendChild(div);
   const uplot = renderSpectrum(div, tracks);
   activeUPlots.push(uplot);
-  if (uplot.ctx) chartCanvasRefs.push({canvas: uplot.ctx.canvas, title: title});
+  if (uplot.ctx) {
+    uplot.ctx.canvas.setAttribute("role", "img");
+    uplot.ctx.canvas.setAttribute("aria-label", title);
+    chartCanvasRefs.push({canvas: uplot.ctx.canvas, title: title});
+  }
 }
 
 function renderSingle(data) {
@@ -546,7 +864,7 @@ function renderSingle(data) {
 
   const titleEl = document.createElement("div");
   titleEl.className = "result-title";
-  titleEl.textContent = data.label || "Analysis Result";
+  titleEl.textContent = data.label || window.i18n.t("result.analysis");
   titleRow.appendChild(titleEl);
 
   appendSaveButtons(titleRow, data);
@@ -559,6 +877,9 @@ function renderSingle(data) {
   _addCanvasChart("1/3 Octave Band Analysis", "300px", renderOctave, [data]);
   _addCanvasChart("Low-End Detail", "280px", renderLowEnd, [data]);
   _addCanvasChart("Mid-High Detail", "280px", renderMidHigh, [data]);
+
+  _setDisplayedSources([data.meta && data.meta.source]);
+  resultsEl.focus({ preventScroll: true });
 }
 
 function renderCompare(data) {
@@ -571,13 +892,13 @@ function renderCompare(data) {
 
   const titleEl = document.createElement("div");
   titleEl.className = "result-title";
-  titleEl.textContent = "Comparison Result";
+  titleEl.textContent = window.i18n.t("result.comparison");
   titleRow.appendChild(titleEl);
 
   // Save Image only (no JSON save for compare mode)
   const saveImgBtn = document.createElement("button");
   saveImgBtn.className = "save-btn";
-  saveImgBtn.textContent = "Save Image";
+  saveImgBtn.textContent = window.i18n.t("btn.save_image");
   saveImgBtn.addEventListener("click", () => saveImage(data));
   titleRow.appendChild(saveImgBtn);
 
@@ -596,6 +917,11 @@ function renderCompare(data) {
 
   _addCanvasChart("Low-End Detail", "280px", renderLowEnd, data.tracks);
   _addCanvasChart("Mid-High Detail", "280px", renderMidHigh, data.tracks);
+
+  _setDisplayedSources(data.tracks.map(function(t) {
+    return t.meta && t.meta.source;
+  }));
+  resultsEl.focus({ preventScroll: true });
 }
 
 function renderMeta(meta) {
@@ -608,57 +934,66 @@ function renderMeta(meta) {
     parts.push(d.toLocaleString());
   }
   if (meta.source) parts.push(meta.source);
-  if (meta.sources) parts.push(meta.sources.length + " tracks");
+  if (meta.sources) parts.push(meta.sources.length + " " + window.i18n.t("meta.tracks"));
   el.textContent = parts.join(" | ");
   resultsEl.appendChild(el);
 }
 
-var METRIC_TIPS = {
-  "Duration": "分析対象音声の長さ (秒)。",
-  "RMS": "実効値 (Root Mean Square) を dBFS で表示。音声全体の平均的な音量レベル。0 dBFS がデジタルフルスケール。",
-  "True Peak": "ITU-R BS.1770 準拠の True Peak (dBTP)。4 倍オーバーサンプリングによりサンプル間ピークを検出する。0 dBTP を超えると DA 変換時にクリッピングが発生しうる。",
-  "Crest": "クレストファクター (True Peak \u2212 RMS)。ダイナミクスの指標。値が大きいほどダイナミックレンジが広い。コンプレッサーで潰されたソースは値が小さくなる。",
-  "Low/Intel Ratio": "低域 (20\u2013200Hz) と明瞭度帯域 (1\u20135kHz) のエネルギー比 (dB)。ANSI S3.5 に基づき、1\u20135kHz は音声明瞭度の約 72% を担う。0 dB 付近が理想。正の値は低域過多、負は低域不足を示す。",
-  "Low/Intel": "低域 (20\u2013200Hz) と明瞭度帯域 (1\u20135kHz) のエネルギー比 (dB)。ANSI S3.5 に基づき、1\u20135kHz は音声明瞭度の約 72% を担う。0 dB 付近が理想。正の値は低域過多、負は低域不足を示す。",
-  "Spectral Centroid": "スペクトル重心 (80\u20138000Hz)。エネルギーで重み付けした平均周波数。値が高いほど明るい音色、低いほど暗い・こもった音色を示す。",
-  "Centroid": "スペクトル重心 (80\u20138000Hz)。エネルギーで重み付けした平均周波数。値が高いほど明るい音色、低いほど暗い・こもった音色を示す。",
-  "HPF -3dB": "ハイパスフィルターの推定カットオフ周波数。300\u2013600Hz の平均レベルをパスバンド基準とし、そこから \u22123dB 下がる低域側の周波数を探索する。N/A は明確な HPF が検出されない場合。",
-  "Tilt": "スペクトル傾斜 (dB/oct)。80Hz\u201310kHz の PSD を log2 周波数で線形回帰した傾き。負の値は高域減衰を示す。プロのミックスは概ね \u22123\u301c\u22124 dB/oct。",
-  "Pres/Mid": "プレゼンス (2\u20135kHz) とミッド (500\u20132kHz) のエネルギー比 (dB)。正の値はボーカルや楽器が「前に出る」音像、負の値は引っ込んだ音像を示す。",
-  "Bright": "高域の相対的な輝き。エアー (5\u201310kHz) と中高域 (500\u20135kHz) のエネルギー比 (dB)。De-esser やリバーブの高域減衰の確認に有用。",
-  "HF Rolloff": "高域ロールオフ周波数。ミッド帯域 (500\u20132kHz) の平均レベルから \u221210dB 下がる高域側の周波数。LPF やコーデック (MP3/AAC) による高域カットの検出に使う。N/A は検出されない場合。",
-  "Sub (20-80)": "サブベース帯域のエネルギー (dB)。体感的な低音の圧力を担う帯域。過多だとこもり、不足だと薄い低音になる。",
-  "Low (80-200)": "ベース帯域のエネルギー (dB)。キックやベースの基音が集中する、楽曲の土台となる帯域。",
-  "Low-Mid (200-500)": "ローミッド帯域のエネルギー (dB)。ボーカルの胸声やギターのボディ感。過多になると音の「こもり」の原因になる。",
-  "Mid (500-2k)": "ミッド帯域のエネルギー (dB)。ボーカルの基本周波数や楽器の存在感を担う中核帯域。",
-  "Presence (2-5k)": "プレゼンス帯域のエネルギー (dB)。子音の明瞭度や楽器のアタック感。この帯域が音を「前に出す」役割を果たす。",
-  "Air (5-10k)": "エアー帯域のエネルギー (dB)。高域の空気感やシンバルの輝きを担う帯域。",
+var _TIP_KEYS = {
+  "Duration": "tip.duration",
+  "RMS": "tip.rms",
+  "True Peak": "tip.true_peak",
+  "Crest": "tip.crest",
+  "Low/Intel Ratio": "tip.low_intel",
+  "Low/Intel": "tip.low_intel",
+  "Spectral Centroid": "tip.centroid",
+  "Centroid": "tip.centroid",
+  "HPF -3dB": "tip.hpf",
+  "Tilt": "tip.tilt",
+  "Pres/Mid": "tip.pres_mid",
+  "Bright": "tip.bright",
+  "HF Rolloff": "tip.hf_rolloff",
+  "Sub (20-80)": "tip.sub",
+  "Low (80-200)": "tip.low",
+  "Low-Mid (200-500)": "tip.low_mid",
+  "Mid (500-2k)": "tip.mid",
+  "Presence (2-5k)": "tip.presence",
+  "Air (5-10k)": "tip.air",
+  "PSD Spectrum": "tip.chart_psd",
+  "1/3 Octave Band Analysis": "tip.chart_octave",
+  "Transfer Function": "tip.chart_transfer",
+  "Low-End Detail": "tip.chart_lowend",
+  "Mid-High Detail": "tip.chart_midhigh",
 };
 
-var CHART_TIPS = {
-  "PSD Spectrum": "Welch 法による PSD (Power Spectral Density) 推定。nperseg=4096 / 48kHz で周波数分解能 11.7Hz。横軸は対数周波数、縦軸はパワー (dB)。全体的なスペクトル形状の確認に使う。",
-  "1/3 Octave Band Analysis": "1/3 オクターブバンドごとのエネルギー (25Hz\u201310kHz, 27 bands)。人間の聴覚特性に近い対数的な周波数分割で、帯域ごとのバランスを直感的に比較できる。",
-  "Transfer Function": "リファレンストラック (最初に追加したトラック) に対する各トラックの PSD 差分 (\u0394dB)。EQ 処理の効果を周波数ごとに可視化する。0dB ラインが変化なし。",
-  "Low-End Detail": "20\u2013500Hz を線形周波数軸で拡大表示。HPF のカットオフ特性やベース帯域の詳細な形状を確認する。破線は HPF \u22123dB 推定位置。",
-  "Mid-High Detail": "500Hz\u201320kHz を対数周波数軸で拡大表示。プレゼンス・エアー帯域の形状やコーデックによる高域カットの確認に使う。破線は HF Rolloff 推定位置。",
-};
+function _tipFor(key) {
+  var tipKey = _TIP_KEYS[key];
+  return tipKey ? () => window.i18n.t(tipKey) : undefined;
+}
 
 function _chartTitle(parent, text) {
   var el = document.createElement("div");
   el.className = "chart-title";
-  el.textContent = text;
-  if (CHART_TIPS[text]) _addTip(el, CHART_TIPS[text]);
+  el.textContent = window.i18n.t(text);
+  var tip = _tipFor(text);
+  if (tip) _addTip(el, tip);
   parent.appendChild(el);
 }
 
 // Tooltip system — positions dynamically to stay within viewport
 var _tipEl = null;
 var _tipTimer = null;
+var _tipAnchor = null;
+var _tipSeq = 0;
 function _showTip(anchor, text) {
   _hideTip();
+  _tipAnchor = anchor;
   _tipTimer = setTimeout(() => {
     _tipEl = document.createElement("div");
     _tipEl.className = "tip-popup";
+    _tipEl.setAttribute("role", "tooltip");
+    _tipEl.id = anchor.getAttribute("aria-describedby") || ("tip-" + (++_tipSeq));
+    anchor.setAttribute("aria-describedby", _tipEl.id);
     _tipEl.textContent = text;
     document.body.appendChild(_tipEl);
     var r = anchor.getBoundingClientRect();
@@ -674,22 +1009,39 @@ function _showTip(anchor, text) {
 }
 function _hideTip() {
   clearTimeout(_tipTimer);
+  if (_tipAnchor) _tipAnchor.removeAttribute("aria-describedby");
+  _tipAnchor = null;
   if (_tipEl) { _tipEl.remove(); _tipEl = null; }
 }
 
-function _addTip(cell, text) {
+function _addTip(cell, textOrFn) {
   cell.className = (cell.className ? cell.className + " " : "") + "has-tip";
-  cell.addEventListener("mouseenter", () => _showTip(cell, text));
+  cell.tabIndex = 0;
+  var resolve = typeof textOrFn === "function" ? textOrFn : () => textOrFn;
+  cell.addEventListener("mouseenter", () => _showTip(cell, resolve()));
   cell.addEventListener("mouseleave", _hideTip);
+  cell.addEventListener("focus", () => _showTip(cell, resolve()));
+  cell.addEventListener("blur", _hideTip);
 }
+
+document.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === "Escape" && activeAbort) {
+    e.preventDefault();
+    cancelActive();
+    return;
+  }
+  if (e.key === "Escape" && _tipEl) _hideTip();
+});
 
 function _addRow(table, cells, isHeader) {
   const row = document.createElement("tr");
   for (const text of cells) {
     const cell = document.createElement(isHeader ? "th" : "td");
-    cell.textContent = text;
-    if (isHeader && METRIC_TIPS[text]) {
-      _addTip(cell, METRIC_TIPS[text]);
+    cell.textContent = isHeader ? window.i18n.t(text) : text;
+    if (isHeader) {
+      var tip = _tipFor(text);
+      if (tip) _addTip(cell, tip);
     }
     row.appendChild(cell);
   }
@@ -702,15 +1054,16 @@ function _fmtHz(val) {
 
 function _formatTrackMetrics(t) {
   var s = t.summary;
+  function _sdb(v) { return v == null ? "N/A" : fmtSign(v, 1) + " dB"; }
   return {
     rms: fmt(t.rms_dbfs, 1) + " dBFS",
     peak: fmt(t.true_peak_dbtp, 1) + " dBTP",
     crest: fmt(s.crest_factor_db, 1) + " dB",
-    lowIntel: fmtSign(s.low_intel_ratio_db, 1) + " dB",
+    lowIntel: _sdb(s.low_intel_ratio_db),
     centroid: fmt(s.spectral_centroid_hz, 0) + " Hz",
     tilt: fmt(s.spectral_tilt_db_oct, 1) + " dB/oct",
-    presMid: fmtSign(s.presence_mid_ratio_db, 1) + " dB",
-    bright: fmtSign(s.brightness_db, 1) + " dB",
+    presMid: _sdb(s.presence_mid_ratio_db),
+    bright: _sdb(s.brightness_db),
     hpf: _fmtHz(s.hpf_3db_hz),
     hfRolloff: _fmtHz(s.hf_rolloff_hz),
     sub: fmt(s.band_energy.sub_20_80, 1) + " dB",
@@ -734,9 +1087,9 @@ function renderSingleSummary(data) {
     m.rms, m.peak, m.crest, m.lowIntel, m.centroid,
   ], false);
   _addRow(table, ["Tilt", "Pres/Mid", "Bright",
-    "HPF -3dB", "HF Rolloff", ""], true);
+    "HPF -3dB", "HF Rolloff"], true);
   _addRow(table, [
-    m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff, "",
+    m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff,
   ], false);
   _addRow(table, ["Sub (20-80)", "Low (80-200)", "Low-Mid (200-500)",
     "Mid (500-2k)", "Presence (2-5k)", "Air (5-10k)"], true);
@@ -748,32 +1101,27 @@ function renderSingleSummary(data) {
 }
 
 function renderCompareSummary(tracks) {
-  const table = document.createElement("table");
-  table.className = "summary-table";
-
-  _addRow(table, ["Track", "RMS", "True Peak", "Crest",
-    "Low/Intel", "Centroid", "Tilt", "Pres/Mid", "Bright",
-    "HPF -3dB", "HF Rolloff"], true);
-
-  for (const t of tracks) {
-    var m = _formatTrackMetrics(t);
-    const row = document.createElement("tr");
-    const labelCell = document.createElement("td");
-    labelCell.className = "label-cell";
-    labelCell.textContent = t.label;
-    row.appendChild(labelCell);
-    for (const text of [
-      m.rms, m.peak, m.crest, m.lowIntel, m.centroid,
-      m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff,
-    ]) {
-      const cell = document.createElement("td");
-      cell.textContent = text;
-      row.appendChild(cell);
+  var specs = _buildSummaryTables({ tracks: tracks });
+  for (var ti = 0; ti < specs.length; ti++) {
+    var spec = specs[ti];
+    const table = document.createElement("table");
+    table.className = "summary-table";
+    _addRow(table, spec.header, true);
+    for (var r = 0; r < spec.rows.length; r++) {
+      const row = document.createElement("tr");
+      const labelCell = document.createElement("td");
+      labelCell.className = "label-cell";
+      labelCell.textContent = r === 0 ? spec.rows[r][0] + window.i18n.t("label.ref_suffix") : spec.rows[r][0];
+      row.appendChild(labelCell);
+      for (var ci = 1; ci < spec.rows[r].length; ci++) {
+        const cell = document.createElement("td");
+        cell.textContent = spec.rows[r][ci];
+        row.appendChild(cell);
+      }
+      table.appendChild(row);
     }
-    table.appendChild(row);
+    resultsEl.appendChild(table);
   }
-
-  resultsEl.appendChild(table);
 }
 
 function renderLegend(tracks) {
@@ -785,9 +1133,13 @@ function renderLegend(tracks) {
     const swatch = document.createElement("span");
     swatch.className = "legend-swatch";
     swatch.style.background = getThemeColors().trackColors[i % TRACK_COLORS.length];
+    if (i === 0) {
+      swatch.style.outline = "2px solid var(--text)";
+      swatch.style.outlineOffset = "1px";
+    }
     item.appendChild(swatch);
     const label = document.createElement("span");
-    label.textContent = tracks[i].label;
+    label.textContent = i === 0 ? tracks[i].label + window.i18n.t("label.ref_suffix") : tracks[i].label;
     item.appendChild(label);
     bar.appendChild(item);
   }
@@ -797,24 +1149,24 @@ function renderLegend(tracks) {
 function appendSaveButtons(container, data) {
   const saveBtn = document.createElement("button");
   saveBtn.className = "save-btn";
-  saveBtn.textContent = "Save JSON";
+  saveBtn.textContent = window.i18n.t("btn.save_json");
   saveBtn.addEventListener("click", () => saveResult(data));
   container.appendChild(saveBtn);
 
   const saveImgBtn = document.createElement("button");
   saveImgBtn.className = "save-btn";
-  saveImgBtn.textContent = "Save Image";
+  saveImgBtn.textContent = window.i18n.t("btn.save_image");
   saveImgBtn.addEventListener("click", () => saveImage(data));
   container.appendChild(saveImgBtn);
 }
 
 function fmt(val, decimals) {
-  if (val == null) return "?";
+  if (val == null || !isFinite(val)) return "?";
   return val.toFixed(decimals);
 }
 
 function fmtSign(val, decimals) {
-  if (val == null) return "?";
+  if (val == null || !isFinite(val)) return "?";
   const s = val.toFixed(decimals);
   return val > 0 ? `+${s}` : s;
 }
@@ -831,25 +1183,30 @@ async function saveResult(data) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showError(window.i18n.t("err.save_failed") + (err.error || ("HTTP " + resp.status)));
+      return;
+    }
     const result = await resp.json();
     if (result.saved) {
-      statusEl.textContent = `Saved: ${result.path}`;
-      statusEl.className = "";
+      statusEl.textContent = window.i18n.t("status.saved") + result.path;
+      _setStatusNormal();
     } else if (result.error) {
-      showError(`Save failed: ${result.error}`);
+      showError(window.i18n.t("err.save_failed") + result.error);
     }
   } catch (err) {
-    showError(`Save failed: ${err.message}`);
+    showError(window.i18n.t("err.save_failed") + err.message);
   }
 }
 
 function _buildSummaryTables(data) {
   if (data.tracks) {
     var table1 = {
-      header: ["Track", "RMS", "True Peak", "Crest", "Low/Intel", "Centroid"],
+      header: ["Track", "Duration", "RMS", "True Peak", "Crest", "Low/Intel", "Centroid"],
       rows: data.tracks.map((t) => {
         var m = _formatTrackMetrics(t);
-        return [t.label, m.rms, m.peak, m.crest, m.lowIntel, m.centroid];
+        return [t.label, fmt(t.duration_sec, 2) + "s", m.rms, m.peak, m.crest, m.lowIntel, m.centroid];
       }),
     };
     var table2 = {
@@ -859,7 +1216,14 @@ function _buildSummaryTables(data) {
         return [t.label, m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff];
       }),
     };
-    return [table1, table2];
+    var table3 = {
+      header: ["Track", "Sub (20-80)", "Low (80-200)", "Low-Mid (200-500)", "Mid (500-2k)", "Presence (2-5k)", "Air (5-10k)"],
+      rows: data.tracks.map((t) => {
+        var m = _formatTrackMetrics(t);
+        return [t.label, m.sub, m.low, m.lowMid, m.mid, m.presence, m.air];
+      }),
+    };
+    return [table1, table2, table3];
   }
   var m = _formatTrackMetrics(data);
   var t1 = {
@@ -867,8 +1231,8 @@ function _buildSummaryTables(data) {
     rows: [[fmt(data.duration_sec, 2) + "s", m.rms, m.peak, m.crest, m.lowIntel, m.centroid]],
   };
   var t2 = {
-    header: ["Tilt", "Pres/Mid", "Bright", "HPF -3dB", "HF Rolloff", ""],
-    rows: [[m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff, ""]],
+    header: ["Tilt", "Pres/Mid", "Bright", "HPF -3dB", "HF Rolloff"],
+    rows: [[m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff]],
   };
   var t3 = {
     header: ["Sub (20-80)", "Low (80-200)", "Low-Mid (200-500)", "Mid (500-2k)", "Presence (2-5k)", "Air (5-10k)"],
@@ -917,7 +1281,7 @@ function _drawTable(ctx, x0, y, w, header, rows, dark) {
   ctx.textBaseline = "middle";
   var cx = x0;
   for (let i = 0; i < header.length; i++) {
-    ctx.fillText(header[i], cx + colWidths[i] / 2, y + ROW_H / 2);
+    ctx.fillText(window.i18n.t(header[i]), cx + colWidths[i] / 2, y + ROW_H / 2);
     cx += colWidths[i];
   }
   y += ROW_H;
@@ -995,6 +1359,11 @@ function captureImage(data) {
   }
   totalH += PAD;
 
+  if (chartSizes.length === 0) {
+    showError(window.i18n.t("err.charts_not_ready"));
+    return null;
+  }
+
   const comp = document.createElement("canvas");
   comp.width = W * SCALE;
   comp.height = totalH * SCALE;
@@ -1007,7 +1376,7 @@ function captureImage(data) {
 
   let y = PAD;
 
-  const title = data.label || (data.tracks ? "Comparison" : "Analysis");
+  const title = data.label || (data.tracks ? window.i18n.t("result.comparison") : window.i18n.t("result.analysis"));
   ctx.fillStyle = dark ? "#64b5f6" : "#1565C0";
   ctx.font = "bold 18px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
@@ -1034,7 +1403,7 @@ function captureImage(data) {
     ctx.fillStyle = dark ? "#e0e0e0" : "#333";
     ctx.font = "bold 14px 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(title, W / 2, y + 16);
+    ctx.fillText(window.i18n.t(title), W / 2, y + 16);
     y += TITLE_H;
 
     const drawW = Math.min(w, W - PAD * 2);
@@ -1051,25 +1420,31 @@ async function saveImage(data) {
   const label = data.label || data.tracks?.[0]?.label || "eq";
   const filename = `spectrum_${safeName(label)}.png`;
   try {
-    statusEl.textContent = "Generating image...";
-    statusEl.className = "";
     const dataUrl = captureImage(data);
+    if (!dataUrl) return;
+    statusEl.textContent = window.i18n.t("status.generating_image");
+    _setStatusNormal();
     const resp = await fetch(window.location.origin + "/save-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dataUrl, filename }),
     });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showError(window.i18n.t("err.save_failed") + (err.error || ("HTTP " + resp.status)));
+      return;
+    }
     const result = await resp.json();
     if (result.saved) {
-      statusEl.textContent = `Saved: ${result.path}`;
-      statusEl.className = "";
+      statusEl.textContent = window.i18n.t("status.saved") + result.path;
+      _setStatusNormal();
     } else if (result.error) {
-      showError(`Save failed: ${result.error}`);
+      showError(window.i18n.t("err.save_failed") + result.error);
     } else {
       statusEl.textContent = "";
     }
   } catch (err) {
-    showError(`Save failed: ${err.message}`);
+    showError(window.i18n.t("err.save_failed") + err.message);
   }
 }
 
@@ -1099,47 +1474,90 @@ window.addEventListener("drop", async (e) => {
   document.body.classList.remove("drag-over");
   if (isBusy) return;
 
-  const file = e.dataTransfer.files[0];
-  if (!file) return;
+  const files = Array.from(e.dataTransfer.files);
+  if (!files.length) return;
 
-  statusEl.textContent = "Uploading: " + file.name;
-  statusEl.className = "";
-  try {
-    const resp = await fetch(window.location.origin + "/upload", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "X-Filename": encodeURIComponent(file.name),
-      },
-      body: file,
-    });
-    const result = await resp.json();
-    if (result.uploaded) {
-      urlInput.value = result.path;
-      urlInput.focus();
-      statusEl.textContent = "File loaded: " + file.name;
-    } else if (result.error) {
-      showError(result.error);
+  const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+
+  for (const file of files) {
+    // Reject oversize files before uploading so the user sees the error
+    // immediately instead of waiting for the server to stream-reject.
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showError(window.i18n.t("err.file_too_large"));
+      continue;
     }
-  } catch (err) {
-    showError(err.message);
+    statusEl.textContent = window.i18n.t("status.uploading") + file.name;
+    _setStatusNormal();
+    try {
+      const resp = await fetch(window.location.origin + "/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Filename": encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        showError(err.error || `HTTP ${resp.status}`);
+        continue;
+      }
+      const result = await resp.json();
+      if (result.uploaded) {
+        if (files.length === 1 && !urlInput.value.trim()) {
+          urlInput.value = result.path;
+          urlInput.focus();
+        } else if (files.length === 1) {
+          _tryAddTrack(urlInput.value.trim());
+          urlInput.value = result.path;
+          updateCompareUI();
+          urlInput.focus();
+        } else {
+          compareSources.push(result.path);
+          updateCompareUI();
+        }
+        statusEl.textContent = window.i18n.t("status.file_loaded") + file.name;
+      } else if (result.error) {
+        showError(result.error);
+        continue;
+      }
+    } catch (err) {
+      showError(err.message);
+      continue;
+    }
   }
 }, true);
 
+// Remembers the last showError message so language toggles can retranslate
+// the "Error: " prefix and the Copy button label in place.
+var _lastErrorMessage = null;
+
 function showError(message) {
-  statusEl.className = "error";
-  statusEl.innerHTML = "";
+  _lastErrorMessage = message;
+  statusEl.setAttribute("role", "alert");
+  statusEl.setAttribute("aria-live", "assertive");
+  statusEl.classList.remove("loading");
+  statusEl.classList.add("error");
+  statusEl.textContent = "";
+  const icon = document.createElement("span");
+  icon.className = "error-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "\u26A0";
+  statusEl.appendChild(icon);
   const text = document.createElement("span");
-  text.textContent = `Error: ${message}`;
+  text.className = "error-text";
+  text.textContent = window.i18n.t("err.prefix") + message;
   statusEl.appendChild(text);
-  const btn = document.createElement("button");
-  btn.className = "copy-btn";
-  btn.textContent = "Copy";
-  btn.addEventListener("click", () => {
-    navigator.clipboard.writeText(message).then(() => {
-      btn.textContent = "Copied";
-      setTimeout(() => { btn.textContent = "Copy"; }, 1500);
-    }).catch(() => {});
-  });
-  statusEl.appendChild(btn);
+  if (navigator.clipboard) {
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.textContent = window.i18n.t("btn.copy");
+    btn.addEventListener("click", () => {
+      navigator.clipboard.writeText(message).then(() => {
+        btn.textContent = window.i18n.t("btn.copied");
+        setTimeout(() => { btn.textContent = window.i18n.t("btn.copy"); }, 1500);
+      }).catch(() => {});
+    });
+    statusEl.appendChild(btn);
+  }
 }

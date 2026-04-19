@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>analyze-spectrum</title>
+  <script src="i18n.js"></script>
   <script>
-    // Resolve theme before CSS paints to prevent white flash
+    // Resolve theme + lang before CSS paints to prevent flash and to avoid
+    // screen readers briefly announcing the wrong language on boot.
     (function() {
       var s = localStorage.getItem("spectrum-theme");
       var mode = (s === "light" || s === "dark") ? s : "auto";
@@ -13,30 +15,45 @@
         ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
         : mode;
       document.documentElement.setAttribute("data-theme", resolved);
+      try {
+        var lang = localStorage.getItem("spectrum-lang");
+        if (lang !== "ja" && lang !== "en") {
+          lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
+        }
+        document.documentElement.setAttribute("lang", lang);
+      } catch (e) {}
     })();
   </script>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="vendor/uPlot.min.css">
 </head>
 <body>
-  <button id="theme-toggle" class="theme-toggle" title="Toggle dark mode"></button>
-  <h1>Spectrum Analyzer</h1>
+  <header>
+    <h1 data-i18n="app.title">Spectrum Analyzer</h1>
+    <div class="toolbar">
+      <button id="lang-toggle" class="lang-toggle" type="button" data-i18n-aria-label="lang.aria_toggle" aria-label="Switch language"></button>
+      <button id="theme-toggle" class="theme-toggle" type="button" data-i18n-aria-label="theme.aria_toggle" aria-label="Toggle color theme"></button>
+    </div>
+  </header>
 
-  <form id="analyze-form" class="input-bar">
-    <input id="url-input" type="text" placeholder="YouTube URL or local file path">
-    <button id="browse-btn" type="button" title="Browse local audio file">Browse</button>
-    <button id="submit-btn" type="submit">Analyze</button>
-    <button id="add-btn" type="button">+ Add Track</button>
-    <button id="load-btn" type="button">Load JSON</button>
-  </form>
+  <main>
+    <form id="analyze-form" class="input-bar" data-i18n-aria-label="form.aria" aria-label="Analyze audio source">
+      <label for="url-input" class="visually-hidden" data-i18n="url.label">YouTube URL or local audio file path</label>
+      <input id="url-input" type="text" placeholder="YouTube URL or local file path" data-i18n-placeholder="url.placeholder" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
+      <button id="browse-btn" type="button" data-i18n="btn.browse" data-i18n-aria-label="btn.browse.aria" aria-label="Browse local audio file">&#x1F4C1; Browse</button>
+      <button id="submit-btn" type="submit" data-i18n="btn.analyze">Analyze</button>
+      <button id="add-btn" type="button" data-i18n="btn.add" data-i18n-aria-label="btn.add.aria" aria-label="Add another track for comparison">+ Add Track</button>
+      <button id="load-btn" type="button" data-i18n="btn.load_json" data-i18n-aria-label="btn.load_json.aria" aria-label="Load saved JSON result">&#x1F4C4; Load JSON</button>
+    </form>
 
-  <div id="track-list"></div>
-  <div id="compare-bar" class="compare-bar" style="display:none">
-    <button id="clear-btn" type="button">Clear All</button>
-  </div>
+    <div id="track-list" role="list" data-i18n-aria-label="track_list.aria" aria-label="Tracks queued for comparison"></div>
+    <div id="compare-bar" class="compare-bar" style="display:none">
+      <button id="clear-btn" type="button" data-i18n="btn.clear" data-i18n-aria-label="btn.clear.aria" aria-label="Clear all queued tracks">Clear All</button>
+    </div>
 
-  <div id="status"></div>
-  <div id="results"></div>
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="results" tabindex="-1"></div>
+  </main>
 
   <script src="vendor/uPlot.iife.min.js"></script>
   <script src="charts/spectrum.js"></script>

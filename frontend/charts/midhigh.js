@@ -165,10 +165,6 @@ function renderMidHigh(canvas, tracks) {
   ctx.fillText("Power (dB)", 0, 0);
   ctx.restore();
 
-  // Title
-  ctx.font = "bold 13px sans-serif";
-  ctx.fillText("Mid-High Detail (500 Hz - 20 kHz, Log)", w / 2, 20);
-
   // Legend (if multi-track)
   if (tracks.length > 1) {
     ctx.font = "10px sans-serif";

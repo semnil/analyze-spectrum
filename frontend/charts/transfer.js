@@ -128,10 +128,6 @@ function renderTransfer(canvas, transferFunctions) {
   ctx.fillText("\u0394 dB", 0, 0);
   ctx.restore();
 
-  // Title
-  ctx.font = "bold 13px sans-serif";
-  ctx.fillText("Transfer Function (vs Reference)", w / 2, 20);
-
   // Legend
   ctx.font = "10px sans-serif";
   ctx.textAlign = "left";

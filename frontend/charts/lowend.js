@@ -158,10 +158,6 @@ function renderLowEnd(canvas, tracks) {
   ctx.fillText("Power (dB)", 0, 0);
   ctx.restore();
 
-  // Title
-  ctx.font = "bold 13px sans-serif";
-  ctx.fillText("Low-End Detail (20-500 Hz, Linear)", w / 2, 20);
-
   // Legend (if multi-track)
   if (tracks.length > 1) {
     ctx.font = "10px sans-serif";
