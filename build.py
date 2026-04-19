@@ -304,8 +304,30 @@ def check_prerequisites():
         sys.exit(1)
 
 
+def _build_icns_macos():
+    """Generate icon.icns from icon.iconset/ on macOS so .app bundles carry the icon."""
+    if not IS_MAC:
+        return
+    iconset = ROOT / "build_assets" / "icon.iconset"
+    icns = ROOT / "build_assets" / "icon.icns"
+    if not iconset.is_dir():
+        print(f"WARNING: {iconset} not found -- .app will lack an icon")
+        return
+    iconutil = shutil.which("iconutil")
+    if not iconutil:
+        print("WARNING: iconutil not found -- .app will lack an icon")
+        return
+    print("Building icon.icns from icon.iconset/ ...")
+    subprocess.run(
+        [iconutil, "-c", "icns", str(iconset), "-o", str(icns)],
+        check=True,
+    )
+    print(f"  -> {icns}")
+
+
 def build_pyinstaller():
     """Run PyInstaller to create the application bundle."""
+    _build_icns_macos()
     print("\n" + "=" * 60)
     print("  Building with PyInstaller...")
     print("=" * 60)

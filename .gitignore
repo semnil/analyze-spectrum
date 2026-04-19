@@ -8,6 +8,7 @@ build/
 .eggs/
 *.pcm
 build_assets/bin/
+build_assets/icon.icns
 installer_output/
 .pytest_cache/
 .coverage
