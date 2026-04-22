@@ -112,16 +112,16 @@ class TestAnalyzeHandler:
     def test_send_event_raises_on_broken_pipe(self, _mock_webview):
         gui_mod = _mock_webview
         handler = gui_mod.AnalyzeHandler.__new__(gui_mod.AnalyzeHandler)
-        handler.wfile = MagicMock()
-        handler.wfile.write.side_effect = BrokenPipeError()
+        handler.request = MagicMock()
+        handler.request.sendall.side_effect = BrokenPipeError()
         with pytest.raises(gui_mod._ClientDisconnected):
             handler._send_event("progress", message="test")
 
     def test_send_event_raises_on_connection_reset(self, _mock_webview):
         gui_mod = _mock_webview
         handler = gui_mod.AnalyzeHandler.__new__(gui_mod.AnalyzeHandler)
-        handler.wfile = MagicMock()
-        handler.wfile.write.side_effect = ConnectionResetError()
+        handler.request = MagicMock()
+        handler.request.sendall.side_effect = ConnectionResetError()
         with pytest.raises(gui_mod._ClientDisconnected):
             handler._send_event("progress", message="test")
 

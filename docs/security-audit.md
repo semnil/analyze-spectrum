@@ -93,8 +93,8 @@
 ### SEC-11: HTTP レスポンスのメッセージ フレーミング -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
-- **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_json_response`
-- **Resolution**: 通常 JSON レスポンスに `Content-Length` ヘッダーを明示的に付与。EOF-framing ベースの切断で発生していた `ConnectionResetError` / テスト flakiness を解消。NDJSON ストリームは従来通りチャンク送信。
+- **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_json_response`, `_send_event`
+- **Resolution**: 通常 JSON レスポンスに `Content-Length` ヘッダーを明示的に付与。EOF-framing ベースの切断で発生していた `ConnectionResetError` / テスト flakiness を解消。NDJSON ストリームは従来通りチャンク送信。さらにレスポンスボディの書き込みを `self.wfile.write()` から `self.request.sendall()` に変更。`wfile` (`SocketIO`, `wbufsize=0`) は内部で `socket.send()` に委譲し、ペイロードが `SO_SNDBUF` (~128 KB on macOS) を超えると partial write するため、大きな JSON レスポンスが黙って切り詰められる問題があった。`sendall()` は全バイト送信まで内部ループするため確実に配信される。
 
 ---
 

@@ -861,7 +861,10 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        # wfile (SocketIO, wbufsize=0) delegates to socket.send() which may
+        # perform a partial write when body exceeds SO_SNDBUF (~128 KB).
+        # sendall() loops internally until every byte is delivered.
+        self.request.sendall(body)
 
     def _json_error(self, status, message):
         self._json_response(status, {"error": message})
@@ -870,8 +873,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         line = json.dumps({"type": event_type, **kwargs},
                           ensure_ascii=False, allow_nan=False)
         try:
-            self.wfile.write((line + "\n").encode("utf-8"))
-            self.wfile.flush()
+            self.request.sendall((line + "\n").encode("utf-8"))
         except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, OSError):
             raise _ClientDisconnected()
 
