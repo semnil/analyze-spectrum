@@ -213,7 +213,7 @@
 | GUI HTTP (`/save`, `/save-image`) | 127.0.0.1 only | N/A (localhost) | Native file dialog + content validation |
 | GUI HTTP (`/load`, `/browse`) | 127.0.0.1 only | N/A (localhost) | Native file dialog + schema validation |
 | Frontend SPA | pywebview (WebView2/WKWebView) | N/A | Static files, no SSR |
-| File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG |
+| File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG, `_dialog_lock` non-blocking try-lock (409 on concurrent) |
 
 ### Abuse Scenarios
 

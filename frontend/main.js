@@ -660,11 +660,14 @@ loadBtn.addEventListener("click", async () => {
   statusEl.textContent = window.i18n.t("status.opening_file");
   _setStatusNormal();
 
+  var loadAbort = new AbortController();
+  var loadTimer = setTimeout(function () { loadAbort.abort(); }, 120000);
   try {
     const resp = await fetch(window.location.origin + "/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
+      signal: loadAbort.signal,
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -746,8 +749,13 @@ loadBtn.addEventListener("click", async () => {
       _loadAddToQueue(src ? [src] : []);
     }
   } catch (err) {
-    showError(err.message);
+    if (err.name === "AbortError") {
+      showError(window.i18n.t("err.dialog_timeout"));
+    } else {
+      showError(err.message);
+    }
   } finally {
+    clearTimeout(loadTimer);
     setBusy(false);
   }
 });

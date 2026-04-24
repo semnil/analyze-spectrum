@@ -580,15 +580,19 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, "Missing 'data' field")
             return
 
-        with _dialog_lock:
-            try:
-                result = _window.create_file_dialog(
-                    webview.SAVE_DIALOG,
-                    save_filename=filename,
-                    file_types=("JSON Files (*.json)",),
-                )
-            except Exception:
-                result = None
+        if not _dialog_lock.acquire(blocking=False):
+            self._json_error(409, "A dialog is already open")
+            return
+        try:
+            result = _window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=filename,
+                file_types=("JSON Files (*.json)",),
+            )
+        except Exception:
+            result = None
+        finally:
+            _dialog_lock.release()
 
         save_path = self._dialog_path(result)
         if not save_path:
@@ -621,15 +625,19 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, "Missing or invalid 'dataUrl' field")
             return
 
-        with _dialog_lock:
-            try:
-                result = _window.create_file_dialog(
-                    webview.SAVE_DIALOG,
-                    save_filename=filename,
-                    file_types=("PNG Images (*.png)",),
-                )
-            except Exception:
-                result = None
+        if not _dialog_lock.acquire(blocking=False):
+            self._json_error(409, "A dialog is already open")
+            return
+        try:
+            result = _window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=filename,
+                file_types=("PNG Images (*.png)",),
+            )
+        except Exception:
+            result = None
+        finally:
+            _dialog_lock.release()
 
         save_path = self._dialog_path(result)
         if not save_path:
@@ -644,15 +652,19 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         self._json_response(200, {"saved": True, "path": save_path})
 
     def _handle_load(self):
-        with _dialog_lock:
-            try:
-                result = _window.create_file_dialog(
-                    webview.OPEN_DIALOG,
-                    file_types=("JSON Files (*.json)",),
-                    allow_multiple=True,
-                )
-            except Exception:
-                result = None
+        if not _dialog_lock.acquire(blocking=False):
+            self._json_error(409, "A dialog is already open")
+            return
+        try:
+            result = _window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                file_types=("JSON Files (*.json)",),
+                allow_multiple=True,
+            )
+        except Exception:
+            result = None
+        finally:
+            _dialog_lock.release()
 
         if not result:
             self._json_response(200, {"loaded": False})
@@ -757,14 +769,18 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
     )
 
     def _handle_browse(self):
-        with _dialog_lock:
-            try:
-                result = _window.create_file_dialog(
-                    webview.OPEN_DIALOG,
-                    file_types=self._AUDIO_TYPES,
-                )
-            except Exception:
-                result = None
+        if not _dialog_lock.acquire(blocking=False):
+            self._json_error(409, "A dialog is already open")
+            return
+        try:
+            result = _window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                file_types=self._AUDIO_TYPES,
+            )
+        except Exception:
+            result = None
+        finally:
+            _dialog_lock.release()
 
         file_path = self._dialog_path(result)
         if not file_path:
