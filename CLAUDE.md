@@ -79,7 +79,6 @@ analyze-spectrum/
 │   ├── test_analysis.py
 │   ├── test_pcm.py
 │   ├── test_cli.py
-│   ├── test_download.py
 │   ├── test_gui.py
 │   ├── test_integration.py     # 28 HTTP integration tests (real HTTPServer, no pywebview)
 │   ├── test_frontend.py        # Playwright headless Chromium runner
