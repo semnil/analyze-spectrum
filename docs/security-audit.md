@@ -55,7 +55,7 @@
 ### SEC-05: Windows subprocess コンソール非表示 -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
-- **Location**: [__init__.py](../src/analyze_spectrum/__init__.py) -> `desktop_app_common.platform.subprocess_kwargs()`
+- **Location**: [__init__.py](../src/analyze_spectrum/__init__.py) -> `analyze_common.platform.subprocess_kwargs()`
 - **Resolution**: frozen mode 時に `STARTF_USESHOWWINDOW` を設定。ffmpeg / ffprobe / deno のコンソールウインドウを抑制し、UX を改善。yt-dlp は Python API として動作するため subprocess 起動しない。
 
 ### SEC-06: バンドルバイナリのバージョン管理 -- RESOLVED
