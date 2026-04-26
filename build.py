@@ -44,6 +44,13 @@ _EXE = ".exe" if IS_WINDOWS else ""
 REQUIRED_BINS = [f"ffmpeg{_EXE}", f"ffprobe{_EXE}", f"deno{_EXE}"]
 
 
+def _read_version():
+    import re
+    init = ROOT / "src" / "analyze_spectrum" / "__init__.py"
+    match = re.search(r'__version__\s*=\s*"([^"]+)"', init.read_text())
+    return match.group(1)
+
+
 def _sha256(path: Path) -> str:
     """Compute SHA256 hex digest for a file."""
     h = hashlib.sha256()
@@ -408,7 +415,8 @@ def _build_inno():
     print("\n" + "=" * 60)
     print("  Building installer with Inno Setup...")
     print("=" * 60)
-    subprocess.run([iscc, str(ISS)], check=True)
+    version = _read_version()
+    subprocess.run([iscc, f"/DMyAppVersion={version}", str(ISS)], check=True)
     output_dir = ROOT / "installer_output"
     print(f"\nInstaller output: {output_dir}")
 

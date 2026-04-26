@@ -330,6 +330,18 @@ pywebview 6.x の `parse_file_type()` は `file_types` の description 部分を
 JavaScript 側は window capture フェーズで `stopImmediatePropagation` により
 WebView2 ネイティブハンドラへの伝播を遮断。
 
+## バージョン管理
+
+唯一の定義元は `src/analyze_spectrum/__init__.py` の `__version__`。他のファイルはすべてここから動的に取得する:
+
+| ファイル | 取得方式 |
+|----------|----------|
+| `pyproject.toml` | `[tool.setuptools.dynamic]` `attr` (AST 抽出、import なし) |
+| `analyze-spectrum.spec` | `_read_version()` で regex 読み取り |
+| `installer.iss` | `build.py` の `_build_inno()` が `/DMyAppVersion=` で注入 |
+
+バージョンバンプ時は `__init__.py` の `__version__` のみ変更する。
+
 ## Known limitations / future work
 
 - 比較は最大 6 トラック (チャートの可読性)

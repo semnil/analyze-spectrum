@@ -2,9 +2,18 @@
 """PyInstaller spec for analyze-spectrum GUI application."""
 
 import os
+import re
 import sys
 
 ROOT = os.path.abspath(".")
+
+def _read_version():
+    init = os.path.join(ROOT, "src", "analyze_spectrum", "__init__.py")
+    with open(init) as f:
+        match = re.search(r'__version__\s*=\s*"([^"]+)"', f.read())
+    return match.group(1)
+
+_VERSION = _read_version()
 IS_WINDOWS = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
 
@@ -96,12 +105,12 @@ if IS_MAC:
         name="Spectrum Analyzer.app",
         icon=_ICON,
         bundle_identifier="com.semnil.spectrum-analyzer",
-        version="1.2.0",
+        version=_VERSION,
         info_plist={
             "CFBundleName": "Spectrum Analyzer",
             "CFBundleDisplayName": "Spectrum Analyzer",
-            "CFBundleShortVersionString": "1.2.0",
-            "CFBundleVersion": "1.2.0",
+            "CFBundleShortVersionString": _VERSION,
+            "CFBundleVersion": _VERSION,
             "LSMinimumSystemVersion": "11.0",
             "NSHighResolutionCapable": True,
             "LSEnvironment": {"PYTHONIOENCODING": "utf-8"},
