@@ -987,7 +987,6 @@ def main():
         width=1200,
         height=900,
         background_color=bg,
-        icon=icon,
     )
 
     def _disable_external_drop():
@@ -1007,7 +1006,7 @@ def main():
     if IS_WINDOWS:
         _window.events.shown += _disable_external_drop
         _window.events.loaded += _disable_external_drop
-    webview.start()
+    webview.start(icon=icon)
     server.shutdown()
 
 
