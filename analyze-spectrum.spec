@@ -40,6 +40,7 @@ a = Analysis(
         "analyze_common.download",
         "analyze_common.json_util",
         "webview",
+        "scipy.signal._signaltools",
     ],
     hookspath=[],
     hooksconfig={},
