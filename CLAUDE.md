@@ -143,6 +143,7 @@ python build.py --installer  # + Inno Setup installer (.exe)
 - `numpy`, `scipy` — spectral analysis
 - `yt-dlp` — Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
 - ffmpeg, ffprobe, deno — bundled in build_assets/bin/
+- `py-desktop-app-common` — git submodule (`vendor/py-desktop-app-common`)。OS 判定・subprocess kwargs・ダークモード検出を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## GUI endpoints
 
