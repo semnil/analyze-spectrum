@@ -10,16 +10,16 @@
 | Local HTTP Server | 2 | 0 | 1 | 1 |
 | Input Validation | 4 | 0 | 4 | 0 |
 | Command Injection | 1 | 0 | 0 | 1 |
-| File I/O (Save/Load/Browse) | 4 | 0 | 1 | 3 |
+| File I/O (Save/Load/Browse) | 5 | 0 | 2 | 3 |
 | File Upload (Drag & Drop) | 2 | 0 | 2 | 0 |
 | Data Exposure | 1 | 0 | 0 | 1 |
 | XSS | 1 | 0 | 0 | 1 |
 | Subprocess Management | 2 | 0 | 1 | 1 |
 | Bundled Binaries | 2 | 0 | 2 | 0 |
 | Resource Management | 2 | 0 | 0 | 2 |
-| **Total** | **21** | **0** | **11** | **10** |
+| **Total** | **22** | **0** | **12** | **10** |
 
-**Open: 0** / Resolved: 11 / Accepted (risk acknowledged): 10
+**Open: 0** / Resolved: 12 / Accepted (risk acknowledged): 10
 
 ---
 
@@ -89,6 +89,12 @@
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_handle_upload`
 - **Resolution**: 受信チャンクループが `remaining > 0` のまま抜けた場合 (Content-Length 分を受信しきれなかった場合) は `os.unlink` で途中ファイルを削除し 400 エラー。クライアント切断時でもディスクに不完全データが残らない。
+
+### SEC-22: pywebview ダイアログ例外のサイレント握りつぶし -- RESOLVED
+
+- **Risk**: LOW -> RESOLVED
+- **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_handle_save`, `_handle_save_image`, `_handle_load`, `_handle_browse`; [main.js](../frontend/main.js) clipboard copy
+- **Resolution**: `create_file_dialog()` の例外を `except Exception: result = None` で握りつぶしていたため、ダイアログ障害時にユーザーへ「キャンセル」と誤通知していた。`traceback.print_exc()` + `_json_error(500, ...)` でフロントエンドにエラーを返却するよう修正。POST ハンドラの二重 catch 内側 (`pass`) も `traceback.print_exc()` に変更し、エラーレスポンス送信失敗を記録。フロントエンドのクリップボード copy 失敗は `btn.copy_failed` テキストで通知。analyze-loudness にも同一修正を適用。
 
 ### SEC-11: HTTP レスポンスのメッセージ フレーミング -- RESOLVED
 

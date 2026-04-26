@@ -414,6 +414,44 @@ class TestLoadEndpoint:
         assert cached["spectrum"] == result_data["spectrum"]
 
 
+class TestBrowseEndpoint:
+    def test_browse_cancel(self, _server):
+        base, gui_mod = _server
+        gui_mod._window = MagicMock()
+        gui_mod._window.create_file_dialog.return_value = None
+        status, raw = _post(base, "/browse", {})
+        assert status == 200
+        assert json.loads(raw)["selected"] is False
+
+    def test_browse_select_file(self, _server, wav_file):
+        base, gui_mod = _server
+        gui_mod._window = MagicMock()
+        gui_mod._window.create_file_dialog.return_value = wav_file
+        status, raw = _post(base, "/browse", {})
+        assert status == 200
+        result = json.loads(raw)
+        assert result["selected"] is True
+        assert result["path"] == wav_file
+
+    def test_browse_dialog_lock_conflict(self, _server):
+        base, gui_mod = _server
+        gui_mod._dialog_lock.acquire()
+        try:
+            status, raw = _post(base, "/browse", {})
+            assert status == 409
+        finally:
+            gui_mod._dialog_lock.release()
+
+    def test_browse_dialog_exception(self, _server):
+        base, gui_mod = _server
+        gui_mod._window = MagicMock()
+        gui_mod._window.create_file_dialog.side_effect = RuntimeError("dialog failed")
+        status, raw = _post(base, "/browse", {})
+        assert status == 500
+        body = json.loads(raw)
+        assert "dialog" in body["error"].lower()
+
+
 class TestUploadEndpoint:
     def test_upload_empty_rejected(self, _server):
         """Upload with no content is rejected."""

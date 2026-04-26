@@ -214,7 +214,7 @@ const resultsEl = document.getElementById("results");
       { label: window.i18n.t("ctx.paste"), fn: () => {
           navigator.clipboard.readText().then((t) => {
             el.setRangeText(t, start, end, "end");
-          }).catch(() => {});
+          }).catch((e) => { console.warn("Clipboard read failed:", e); });
         }, disabled: !hasClipboard },
       { label: window.i18n.t("ctx.select_all"), fn: () => { el.select(); } },
     ];
@@ -1564,7 +1564,10 @@ function showError(message) {
       navigator.clipboard.writeText(message).then(() => {
         btn.textContent = window.i18n.t("btn.copied");
         setTimeout(() => { btn.textContent = window.i18n.t("btn.copy"); }, 1500);
-      }).catch(() => {});
+      }).catch(() => {
+        btn.textContent = window.i18n.t("btn.copy_failed");
+        setTimeout(() => { btn.textContent = window.i18n.t("btn.copy"); }, 1500);
+      });
     });
     statusEl.appendChild(btn);
   }

@@ -229,6 +229,7 @@ def _get_base_dir() -> Path:
 
 
 FRONTEND_DIR = _get_base_dir() / "frontend"
+_ICON_PATH = _get_base_dir() / "build_assets" / "icon.ico"
 
 _window = None
 
@@ -317,7 +318,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 try:
                     self._json_error(500, "Internal server error")
                 except Exception:
-                    pass
+                    traceback.print_exc()
 
     def _parse_duration(self, body: dict) -> float | None | str:
         """Parse and validate duration from request body.
@@ -589,8 +590,10 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 save_filename=filename,
                 file_types=("JSON Files (*.json)",),
             )
-        except Exception:
-            result = None
+        except Exception as e:
+            traceback.print_exc()
+            self._json_error(500, f"File dialog error: {e}")
+            return
         finally:
             _dialog_lock.release()
 
@@ -634,8 +637,10 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 save_filename=filename,
                 file_types=("PNG Images (*.png)",),
             )
-        except Exception:
-            result = None
+        except Exception as e:
+            traceback.print_exc()
+            self._json_error(500, f"File dialog error: {e}")
+            return
         finally:
             _dialog_lock.release()
 
@@ -661,8 +666,10 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 file_types=("JSON Files (*.json)",),
                 allow_multiple=True,
             )
-        except Exception:
-            result = None
+        except Exception as e:
+            traceback.print_exc()
+            self._json_error(500, f"File dialog error: {e}")
+            return
         finally:
             _dialog_lock.release()
 
@@ -765,7 +772,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 _loaded_cache_data.popitem(last=False)
 
     _AUDIO_TYPES = (
-        "Audio/Video Files (*.wav;*.mp3;*.m4a;*.flac;*.ogg;*.opus;*.wma;*.aac;*.aiff;*.aif;*.webm;*.mkv;*.mp4)",
+        "Audio Video Files (*.wav;*.mp3;*.m4a;*.flac;*.ogg;*.opus;*.wma;*.aac;*.aiff;*.aif;*.webm;*.mkv;*.mp4)",
     )
 
     def _handle_browse(self):
@@ -777,8 +784,10 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 webview.OPEN_DIALOG,
                 file_types=self._AUDIO_TYPES,
             )
-        except Exception:
-            result = None
+        except Exception as e:
+            traceback.print_exc()
+            self._json_error(500, f"File dialog error: {e}")
+            return
         finally:
             _dialog_lock.release()
 
@@ -971,12 +980,14 @@ def main():
 
     global _window
     bg = _resolve_background_color("spectrum-theme")
+    icon = str(_ICON_PATH) if _ICON_PATH.exists() else None
     _window = webview.create_window(
         "Spectrum Analyzer",
         url=f"http://127.0.0.1:{port}/index.html",
         width=1200,
         height=900,
         background_color=bg,
+        icon=icon,
     )
 
     def _disable_external_drop():
