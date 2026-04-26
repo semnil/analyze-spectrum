@@ -143,7 +143,7 @@ python build.py --installer  # + Inno Setup installer (.exe)
 - `numpy`, `scipy` — spectral analysis
 - `yt-dlp` — Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
 - ffmpeg, ffprobe, deno — bundled in build_assets/bin/
-- `py-desktop-app-common` — git submodule (`vendor/py-desktop-app-common`)。OS 判定・subprocess kwargs・ダークモード検出を提供。pyproject.toml には記載せず `sys.path` 注入で利用
+- `py-analyze-common` — git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## GUI endpoints
 
@@ -246,7 +246,7 @@ python build.py --installer  # + Inno Setup installer (.exe)
 
 ### アクセントカラー
 
-analyze-spectrum はブルー系 (`--accent: #1565C0`)、analyze-loudness はパープル系 (`--accent: #9C27B0`)。ドメインで色を分離: ブルー = 周波数スペクトル、パープル = ラウドネス (音量)。CSS 変数名は両プロジェクトで異なる (`--text` vs `--fg`, `--bg-card` vs `--surface`, `--text-secondary` vs `--fg-muted`)。将来 `py-desktop-app-common` で共通化する際に統一する。
+analyze-spectrum はブルー系 (`--accent: #1565C0`)、analyze-loudness はパープル系 (`--accent: #9C27B0`)。ドメインで色を分離: ブルー = 周波数スペクトル、パープル = ラウドネス (音量)。CSS 変数名は両プロジェクトで異なる (`--text` vs `--fg`, `--bg-card` vs `--surface`, `--text-secondary` vs `--fg-muted`)。将来 `py-analyze-common` で共通化する際に統一する。
 
 ### yt-dlp Python API (not bundled binary)
 

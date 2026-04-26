@@ -929,8 +929,8 @@ def _resolve_background_color(storage_key: str) -> str:
     Reads the WebView localStorage from the platform-specific profile path.
     Falls back to OS preference for 'auto' or when the profile is unreadable.
     """
-    from desktop_app_common.platform import IS_MAC, IS_WINDOWS
-    from desktop_app_common.theme import is_dark_mode
+    from analyze_common.platform import IS_MAC, IS_WINDOWS
+    from analyze_common.theme import is_dark_mode
 
     mode: str | None = None
     if IS_WINDOWS:
@@ -992,7 +992,7 @@ def main():
         except Exception:
             pass
 
-    from desktop_app_common.platform import IS_WINDOWS
+    from analyze_common.platform import IS_WINDOWS
     if IS_WINDOWS:
         _window.events.shown += _disable_external_drop
         _window.events.loaded += _disable_external_drop

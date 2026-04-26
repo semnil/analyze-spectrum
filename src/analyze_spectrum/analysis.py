@@ -112,19 +112,7 @@ class SpectrumResult:
         return _json_safe(d)
 
 
-def _json_safe(obj):
-    """Recursively replace non-finite floats (NaN/Infinity) with None.
-
-    RFC 8259 JSON does not permit NaN / Infinity tokens.  Browser JSON.parse
-    rejects them, so analysis outputs must be sanitized before serialization.
-    """
-    if isinstance(obj, float):
-        return obj if math.isfinite(obj) else None
-    if isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_json_safe(v) for v in obj]
-    return obj
+from analyze_common.json_util import json_safe as _json_safe  # noqa: E402
 
 
 @dataclass
