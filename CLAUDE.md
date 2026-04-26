@@ -80,7 +80,7 @@ analyze-spectrum/
 │   ├── test_pcm.py
 │   ├── test_cli.py
 │   ├── test_gui.py
-│   ├── test_integration.py     # 28 HTTP integration tests (real HTTPServer, no pywebview)
+│   ├── test_integration.py     # 32 HTTP integration tests (real HTTPServer, no pywebview)
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
 │       ├── test_ui.html        # test harness page
@@ -313,6 +313,14 @@ Submit 時に `urlInput` の pending 値と `compareSources` を統合してモ�
 - `_effectiveTrackCount()`: compareSources + urlInput pending を含む実効トラック数
 - Submit ボタンラベルは `urlInput` の `input` イベントで動的更新
 - Remove Track 時は urlInput に既存値がある場合 collapse しない (値の保持)
+
+### ウィンドウアイコン
+
+PyInstaller の `EXE(icon=...)` は EXE ファイル自体のアイコン (エクスプローラー表示用) のみ。pywebview のウィンドウアイコン (タイトルバー・タスクバー) には `webview.create_window(icon=...)` で明示指定が必要。`build_assets/icon.ico` を PyInstaller の `datas` でバンドルし、`_ICON_PATH` で解決する。
+
+### pywebview file_types 制約
+
+pywebview 6.x の `parse_file_type()` は `file_types` の description 部分を `[\w ]+` で検証する。スラッシュ (`/`) やハイフン (`-`) 等を含むと `ValueError` になるため、description はスペース区切りの英数字のみで記述する (例: "Audio Video Files")。
 
 ### WebView2 Drag & Drop
 

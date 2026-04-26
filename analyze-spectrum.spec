@@ -25,6 +25,7 @@ a = Analysis(
     datas=[
         (os.path.join(ROOT, "frontend"), "frontend"),
         (os.path.join(ROOT, "THIRD_PARTY_LICENSES.txt"), "."),
+        (os.path.join(ROOT, "build_assets/icon.ico"), "build_assets"),
     ],
     hiddenimports=[
         "analyze_spectrum",
