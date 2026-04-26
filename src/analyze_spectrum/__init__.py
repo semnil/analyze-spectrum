@@ -9,7 +9,7 @@ if _VENDOR.is_dir() and str(_VENDOR) not in sys.path:
 
 from analyze_common.ffmpeg import ffmpeg_kwargs as _ffmpeg_kwargs  # noqa: E402,F401
 
-__version__ = "0.9.5"
+__version__ = "1.2.0"
 
 SCHEMA_VERSION = 1
 
