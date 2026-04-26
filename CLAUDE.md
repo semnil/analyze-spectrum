@@ -132,9 +132,11 @@ analyze-spectrum-gui
 ### Build & Distribution
 
 ```bash
-python build.py              # download assets + PyInstaller bundle
-python build.py --installer  # + Inno Setup installer (.exe)
+.venv/Scripts/python build.py              # download assets + PyInstaller bundle
+.venv/Scripts/python build.py --installer  # + Inno Setup installer (.exe)
 ```
+
+> **注意**: 必ずプロジェクト固有の `.venv/Scripts/python` で実行すること。親ディレクトリの `python` や他プロジェクトの venv を使うと PyInstaller が scipy 等の依存を解決できない。
 
 ### GUI dependencies
 

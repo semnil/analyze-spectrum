@@ -29,10 +29,11 @@
 
 - **Risk**: LOW -> RESOLVED
 - **Location**: [build.py](../build.py), [build_assets/checksums.json](../build_assets/checksums.json)
-- **Resolution**: `build_assets/checksums.json` にダウンロード済みアセット (ffmpeg, ffprobe, deno) の SHA256 ハッシュを記録し、ビルド時に全アセットのハッシュを照合して不一致で停止する仕組みを実装。
+- **Resolution**: `build_assets/checksums.json` にダウンロード済みアセット (ffmpeg, ffprobe, deno, uPlot) の SHA256 ハッシュをプラットフォーム別 (`windows` / `macos`) に記録し、ビルド時に `_PLATFORM_KEY` で現在のプラットフォームのハッシュを照合して不一致で停止する仕組みを実装。
   - `python build.py --update-checksums`: ダウンロード + ハッシュ算出 + checksums.json 更新
   - `python build.py`: ダウンロード + checksums.json と照合 (不一致で停止)
   - checksums.json は git 管理対象
+  - JSON 構造は analyze-loudness と統一 (`{ "windows": {...}, "macos": {...} }`)
 
 ### SEC-02: ローカル HTTP サーバーがループバック以外からアクセス可能 -- RESOLVED
 
