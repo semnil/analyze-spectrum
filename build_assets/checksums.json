@@ -1,0 +1,16 @@
+{
+  "macos": {
+    "deno": {
+      "sha256_deno": "82605bfb922556903589f7cdadf2c4ea3e87a3f5a70bb1358eaeee041ef425de"
+    },
+    "ffmpeg": {
+      "sha256_ffmpeg": "b68f795f7fb4528daf697f57a2b6780846a1ae762a71907e994442ad103ee88f",
+      "sha256_ffprobe": "18600b53e2d02467c363f97dd8cc1c73d19e5ddc191e5a2c0fd8b7e9fde4d99d"
+    },
+    "uplot": {
+      "version": "1.6.31",
+      "sha256_uPlot.iife.min.js": "2d27e8ad3d228164525ce213f9dc716f39b4e3aee0cc773fb3491c96cf4921a2",
+      "sha256_uPlot.min.css": "df630c6a8d6f8eeaff264b50f73ce5b114f646ffd9a0bb74f049b0a00135fa04"
+    }
+  }
+}
