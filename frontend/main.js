@@ -1088,16 +1088,15 @@ function renderSingleSummary(data) {
   const table = document.createElement("table");
   table.className = "summary-table";
 
-  _addRow(table, ["Duration", "RMS", "True Peak", "Crest",
-    "Low/Intel Ratio", "Spectral Centroid"], true);
+  _addRow(table, ["Duration", "RMS", "True Peak", "Crest"], true);
   _addRow(table, [
     fmt(data.duration_sec, 2) + "s",
-    m.rms, m.peak, m.crest, m.lowIntel, m.centroid,
+    m.rms, m.peak, m.crest,
   ], false);
-  _addRow(table, ["Tilt", "Pres/Mid", "Bright",
-    "HPF -3dB", "HF Rolloff"], true);
+  _addRow(table, ["Tilt", "Low/Intel Ratio", "Spectral Centroid",
+    "Pres/Mid", "Bright", "HPF -3dB", "HF Rolloff"], true);
   _addRow(table, [
-    m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff,
+    m.tilt, m.lowIntel, m.centroid, m.presMid, m.bright, m.hpf, m.hfRolloff,
   ], false);
   _addRow(table, ["Sub (20-80)", "Low (80-200)", "Low-Mid (200-500)",
     "Mid (500-2k)", "Presence (2-5k)", "Air (5-10k)"], true);
@@ -1211,17 +1210,17 @@ async function saveResult(data) {
 function _buildSummaryTables(data) {
   if (data.tracks) {
     var table1 = {
-      header: ["Track", "Duration", "RMS", "True Peak", "Crest", "Low/Intel", "Centroid"],
+      header: ["Track", "Duration", "RMS", "True Peak", "Crest"],
       rows: data.tracks.map((t) => {
         var m = _formatTrackMetrics(t);
-        return [t.label, fmt(t.duration_sec, 2) + "s", m.rms, m.peak, m.crest, m.lowIntel, m.centroid];
+        return [t.label, fmt(t.duration_sec, 2) + "s", m.rms, m.peak, m.crest];
       }),
     };
     var table2 = {
-      header: ["Track", "Tilt", "Pres/Mid", "Bright", "HPF -3dB", "HF Rolloff"],
+      header: ["Track", "Tilt", "Low/Intel", "Centroid", "Pres/Mid", "Bright", "HPF -3dB", "HF Rolloff"],
       rows: data.tracks.map((t) => {
         var m = _formatTrackMetrics(t);
-        return [t.label, m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff];
+        return [t.label, m.tilt, m.lowIntel, m.centroid, m.presMid, m.bright, m.hpf, m.hfRolloff];
       }),
     };
     var table3 = {
@@ -1235,12 +1234,12 @@ function _buildSummaryTables(data) {
   }
   var m = _formatTrackMetrics(data);
   var t1 = {
-    header: ["Duration", "RMS", "True Peak", "Crest", "Low/Intel Ratio", "Spectral Centroid"],
-    rows: [[fmt(data.duration_sec, 2) + "s", m.rms, m.peak, m.crest, m.lowIntel, m.centroid]],
+    header: ["Duration", "RMS", "True Peak", "Crest"],
+    rows: [[fmt(data.duration_sec, 2) + "s", m.rms, m.peak, m.crest]],
   };
   var t2 = {
-    header: ["Tilt", "Pres/Mid", "Bright", "HPF -3dB", "HF Rolloff"],
-    rows: [[m.tilt, m.presMid, m.bright, m.hpf, m.hfRolloff]],
+    header: ["Tilt", "Low/Intel Ratio", "Spectral Centroid", "Pres/Mid", "Bright", "HPF -3dB", "HF Rolloff"],
+    rows: [[m.tilt, m.lowIntel, m.centroid, m.presMid, m.bright, m.hpf, m.hfRolloff]],
   };
   var t3 = {
     header: ["Sub (20-80)", "Low (80-200)", "Low-Mid (200-500)", "Mid (500-2k)", "Presence (2-5k)", "Air (5-10k)"],
