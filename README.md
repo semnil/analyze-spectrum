@@ -2,6 +2,8 @@
 
 YouTube 動画またはローカル音声ファイルの周波数スペクトルを包括的に分析するツール。
 
+![Spectrum Analyzer](docs/screenshot.png)
+
 ## Features
 
 - **Welch PSD 分析**: scipy.signal.welch による Power Spectral Density 推定
