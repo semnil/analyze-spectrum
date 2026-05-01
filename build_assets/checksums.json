@@ -1,30 +1,7 @@
 {
-  "windows": {
-    "deno": {
-      "sha256_deno.exe": "ae0ac89823865c2ccf78310ad44482a4be04e9e19fbfdada46ad5e61ac3de285"
-    },
-    "ffmpeg": {
-      "sha256_ffmpeg.exe": "b086c26724664cb3b8291c6de77de5c442f13d6a173d4fc9c688366a1d7d74c3",
-      "sha256_ffprobe.exe": "6e27b38aafc71fb5b1f2a9fe76afe19b1e69cc05411876b5f3ad10cc719de9e1"
-    },
-    "uplot": {
-      "version": "1.6.31",
-      "sha256_uPlot.iife.min.js": "2d27e8ad3d228164525ce213f9dc716f39b4e3aee0cc773fb3491c96cf4921a2",
-      "sha256_uPlot.min.css": "df630c6a8d6f8eeaff264b50f73ce5b114f646ffd9a0bb74f049b0a00135fa04"
-    }
-  },
-  "macos": {
-    "deno": {
-      "sha256_deno": "523144333a566adc29f17eebdab6526f592dd95ff0f3f63238054dafc3770a26"
-    },
-    "ffmpeg": {
-      "sha256_ffmpeg": "ba3a9d9d20b43492a85649d7e03122144905e3f07b713279fb5a0e659cf73e84",
-      "sha256_ffprobe": "f9827709561c11162a9fe93380fe6ecd92648461faf53c5bf5eb3a037442621e"
-    },
-    "uplot": {
-      "version": "1.6.31",
-      "sha256_uPlot.iife.min.js": "2d27e8ad3d228164525ce213f9dc716f39b4e3aee0cc773fb3491c96cf4921a2",
-      "sha256_uPlot.min.css": "df630c6a8d6f8eeaff264b50f73ce5b114f646ffd9a0bb74f049b0a00135fa04"
-    }
+  "uplot": {
+    "version": "1.6.31",
+    "sha256_uPlot.iife.min.js": "2d27e8ad3d228164525ce213f9dc716f39b4e3aee0cc773fb3491c96cf4921a2",
+    "sha256_uPlot.min.css": "df630c6a8d6f8eeaff264b50f73ce5b114f646ffd9a0bb74f049b0a00135fa04"
   }
 }

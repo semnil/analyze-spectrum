@@ -43,8 +43,9 @@ UPLOT_VERSION = "1.6.31"
 _EXE = ".exe" if IS_WINDOWS else ""
 REQUIRED_BINS = [f"ffmpeg{_EXE}", f"ffprobe{_EXE}", f"deno{_EXE}"]
 
-# osxexperts.net は ffmpeg/ffprobe の Apple Silicon ネイティブビルドを提供する数少ないソース。
-# evermeet.cx は x86_64 のみ。両者を lipo -create で universal2 にマージする。
+# macOS 26 で「Intel プロセッサ用アプリの対応は終了します」警告を出さないため、
+# arm64 ネイティブの ffmpeg/ffprobe を osxexperts.net から取得する (evermeet.cx は
+# x86_64 専用ビルドのみ提供)。Intel Mac 向けの x86_64 サポートは行わない。
 _OSXEXPERTS_ARM64 = {
     "ffmpeg": (
         "https://www.osxexperts.net/ffmpeg81arm.zip",
@@ -88,44 +89,35 @@ def _save_checksums(checksums: dict):
     print(f"\nChecksums saved: {CHECKSUMS_FILE}")
 
 
-_PLATFORM_KEY = "windows" if IS_WINDOWS else "macos" if IS_MAC else "linux"
-
-
 def _verify_checksums():
-    """Verify downloaded assets for the current platform against checksums.json."""
+    """Verify uPlot CDN assets against checksums.json. ffmpeg/ffprobe arm64 は
+    `_download_ffmpeg_macos()` 内で個別 SHA 検証する。deno と Windows ffmpeg は
+    動的ソース (latest tag / master build) のため事前固定対象外。"""
     all_checksums = _load_checksums()
-    if not all_checksums:
-        print("WARNING: checksums.json not found -- skipping verification")
+    uplot = all_checksums.get("uplot") if all_checksums else None
+    if not uplot:
+        print("WARNING: checksums.json missing or has no uplot entry -- skipping")
         print("  Run 'python build.py --update-checksums' to generate it")
         return
 
-    checksums = all_checksums.get(_PLATFORM_KEY)
-    if not checksums:
-        print(f"WARNING: no checksums for platform '{_PLATFORM_KEY}' -- skipping")
-        return
-
     errors = []
-    for key, entry in checksums.items():
-        for file_key, expected_hash in entry.items():
-            if not file_key.startswith("sha256_"):
-                continue
-            filename = file_key.replace("sha256_", "", 1)
-            if key == "uplot":
-                path = VENDOR_DIR / filename
-            else:
-                path = BIN_DIR / filename
-            if not path.exists():
-                errors.append(f"  {path.name}: file not found")
-                continue
-            actual = _sha256(path)
-            if actual != expected_hash:
-                errors.append(
-                    f"  {path.name}: MISMATCH\n"
-                    f"    expected: {expected_hash}\n"
-                    f"    actual:   {actual}"
-                )
-            else:
-                print(f"  {path.name}: OK")
+    for file_key, expected_hash in uplot.items():
+        if not file_key.startswith("sha256_"):
+            continue
+        filename = file_key.replace("sha256_", "", 1)
+        path = VENDOR_DIR / filename
+        if not path.exists():
+            errors.append(f"  {path.name}: file not found")
+            continue
+        actual = _sha256(path)
+        if actual != expected_hash:
+            errors.append(
+                f"  {path.name}: MISMATCH\n"
+                f"    expected: {expected_hash}\n"
+                f"    actual:   {actual}"
+            )
+        else:
+            print(f"  {path.name}: OK")
 
     if errors:
         print("\nChecksum verification FAILED:")
@@ -254,46 +246,22 @@ def _extract_zip_to(data: bytes, member_basename: str, dest: Path):
 
 
 def _download_ffmpeg_macos():
-    """Build universal2 ffmpeg/ffprobe by merging arm64 (osxexperts.net) and x86_64 (evermeet.cx)."""
-    import tempfile
-
-    if not shutil.which("lipo"):
-        raise RuntimeError("lipo not found -- install Xcode Command Line Tools")
-
-    work = Path(tempfile.mkdtemp(prefix="analyze_ffmpeg_"))
-    try:
-        for name in ("ffmpeg", "ffprobe"):
-            arm_url, arm_sha = _OSXEXPERTS_ARM64[name]
-            print(f"Downloading {name} arm64 (osxexperts.net)...")
-            with urllib.request.urlopen(arm_url) as r:
-                arm_data = r.read()
-            arm_path = work / f"{name}.arm64"
-            _extract_zip_to(arm_data, name, arm_path)
-            actual = _sha256(arm_path)
-            if actual != arm_sha:
-                raise RuntimeError(
-                    f"{name} arm64 SHA256 mismatch: expected {arm_sha}, got {actual}"
-                )
-
-            print(f"Downloading {name} x86_64 (evermeet.cx)...")
-            with urllib.request.urlopen(
-                f"https://evermeet.cx/ffmpeg/getrelease/{name}/zip"
-            ) as r:
-                x86_data = r.read()
-            x86_path = work / f"{name}.x86_64"
-            _extract_zip_to(x86_data, name, x86_path)
-
-            dest = BIN_DIR / name
-            subprocess.run(
-                ["lipo", "-create", str(arm_path), str(x86_path),
-                 "-output", str(dest)],
-                check=True,
+    """Download arm64-native ffmpeg/ffprobe (osxexperts.net) with SHA256 verification."""
+    for name in ("ffmpeg", "ffprobe"):
+        arm_url, arm_sha = _OSXEXPERTS_ARM64[name]
+        print(f"Downloading {name} arm64 (osxexperts.net)...")
+        with urllib.request.urlopen(arm_url) as r:
+            arm_data = r.read()
+        dest = BIN_DIR / name
+        _extract_zip_to(arm_data, name, dest)
+        actual = _sha256(dest)
+        if actual != arm_sha:
+            raise RuntimeError(
+                f"{name} arm64 SHA256 mismatch: expected {arm_sha}, got {actual}"
             )
-            _make_executable(dest)
-            size_mb = dest.stat().st_size // 1024 // 1024
-            print(f"  -> {dest} ({size_mb} MB, universal2)")
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+        _make_executable(dest)
+        size_mb = dest.stat().st_size // 1024 // 1024
+        print(f"  -> {dest} ({size_mb} MB, arm64)")
 
 
 def _download_uplot():
@@ -307,35 +275,22 @@ def _download_uplot():
 
 
 def update_checksums():
-    """Download assets and compute checksums.json for the current platform."""
+    """Download assets and compute checksums.json for static CDN-hosted uPlot.
+
+    deno (latest), ffmpeg/ffprobe (BtbN master / osxexperts version-pinned)
+    は更新ペースが速くプラットフォーム間でも内容が異なるため事前 SHA 固定の
+    対象外。osxexperts arm64 は build.py 内 `_OSXEXPERTS_ARM64` で個別検証する。
+    """
     download_assets()
 
-    print(f"\nComputing checksums for platform '{_PLATFORM_KEY}'...")
-    platform_entry = {}
-
-    deno_name = f"deno{_EXE}"
-    ffmpeg_names = (f"ffmpeg{_EXE}", f"ffprobe{_EXE}")
-
-    platform_entry["deno"] = {
-        f"sha256_{deno_name}": _sha256(BIN_DIR / deno_name),
-    }
-    print(f"  {deno_name}: {platform_entry['deno'][f'sha256_{deno_name}'][:16]}...")
-
-    platform_entry["ffmpeg"] = {}
-    for name in ffmpeg_names:
-        h = _sha256(BIN_DIR / name)
-        platform_entry["ffmpeg"][f"sha256_{name}"] = h
-        print(f"  {name}: {h[:16]}...")
-
-    platform_entry["uplot"] = {"version": UPLOT_VERSION}
+    print("\nComputing checksums for uPlot CDN assets...")
+    uplot_entry = {"version": UPLOT_VERSION}
     for filename in ("uPlot.iife.min.js", "uPlot.min.css"):
         h = _sha256(VENDOR_DIR / filename)
-        platform_entry["uplot"][f"sha256_{filename}"] = h
+        uplot_entry[f"sha256_{filename}"] = h
         print(f"  {filename}: {h[:16]}...")
 
-    all_checksums = _load_checksums()
-    all_checksums[_PLATFORM_KEY] = platform_entry
-    _save_checksums(all_checksums)
+    _save_checksums({"uplot": uplot_entry})
 
 
 def check_prerequisites():
