@@ -78,6 +78,11 @@ pywebview (WebView2) ──HTTP──> Local HTTP Server (gui.py)
 | HF Rolloff | Mid-band 平均から -10dB 下回る周波数 |
 | Band Energy | Sub / Low / Low-Mid / Mid / Presence / Air の帯域別エネルギー |
 
+## 動作環境
+
+- Windows (x64)
+- macOS: **v1.3.0 以降は Apple Silicon (M1 以降) 専用**。Intel Mac (x86_64) は非対応 (macOS 26 で表示される「Intel プロセッサ用アプリの対応は終了します」警告への対応として、同梱する ffmpeg / ffprobe を Apple Silicon ネイティブビルドのみに切り替えたため)。Intel Mac をご利用の場合は [v1.2.0](../../releases/tag/v1.2.0) をご利用ください
+
 ## Build & Distribution
 
 ```bash
