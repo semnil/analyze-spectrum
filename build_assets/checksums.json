@@ -15,11 +15,11 @@
   },
   "macos": {
     "deno": {
-      "sha256_deno": "82605bfb922556903589f7cdadf2c4ea3e87a3f5a70bb1358eaeee041ef425de"
+      "sha256_deno": "523144333a566adc29f17eebdab6526f592dd95ff0f3f63238054dafc3770a26"
     },
     "ffmpeg": {
-      "sha256_ffmpeg": "b68f795f7fb4528daf697f57a2b6780846a1ae762a71907e994442ad103ee88f",
-      "sha256_ffprobe": "18600b53e2d02467c363f97dd8cc1c73d19e5ddc191e5a2c0fd8b7e9fde4d99d"
+      "sha256_ffmpeg": "ba3a9d9d20b43492a85649d7e03122144905e3f07b713279fb5a0e659cf73e84",
+      "sha256_ffprobe": "f9827709561c11162a9fe93380fe6ecd92648461faf53c5bf5eb3a037442621e"
     },
     "uplot": {
       "version": "1.6.31",

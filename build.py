@@ -43,6 +43,19 @@ UPLOT_VERSION = "1.6.31"
 _EXE = ".exe" if IS_WINDOWS else ""
 REQUIRED_BINS = [f"ffmpeg{_EXE}", f"ffprobe{_EXE}", f"deno{_EXE}"]
 
+# osxexperts.net は ffmpeg/ffprobe の Apple Silicon ネイティブビルドを提供する数少ないソース。
+# evermeet.cx は x86_64 のみ。両者を lipo -create で universal2 にマージする。
+_OSXEXPERTS_ARM64 = {
+    "ffmpeg": (
+        "https://www.osxexperts.net/ffmpeg81arm.zip",
+        "9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028",
+    ),
+    "ffprobe": (
+        "https://www.osxexperts.net/ffprobe81arm.zip",
+        "aab17ac7379c1178aaf400c3ef36cdb67db0b75b1a23eeef2cb9f658be8844e6",
+    ),
+}
+
 
 def _read_version():
     import re
@@ -233,20 +246,54 @@ def _download_ffmpeg_windows():
                 print(f"  -> {dest} ({dest.stat().st_size // 1024 // 1024} MB)")
 
 
+def _extract_zip_to(data: bytes, member_basename: str, dest: Path):
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        member = next(m for m in zf.namelist() if Path(m).name == member_basename)
+        with zf.open(member) as src, open(dest, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+
+
 def _download_ffmpeg_macos():
-    """Download ffmpeg/ffprobe universal2 binaries from evermeet.cx."""
-    for name in ("ffmpeg", "ffprobe"):
-        print(f"Downloading {name} (macOS universal2)...")
-        url = f"https://evermeet.cx/ffmpeg/getrelease/{name}/zip"
-        with urllib.request.urlopen(url) as r:
-            data = io.BytesIO(r.read())
-        with zipfile.ZipFile(data) as zf:
-            member = next(m for m in zf.namelist() if Path(m).name == name)
+    """Build universal2 ffmpeg/ffprobe by merging arm64 (osxexperts.net) and x86_64 (evermeet.cx)."""
+    import tempfile
+
+    if not shutil.which("lipo"):
+        raise RuntimeError("lipo not found -- install Xcode Command Line Tools")
+
+    work = Path(tempfile.mkdtemp(prefix="analyze_ffmpeg_"))
+    try:
+        for name in ("ffmpeg", "ffprobe"):
+            arm_url, arm_sha = _OSXEXPERTS_ARM64[name]
+            print(f"Downloading {name} arm64 (osxexperts.net)...")
+            with urllib.request.urlopen(arm_url) as r:
+                arm_data = r.read()
+            arm_path = work / f"{name}.arm64"
+            _extract_zip_to(arm_data, name, arm_path)
+            actual = _sha256(arm_path)
+            if actual != arm_sha:
+                raise RuntimeError(
+                    f"{name} arm64 SHA256 mismatch: expected {arm_sha}, got {actual}"
+                )
+
+            print(f"Downloading {name} x86_64 (evermeet.cx)...")
+            with urllib.request.urlopen(
+                f"https://evermeet.cx/ffmpeg/getrelease/{name}/zip"
+            ) as r:
+                x86_data = r.read()
+            x86_path = work / f"{name}.x86_64"
+            _extract_zip_to(x86_data, name, x86_path)
+
             dest = BIN_DIR / name
-            with zf.open(member) as src, open(dest, "wb") as dst:
-                shutil.copyfileobj(src, dst)
-        _make_executable(dest)
-        print(f"  -> {dest} ({dest.stat().st_size // 1024 // 1024} MB)")
+            subprocess.run(
+                ["lipo", "-create", str(arm_path), str(x86_path),
+                 "-output", str(dest)],
+                check=True,
+            )
+            _make_executable(dest)
+            size_mb = dest.stat().st_size // 1024 // 1024
+            print(f"  -> {dest} ({size_mb} MB, universal2)")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def _download_uplot():
