@@ -38,7 +38,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[gui,dev]"
-          pip install yt-dlp playwright
+          pip install playwright
 
       - name: Install Playwright Chromium 🌐
         run: python -m playwright install --with-deps chromium
