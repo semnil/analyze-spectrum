@@ -53,10 +53,12 @@ True Peak は ITU-R BS.1770 に従いステレオ PCM で各チャンネル個�
 
 ```
 analyze-spectrum/
+├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ)
 ├── CLAUDE.md
+├── README.md
 ├── pyproject.toml
 ├── src/analyze_spectrum/
-│   ├── __init__.py             # _subprocess_kwargs() helper
+│   ├── __init__.py             # vendor への sys.path 注入, SCHEMA_VERSION, make_meta()
 │   ├── __main__.py
 │   ├── analysis.py             # spectral analysis core
 │   ├── cli.py                  # argparse + CLI orchestration
@@ -65,7 +67,8 @@ analyze-spectrum/
 │   └── pcm.py                  # ffmpeg → PCM conversion (mono + stereo)
 ├── frontend/
 │   ├── index.html
-│   ├── main.js                 # fetch + NDJSON progress + DOM rendering
+│   ├── main.js                 # fetch + NDJSON progress + DOM rendering + theme toggle
+│   ├── i18n.js                 # en/ja DICT + window.i18n.t / setLang
 │   ├── style.css
 │   ├── charts/
 │   │   ├── spectrum.js         # PSD overlay (log-freq, multi-track)
@@ -75,18 +78,23 @@ analyze-spectrum/
 │   │   └── midhigh.js          # mid-high detail (500Hz-20kHz log)
 │   └── vendor/                 # uPlot (bundled)
 ├── tests/
+│   ├── __init__.py
 │   ├── conftest.py             # shared WAV fixture (_make_wav_bytes, wav_file, wav_file_b)
 │   ├── test_analysis.py
 │   ├── test_pcm.py
 │   ├── test_cli.py
 │   ├── test_gui.py
-│   ├── test_integration.py     # 32 HTTP integration tests (real HTTPServer, no pywebview)
+│   ├── test_integration.py     # HTTP integration tests (real HTTPServer, no pywebview)
+│   ├── test_dialog_busy.py     # ネイティブダイアログの排他 (_dialog_lock)
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
 │       ├── test_ui.html        # test harness page
 │       └── test_ui.js          # browser-based UI state tests
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── screenshot.png
+│   └── security-audit.md
+├── vendor/py-analyze-common/   # git submodule (sys.path 注入で利用)
 ├── build.py
 ├── analyze-spectrum.spec
 ├── installer.iss
@@ -98,7 +106,7 @@ analyze-spectrum/
 
 ```
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
 # Single file analysis
@@ -132,11 +140,18 @@ analyze-spectrum-gui
 ### Build & Distribution
 
 ```bash
+# Windows
 .venv/Scripts/python build.py              # download assets + PyInstaller bundle
 .venv/Scripts/python build.py --installer  # + Inno Setup installer (.exe)
+
+# macOS (要 create-dmg: brew install create-dmg)
+.venv/bin/python build.py
+.venv/bin/python build.py --installer      # + DMG
 ```
 
-> **注意**: 必ずプロジェクト固有の `.venv/Scripts/python` で実行すること。親ディレクトリの `python` や他プロジェクトの venv を使うと PyInstaller が scipy 等の依存を解決できない。
+フラグ: `--skip-download` (外部アセット取得をスキップ) / `--skip-build` (PyInstaller をスキップ、`dist/` がある前提) / `--update-checksums` (アセットを取得して `checksums.json` を更新)。
+
+> **注意**: 必ずプロジェクト固有の venv の python (`.venv/bin/python` / `.venv/Scripts/python`) で実行すること。親ディレクトリの `python` や他プロジェクトの venv を使うと PyInstaller が scipy 等の依存を解決できない。
 
 ### GUI dependencies
 
@@ -145,6 +160,13 @@ analyze-spectrum-gui
 - `yt-dlp` — Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
 - ffmpeg, ffprobe, deno — bundled in build_assets/bin/
 - `py-analyze-common` — git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化を提供。pyproject.toml には記載せず `sys.path` 注入で利用
+
+## テスト
+
+```bash
+pytest -q                                          # 全テスト
+python -m playwright install --with-deps chromium  # 初回のみ (test_frontend.py が使う)
+```
 
 ## GUI endpoints
 
@@ -321,7 +343,7 @@ low-end detail, mid-high detail)。analyze-loudness と同じ vendor 構成。
 
 ### スキーマバージョン管理
 
-`_SCHEMA_VERSION` (整数) で JSON 構造の互換性を管理する:
+唯一の定義元は `src/analyze_spectrum/__init__.py` の `SCHEMA_VERSION` (整数)。`gui.py` は `_SCHEMA_VERSION` として別名 import し、`meta` は同ファイルの `make_meta()` が組み立てる。
 
 - `meta.version`: アプリバージョン (表示用)
 - `meta.schema_version`: スキーマバージョン (互換性判定用)
@@ -337,6 +359,14 @@ Submit 時に `urlInput` の pending 値と `compareSources` を統合してモ�
 - Submit ボタンラベルは `urlInput` の `input` イベントで動的更新
 - Remove Track 時は urlInput に既存値がある場合 collapse しない (値の保持)
 
+### ダークモード
+
+CSS 変数 + `[data-theme]` でライト / ダーク / auto の 3 ステート。選択は `localStorage("spectrum-theme")` に保存し、保存値が `light` / `dark` 以外のときは auto として扱う。トグルは light -> dark -> auto の順に巡回し、アイコンは ☀ / ☾ / ◐。auto では `prefers-color-scheme` の変化を購読して再適用する。初期適用はペイント前 ([ホワイトフラッシュ防止](#ホワイトフラッシュ防止))。
+
+### i18n (多言語)
+
+`frontend/i18n.js` で en / ja を管理。初期言語は `navigator.language` (`ja*` -> ja、他は en)、選択は `localStorage("spectrum-lang")` に保存。静的マークアップは `data-i18n*` 属性を DOMContentLoaded で置換し、`main.js` が動的に作る文字列は `window.i18n.t(key)` を直接呼ぶ。
+
 ### ウィンドウアイコン
 
 PyInstaller の `EXE(icon=...)` は EXE ファイル自体のアイコン (エクスプローラー表示用) のみ。pywebview のウィンドウアイコン (タイトルバー・タスクバー) には `webview.start(icon=...)` で明示指定が必要 (pywebview 6.x で `create_window` から `start` に移動)。`build_assets/icon.ico` を PyInstaller の `datas` でバンドルし、`_ICON_PATH` で解決する。
@@ -350,6 +380,15 @@ pywebview 6.x の `parse_file_type()` は `file_types` の description 部分を
 `AllowExternalDrop = False` を pywebview の `shown` + `loaded` イベントで設定。
 JavaScript 側は window capture フェーズで `stopImmediatePropagation` により
 WebView2 ネイティブハンドラへの伝播を遮断。
+
+## リリース手順
+
+1. `src/analyze_spectrum/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
+2. マージ後、master の HEAD に `vX.Y.Z` タグを打って push する
+3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、Release を作成する (`draft: true`)
+4. Release の publish は人が行う
+
+タグ push が唯一のリリーストリガー (他に `workflow_dispatch`)。マージだけではリリースされない。
 
 ## バージョン管理
 
