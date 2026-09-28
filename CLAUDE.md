@@ -53,7 +53,7 @@ True Peak は ITU-R BS.1770 に従いステレオ PCM で各チャンネル個�
 
 ```
 analyze-spectrum/
-├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ)
+├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ), workflow-checks.yml (全 PR で uses: の SHA 固定を検査)
 ├── CLAUDE.md
 ├── README.md
 ├── pyproject.toml
