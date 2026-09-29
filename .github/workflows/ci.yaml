@@ -45,3 +45,5 @@ jobs:
 
       - name: Run Tests ✅
         run: pytest -q
+  probe-job:
+    uses: ./.github/workflows/probe-reusable.yml
