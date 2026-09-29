@@ -1,7 +1,9 @@
 # Security Audit Report
 
-**Date**: 2026-04-18
-**Scope**: CLI (`src/analyze_spectrum/`), GUI (`src/analyze_spectrum/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-spectrum.spec`, `installer.iss`), CI (`.github/workflows/`, `.github/tests/`)
+**Date**: 2026-04-18 (CI/CD 節のみ 2026-09-30 に確認)
+**Scope**:
+- 2026-04-18 の監査: CLI (`src/analyze_spectrum/`), GUI (`src/analyze_spectrum/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-spectrum.spec`, `installer.iss`)
+- 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
 
 ## Summary
 
@@ -20,6 +22,8 @@
 | **Total** | **22** | **0** | **12** | **10** |
 
 **Open: 0** / Resolved: 12 / Accepted (risk acknowledged): 10
+
+この表と SEC 番号付きの指摘は 2026-04-18 の監査の結果で、2026-09-30 の CI/CD 節の確認は含まない。
 
 ---
 
@@ -208,6 +212,8 @@
 ---
 
 ## CI/CD (GitHub Actions)
+
+**確認日**: 2026-09-30。各ワークフローの実物と、master のルールセット・Actions の許可ポリシーの現在値を確認した。2026-04-18 の監査には含まれない。
 
 | 項目 | 対策 |
 |------|------|
