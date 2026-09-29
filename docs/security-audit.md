@@ -1,8 +1,8 @@
 # Security Audit Report
 
-**Date**: 2026-04-18 (CI/CD 節のみ 2026-09-30 に確認)
+**Date**: 2026-04-18 (SEC-22 と Summary の件数は 2026-04-26 に追補、CI/CD 節は 2026-09-30 に確認)
 **Scope**:
-- 2026-04-18 の監査: CLI (`src/analyze_spectrum/`), GUI (`src/analyze_spectrum/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-spectrum.spec`, `installer.iss`)
+- 2026-04-18 の監査 (2026-04-26 に SEC-22 を追補): CLI (`src/analyze_spectrum/`), GUI (`src/analyze_spectrum/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-spectrum.spec`, `installer.iss`)
 - 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
 
 ## Summary
@@ -23,7 +23,7 @@
 
 **Open: 0** / Resolved: 12 / Accepted (risk acknowledged): 10
 
-この表と SEC 番号付きの指摘は 2026-04-18 の監査の結果で、2026-09-30 の CI/CD 節の確認は含まない。
+Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-04-18 の監査の初版は SEC-01〜SEC-21 の 21 件、Resolved 11)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
 
 ---
 
@@ -97,6 +97,7 @@
 
 ### SEC-22: pywebview ダイアログ例外のサイレント握りつぶし -- RESOLVED
 
+- **Added**: 2026-04-26 (2026-04-18 の監査の後に追補。Summary の件数もこの時点で更新)
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_handle_save`, `_handle_save_image`, `_handle_load`, `_handle_browse`; [main.js](../frontend/main.js) clipboard copy
 - **Resolution**: `create_file_dialog()` の例外を `except Exception: result = None` で握りつぶしていたため、ダイアログ障害時にユーザーへ「キャンセル」と誤通知していた。`traceback.print_exc()` + `_json_error(500, ...)` でフロントエンドにエラーを返却するよう修正。POST ハンドラの二重 catch 内側 (`pass`) も `traceback.print_exc()` に変更し、エラーレスポンス送信失敗を記録。フロントエンドのクリップボード copy 失敗は `btn.copy_failed` テキストで通知。analyze-loudness にも同一修正を適用。
