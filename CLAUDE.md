@@ -270,7 +270,7 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
 
 ### アクセントカラー
 
-analyze-spectrum はブルー系 (`--accent: #1565C0`)、analyze-loudness はパープル系 (`--accent: #9C27B0`)。ドメインで色を分離: ブルー = 周波数スペクトル、パープル = ラウドネス (音量)。CSS 変数名は両プロジェクトで異なる (`--text` vs `--fg`, `--bg-card` vs `--surface`, `--text-secondary` vs `--fg-muted`)。将来 `py-analyze-common` で共通化する際に統一する。
+analyze-spectrum はブルー系 (`--accent: #1565C0`)、analyze-loudness はパープル系 (`--accent: #9C27B0`)。ドメインで色を分離: ブルー = 周波数スペクトル、パープル = ラウドネス (音量)。CSS 変数名は両プロジェクトで異なる (`--text` vs `--fg`, `--bg-card` vs `--surface`, `--text-secondary` vs `--fg-muted`)。
 
 ### yt-dlp Python API (not bundled binary)
 
@@ -403,8 +403,7 @@ WebView2 ネイティブハンドラへの伝播を遮断。
 
 バージョンバンプ時は `__init__.py` の `__version__` のみ変更する。
 
-## Known limitations / future work
+## Known limitations
 
 - 比較は最大 6 トラック (チャートの可読性)
 - リアルタイム入力 (マイク) は対象外
-- EQ カーブ自動推定 (将来: parametric EQ パラメータ逆算)
