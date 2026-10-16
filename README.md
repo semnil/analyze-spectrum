@@ -21,8 +21,8 @@ YouTube 動画またはローカル音声ファイルの周波数スペクトル
 ### CLI
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
+python3 -m venv .venv            # Windows: python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
 # Single file analysis
