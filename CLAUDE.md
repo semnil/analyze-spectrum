@@ -152,7 +152,7 @@ analyze-spectrum-gui
 
 フラグ: `--skip-download` (外部アセット取得をスキップ) / `--skip-build` (PyInstaller をスキップ、`dist/` がある前提) / `--update-checksums` (アセットを取得して `checksums.json` を更新)。
 
-> **注意**: 必ずプロジェクト固有の venv の python (`.venv/bin/python` / `.venv/Scripts/python`) で実行すること。親ディレクトリの `python` や他プロジェクトの venv を使うと PyInstaller が scipy 等の依存を解決できない。
+> **注意**: 必ずプロジェクト固有の venv の python (`.venv/bin/python` / `.venv/Scripts/python`) で実行すること (グローバル規約「開発環境」)。
 
 ### GUI dependencies
 
