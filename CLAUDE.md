@@ -8,12 +8,12 @@ analyze-loudness と同一アーキテクチャ (pywebview + ローカル HTTP �
 
 ```mermaid
 graph LR
-    A["pywebview<br/>(WebView2 / WebKit)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
+    A["pywebview<br>(WebView2 / WebKit)"] -->|"HTTP<br>127.0.0.1:random"| B["Local HTTP Server<br>(gui.py)"]
     B -->|"NDJSON stream"| C["Analysis Pipeline"]
     C --> D["yt_dlp.YoutubeDL API / local file"]
-    D --> E["ffmpeg → PCM<br/>(mono + stereo float32, 48kHz)"]
-    E --> F["scipy.signal.welch<br/>(spectral analysis)"]
-    F --> G["JSON response<br/>{summary, spectrum, bands}"]
+    D --> E["ffmpeg → PCM<br>(mono + stereo float32, 48kHz)"]
+    E --> F["scipy.signal.welch<br>(spectral analysis)"]
+    F --> G["JSON response<br>{summary, spectrum, bands}"]
     G --> A
 ```
 
