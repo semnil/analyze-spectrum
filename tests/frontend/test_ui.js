@@ -117,6 +117,12 @@ function fakeCompareResult(sources) {
       label: tracks[1].label + " - " + tracks[0].label,
       freqs: [100, 200, 400, 800],
       delta_db: [1, 2, -1, 0],
+      eq: {
+        preamp_db: -1.5,
+        bands: [{ freq_hz: 85.4, gain_db: 3.2, q: 1.1 }, { freq_hz: 2500, gain_db: -2.0, q: 2.5 }],
+        residual_rms_db: 0.31,
+        fit_range_hz: [20, 16000],
+      },
     }],
     meta: { version: "1.0.0", analyzed_at: "2026-01-01T00:00:00Z", sources: sources },
   };
@@ -557,6 +563,34 @@ function makeNdjsonResponse(type, data) {
   document.getElementById("submit-btn").click();
   await new Promise(function(r) { setTimeout(r, 500); });
   assert(!isBusy, "Not busy after single analysis");
+
+  // ================================================
+  suite("Compare result renders the estimated EQ table");
+  // ================================================
+
+  resetState();
+  var cmp = fakeCompareResult(["A.wav", "B.wav"]);
+  renderCompare(cmp);
+  var eqTable = document.querySelector(".eq-table");
+  assert(eqTable !== null, "EQ table rendered");
+  var eqRows = eqTable ? eqTable.querySelectorAll("tr") : [];
+  function eqCell(r, c) { return eqRows[r] && eqRows[r].children[c] ? eqRows[r].children[c].textContent : null; }
+  assertEqual(eqRows.length, 4, "Header + preamp + 2 peaks");
+  assertEqual(eqCell(1, 2), "-1.5 dB", "Preamp gain");
+  assertEqual(eqCell(2, 1), "85.4 Hz", "Peak 1 frequency below 100 Hz keeps 1 decimal");
+  assertEqual(eqCell(3, 1), "2500 Hz", "Peak 2 frequency");
+  assertEqual(eqCell(2, 2), "+3.2 dB", "Peak 1 gain");
+  assertEqual(eqCell(3, 3), "2.50", "Peak 2 Q");
+  var eqNote = document.querySelector(".eq-tables .eq-note");
+  assert(eqNote !== null && eqNote.textContent.indexOf("0.31 dB RMS") !== -1, "Residual shown");
+
+  cmp.transfer_functions[0].eq = null;
+  clearResults();
+  renderCompare(cmp);
+  assertEqual(document.querySelectorAll(".eq-table").length, 0, "No table without an estimate");
+  eqNote = document.querySelector(".eq-tables .eq-note");
+  assertEqual(eqNote ? eqNote.textContent : null, window.i18n.t("eq.no_fit"), "No-fit note shown");
+  clearResults();
 
   // ================================================
   // Summary

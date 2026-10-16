@@ -952,6 +952,7 @@ function renderCompare(data) {
 
   if (data.transfer_functions && data.transfer_functions.length > 0) {
     _addCanvasChart("Transfer Function", "280px", renderTransfer, data.transfer_functions);
+    renderEqTables(data.transfer_functions);
   }
 
   _addCanvasChart("Low-End Detail", "280px", renderLowEnd, data.tracks);
@@ -1003,6 +1004,7 @@ var _TIP_KEYS = {
   "Transfer Function": "tip.chart_transfer",
   "Low-End Detail": "tip.chart_lowend",
   "Mid-High Detail": "tip.chart_midhigh",
+  "Estimated EQ": "tip.chart_eq",
 };
 
 function _tipFor(key) {
@@ -1160,6 +1162,47 @@ function renderCompareSummary(tracks) {
     }
     resultsEl.appendChild(table);
   }
+}
+
+// One table per transfer function: the preamp row, then each peaking filter.
+function renderEqTables(transferFunctions) {
+  const div = document.createElement("div");
+  div.className = "chart-row eq-tables";
+  _chartTitle(div, "Estimated EQ");
+  for (const tf of transferFunctions) {
+    const caption = document.createElement("div");
+    caption.className = "eq-caption";
+    caption.textContent = tf.label;
+    div.appendChild(caption);
+    const eq = tf.eq;
+    if (!eq) {
+      const note = document.createElement("div");
+      note.className = "eq-note";
+      note.textContent = window.i18n.t("eq.no_fit");
+      div.appendChild(note);
+      continue;
+    }
+    const table = document.createElement("table");
+    table.className = "summary-table eq-table";
+    _addRow(table, ["Filter", "Frequency", "Gain", "Q"], true);
+    _addRow(table, [window.i18n.t("Preamp"), "-", fmtSign(eq.preamp_db, 1) + " dB", "-"], false);
+    eq.bands.forEach(function(b, i) {
+      _addRow(table, [
+        window.i18n.t("Peak") + " " + (i + 1),
+        fmt(b.freq_hz, b.freq_hz < 100 ? 1 : 0) + " Hz",
+        fmtSign(b.gain_db, 1) + " dB",
+        fmt(b.q, 2),
+      ], false);
+    });
+    div.appendChild(table);
+    const note = document.createElement("div");
+    note.className = "eq-note";
+    note.textContent = window.i18n.t("eq.fit_range") + ": " + fmt(eq.fit_range_hz[0], 0) + "-" +
+      fmt(eq.fit_range_hz[1], 0) + " Hz / " + window.i18n.t("eq.residual") + ": " +
+      fmt(eq.residual_rms_db, 2) + " dB RMS";
+    div.appendChild(note);
+  }
+  resultsEl.appendChild(div);
 }
 
 function renderLegend(tracks) {

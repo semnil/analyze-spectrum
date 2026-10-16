@@ -17,6 +17,8 @@ from analyze_spectrum.analysis import (
     compute_welch,
     estimate_hpf,
     missing_result_fields,
+    estimate_parametric_eq,
+    peaking_eq_response_db,
 )
 
 
@@ -305,3 +307,80 @@ class TestMissingResultFields:
         del d["summary"]["crest_factor_db"]
         del d["rms_dbfs"]
         assert missing_result_fields(d) == []
+
+
+def _peaking_sos(f0, gain_db, q, fs=SAMPLE_RATE):
+    from scipy.signal import tf2sos
+    a = 10 ** (gain_db / 40)
+    w0 = 2 * np.pi * f0 / fs
+    alpha = np.sin(w0) / (2 * q)
+    b = [1 + alpha * a, -2 * np.cos(w0), 1 - alpha * a]
+    d = [1 + alpha / a, -2 * np.cos(w0), 1 - alpha / a]
+    return tf2sos(b, d)
+
+
+def _eq_curve(freqs, preamp, bands):
+    out = np.full(len(freqs), float(preamp))
+    for f0, g, q in bands:
+        out += peaking_eq_response_db(freqs, f0, g, q, SAMPLE_RATE)
+    return out
+
+
+class TestParametricEq:
+    def test_response_peaks_at_center_with_gain(self):
+        r = peaking_eq_response_db(np.array([10.0, 1000.0, 20000.0]), 1000, 6.0, 1.0, SAMPLE_RATE)
+        assert r[1] == pytest.approx(6.0, abs=1e-6)
+        assert abs(r[0]) < 0.1
+        assert abs(r[2]) < 0.5
+
+    @pytest.mark.parametrize("bands, preamp", [
+        ([(120, 6.0, 1.0), (1000, -4.0, 2.0), (6000, 5.0, 1.5)], 0.0),
+        ([(300, -6.0, 0.8), (3000, 4.0, 3.0)], -3.0),
+    ])
+    def test_recovers_applied_eq(self, bands, preamp):
+        from scipy.signal import sosfilt
+        rng = np.random.default_rng(0)
+        x = 0.1 * rng.standard_normal(SAMPLE_RATE * 10)
+        y = x * 10 ** (preamp / 20)
+        for f0, g, q in bands:
+            y = sosfilt(_peaking_sos(f0, g, q), y)
+        ref = analyze_track(x.astype(np.float32), label="ref")
+        other = analyze_track(y.astype(np.float32), label="eq")
+        est = estimate_parametric_eq(ref.freqs, other.psd_db - ref.psd_db, n_bands=len(bands) + 2)
+
+        grid = 20 * 2 ** np.arange(0, np.log2(16000 / 20), 1 / 24)
+        fitted = _eq_curve(grid, est["preamp_db"],
+                           [(b["freq_hz"], b["gain_db"], b["q"]) for b in est["bands"]])
+        assert np.max(np.abs(fitted - _eq_curve(grid, preamp, bands))) < 0.5
+        assert est["preamp_db"] == pytest.approx(preamp, abs=0.5)
+        big = [b for b in est["bands"] if abs(b["gain_db"]) >= 1.0]
+        assert len(big) == len(bands)
+        for (f0, g, _), b in zip(sorted(bands), big):
+            assert b["freq_hz"] == pytest.approx(f0, rel=0.05)
+            assert b["gain_db"] == pytest.approx(g, abs=0.5)
+
+    def test_flat_transfer_function_has_no_bands(self):
+        freqs = np.linspace(0, 24000, 2049)
+        est = estimate_parametric_eq(freqs, np.full(freqs.size, -2.0))
+        assert est["bands"] == []
+        assert est["preamp_db"] == pytest.approx(-2.0)
+        assert est["residual_rms_db"] == pytest.approx(0.0)
+
+    def test_band_count_is_capped(self):
+        freqs = np.linspace(0, 24000, 2049)
+        delta = _eq_curve(freqs, 0.0, [(100, 6, 2), (500, -6, 2), (2000, 6, 2), (8000, -6, 2)])
+        est = estimate_parametric_eq(freqs, delta, n_bands=2)
+        assert len(est["bands"]) == 2
+        assert est["fit_range_hz"] == [20.0, 16000.0]
+
+    def test_too_few_points_returns_none(self):
+        assert estimate_parametric_eq(np.array([0.0, 10.0, 22.0]), np.zeros(3)) is None
+        assert estimate_parametric_eq(np.array([]), np.array([])) is None
+
+    def test_compare_tracks_attaches_eq(self):
+        r1 = analyze_track(_sine(1000, duration=1.0), label="a")
+        r2 = analyze_track(_sine(1000, duration=1.0) * 0.5, label="b")
+        comp = compare_tracks([r1, r2], eq_bands=1)
+        eq = comp.transfer_functions[0]["eq"]
+        assert len(eq["bands"]) <= 1
+        assert comp.to_dict()["transfer_functions"][0]["eq"] == eq

@@ -13,6 +13,7 @@ YouTube 動画またはローカル音声ファイルの周波数スペクトル
 - **Low/Intelligibility 比**: ANSI S3.5-1997 ベースの低域/明瞭度バランス評価
 - **HPF 推定**: High-Pass Filter の -3dB/-6dB ポイント + ロールオフ傾斜
 - **A/B 比較**: 最大 6 トラックの Transfer Function (PSD 差分) 計算
+- **EQ 推定**: Transfer Function からプリアンプとピーキングフィルタ (周波数・ゲイン・Q) を推定して表で表示 (CLI は `--eq-bands` でバンド数を指定)
 - **GUI**: pywebview + ローカル HTTP サーバーによるデスクトップアプリ
 - **5 種のチャート**: PSD overlay, 1/3 oct bars, Transfer function, Low-end detail, Mid-high detail
 

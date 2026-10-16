@@ -159,6 +159,7 @@ class CompareResult:
                     # compare_tracks so the frontend can surface them; the
                     # key is optional, so only include it when present.
                     **({"warning": tf["warning"]} if "warning" in tf else {}),
+                    **({"eq": tf["eq"]} if "eq" in tf else {}),
                 }
                 for tf in self.transfer_functions
             ],
@@ -495,12 +496,134 @@ def analyze_track(
     )
 
 
+EQ_BANDS_DEFAULT = 5
+EQ_FIT_RANGE = (20.0, 16000.0)
+EQ_GRID_STEP_OCT = 1 / 24
+EQ_SMOOTH_OCT = 1 / 6
+EQ_GAIN_LIMIT_DB = 24.0
+EQ_Q_RANGE = (0.3, 10.0)
+EQ_STOP_DB = 0.5
+
+
+def peaking_eq_response_db(
+    freqs: np.ndarray, f0: float, gain_db: float, q: float, sample_rate: int,
+) -> np.ndarray:
+    """Magnitude (dB) of an RBJ cookbook peaking biquad at each frequency."""
+    a = 10 ** (gain_db / 40)
+    w0 = 2 * np.pi * f0 / sample_rate
+    alpha = np.sin(w0) / (2 * q)
+    b = np.array([1 + alpha * a, -2 * np.cos(w0), 1 - alpha * a])
+    den = np.array([1 + alpha / a, -2 * np.cos(w0), 1 - alpha / a])
+    z = np.exp(-1j * 2 * np.pi * np.asarray(freqs, dtype=float) / sample_rate)
+    h = (b[0] + b[1] * z + b[2] * z ** 2) / (den[0] + den[1] * z + den[2] * z ** 2)
+    return 20 * np.log10(np.maximum(np.abs(h), 1e-12))
+
+
+def _q_from_width(grid: np.ndarray, residual: np.ndarray, idx: int) -> float:
+    """Q from the octave width where |residual| stays above half its peak."""
+    half = abs(residual[idx]) / 2
+    sign = np.sign(residual[idx])
+    lo = idx
+    while lo > 0 and sign * residual[lo - 1] > half:
+        lo -= 1
+    hi = idx
+    while hi < len(grid) - 1 and sign * residual[hi + 1] > half:
+        hi += 1
+    bw = max(math.log2(grid[hi] / grid[lo]), EQ_GRID_STEP_OCT)
+    q = math.sqrt(2 ** bw) / (2 ** bw - 1)
+    return float(np.clip(q, *EQ_Q_RANGE))
+
+
+def estimate_parametric_eq(
+    freqs: np.ndarray,
+    delta_db: np.ndarray,
+    n_bands: int = EQ_BANDS_DEFAULT,
+    sample_rate: int = SAMPLE_RATE,
+) -> dict | None:
+    """Fit a preamp gain plus up to ``n_bands`` peaking filters to a transfer function.
+
+    The transfer function is smoothed over EQ_SMOOTH_OCT and resampled onto a
+    log-frequency grid (EQ_GRID_STEP_OCT) inside EQ_FIT_RANGE, clipped below
+    0.45 * sample_rate.  Bands are added one at a time at the largest residual
+    and all parameters are refined jointly by least squares after each addition;
+    adding stops once the largest residual is below EQ_STOP_DB.  Returns None
+    when fewer than 8 grid points fall inside the fit range.
+    """
+    from scipy.optimize import least_squares
+
+    freqs = np.asarray(freqs, dtype=float)
+    delta_db = np.asarray(delta_db, dtype=float)
+    ok = np.isfinite(freqs) & np.isfinite(delta_db) & (freqs > 0)
+    freqs, delta_db = freqs[ok], delta_db[ok]
+    if freqs.size == 0:
+        return None
+    lo = EQ_FIT_RANGE[0]
+    hi = min(EQ_FIT_RANGE[1], 0.45 * sample_rate, float(freqs[-1]))
+    if hi <= lo:
+        return None
+    grid = lo * 2 ** np.arange(0, math.log2(hi / lo), EQ_GRID_STEP_OCT)
+    if grid.size < 8:
+        return None
+    half = 2 ** (EQ_SMOOTH_OCT / 2)
+    target = np.empty(grid.size)
+    for i, f in enumerate(grid):
+        sel = (freqs >= f / half) & (freqs <= f * half)
+        target[i] = float(np.mean(delta_db[sel])) if sel.any() else float(np.interp(f, freqs, delta_db))
+
+    log_lo, log_hi = math.log2(lo), math.log2(hi)
+
+    def model(p: np.ndarray) -> np.ndarray:
+        out = np.full(grid.size, p[0])
+        for k in range(1, len(p), 3):
+            out = out + peaking_eq_response_db(grid, 2 ** p[k], p[k + 1], 2 ** p[k + 2], sample_rate)
+        return out
+
+    def bounds(n: int) -> tuple[list[float], list[float]]:
+        lb = [-np.inf] + [log_lo, -EQ_GAIN_LIMIT_DB, math.log2(EQ_Q_RANGE[0])] * n
+        ub = [np.inf] + [log_hi, EQ_GAIN_LIMIT_DB, math.log2(EQ_Q_RANGE[1])] * n
+        return lb, ub
+
+    params = np.array([float(np.median(target))])
+    residual = target - model(params)
+    for _ in range(max(0, int(n_bands))):
+        idx = int(np.argmax(np.abs(residual)))
+        if abs(residual[idx]) < EQ_STOP_DB:
+            break
+        gain = float(np.clip(residual[idx], -EQ_GAIN_LIMIT_DB, EQ_GAIN_LIMIT_DB))
+        q = _q_from_width(grid, residual, idx)
+        params = np.concatenate([params, [math.log2(grid[idx]), gain, math.log2(q)]])
+        lb, ub = bounds((len(params) - 1) // 3)
+        params = np.clip(params, lb, ub)
+        fit = least_squares(lambda p: model(p) - target, params, bounds=(lb, ub))
+        params = fit.x
+        residual = target - model(params)
+
+    bands = [
+        {
+            "freq_hz": round(float(2 ** params[k]), 1),
+            "gain_db": round(float(params[k + 1]), 1),
+            "q": round(float(2 ** params[k + 2]), 2),
+        }
+        for k in range(1, len(params), 3)
+    ]
+    bands.sort(key=lambda b: b["freq_hz"])
+    return {
+        "preamp_db": round(float(params[0]), 1),
+        "bands": bands,
+        "residual_rms_db": round(float(np.sqrt(np.mean(residual ** 2))), 2),
+        "fit_range_hz": [round(lo, 1), round(hi, 1)],
+    }
+
+
 def compare_tracks(
     results: list[SpectrumResult],
+    eq_bands: int = EQ_BANDS_DEFAULT,
 ) -> CompareResult:
     """Compare multiple SpectrumResults and compute transfer functions.
 
     Transfer functions are computed against the first track (reference).
+    Each carries ``eq``: the parametric EQ that, applied to the reference,
+    approximates the other track (see estimate_parametric_eq).
     """
     if len(results) < 2:
         return CompareResult(tracks=results, transfer_functions=[])
@@ -521,6 +644,7 @@ def compare_tracks(
             "label": f"{other.label} − {ref.label}",
             "freqs": grid,
             "delta_db": delta,
+            "eq": estimate_parametric_eq(grid, delta, eq_bands, ref.sample_rate),
         }
         if ref.sample_rate != other.sample_rate:
             tf["warning"] = (

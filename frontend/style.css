@@ -424,6 +424,21 @@ h1 {
   border-radius: 4px;
 }
 
+.eq-caption {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 12px 0 4px;
+}
+
+.eq-table { margin-bottom: 0; }
+
+.eq-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 .chart-pair {
   display: flex;
   gap: 16px;
