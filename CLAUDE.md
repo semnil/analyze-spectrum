@@ -4,20 +4,20 @@ YouTube 動画またはローカル音声ファイルの周波数スペクトル
 レベル測定、スペクトル形状評価、帯域バランス解析、A/B 比較を統合的に提供する。
 analyze-loudness と同一アーキテクチャ (pywebview + ローカル HTTP サーバー) で構成。
 
-## Architecture overview
+## アーキテクチャ概要
 
 ```mermaid
 graph LR
-    A["pywebview<br>(WebView2 / WebKit)"] -->|"HTTP<br>127.0.0.1:random"| B["Local HTTP Server<br>(gui.py)"]
-    B -->|"NDJSON stream"| C["Analysis Pipeline"]
-    C --> D["yt_dlp.YoutubeDL API / local file"]
-    D --> E["ffmpeg → PCM<br>(mono + stereo float32, 48kHz)"]
-    E --> F["scipy.signal.welch<br>(spectral analysis)"]
-    F --> G["JSON response<br>{summary, spectrum, bands}"]
+    A["pywebview<br>(WebView2 / WebKit)"] -->|"HTTP<br>127.0.0.1:random"| B["ローカル HTTP サーバー<br>(gui.py)"]
+    B -->|"NDJSON stream"| C["解析パイプライン"]
+    C --> D["yt_dlp.YoutubeDL API / ローカルファイル"]
+    D --> E["ffmpeg で PCM 化<br>(mono + stereo float32, 48kHz)"]
+    E --> F["scipy.signal.welch<br>(スペクトル解析)"]
+    F --> G["JSON レスポンス<br>{summary, spectrum, bands}"]
     G --> A
 ```
 
-## Core analysis
+## 解析処理
 
 解析パイプライン:
 
@@ -25,7 +25,7 @@ graph LR
 2. **Welch PSD**: `scipy.signal.welch(data, fs=48000, nperseg=4096, noverlap=2048)`
 3. **1/3 オクターブバンド分析**: 25Hz-10kHz (27 bands), 低周波バンド (25-40Hz) は PSD 補間で推定
 4. **帯域エネルギー**: Sub (20-80Hz), Low (80-200Hz), Low-Mid (200-500Hz), Mid (500-2kHz), Presence (2-5kHz), Air (5-10kHz)
-5. **Level metrics**: RMS (dBFS), True Peak (dBTP, ITU-R BS.1770 4x oversampling), Crest Factor
+5. **レベル指標**: RMS (dBFS), True Peak (dBTP, ITU-R BS.1770 4x oversampling), Crest Factor
 6. **Low/Intelligibility 比**: `10*log10(E[20-200Hz] / E[1-5kHz])`
 7. **スペクトル重心**: `Σ(f * Pxx) / Σ(Pxx)` (80-8kHz)
 8. **Spectral Tilt**: log2(freq) vs PSD dB の線形回帰 (dB/octave)
@@ -37,12 +37,12 @@ graph LR
 
 ### 参照規格
 
-- **ITU-R BS.1770**: True Peak — 4x oversampling, per-channel measurement
+- **ITU-R BS.1770**: True Peak — 4x オーバーサンプリング、チャンネル別に測定
 - **ANSI S3.5-1997**: SII band importance function (1-5kHz が明瞭度の約 72%)
 - **IEC 60268-16:2020**: STI — Ed.5 で 125/250Hz 帯を大幅削減
 - **Upward spread of masking**: 低域が高域をマスクする非対称性
 
-### PCM 変換 (mono downmix)
+### PCM 変換 (モノラルダウンミックス)
 
 ffmpeg のデフォルト `-ac 1` は `sqrt(2)/2 * L + sqrt(2)/2 * R` の係数を使用し、
 相関したステレオ信号に +3 dB のゲインを付加する。本ツールでは
@@ -103,7 +103,7 @@ analyze-spectrum/
 └── build_assets/bin/           # ffmpeg, ffprobe, deno (git 管理外)
 ```
 
-## CLI usage
+## CLI の使い方
 
 ```
 python3 -m venv .venv            # Windows: python -m venv .venv
@@ -121,24 +121,24 @@ analyze-spectrum --compare original.m4a eq_v1.m4a eq_v2.m4a
 analyze-spectrum "https://..." --duration 2
 ```
 
-### CLI dependencies
+### CLI の依存
 
-- `yt-dlp` — URL download (Python API 経由)
-- `ffmpeg` / `ffprobe` — PCM conversion + duration probe + channel detection
-- `numpy`, `scipy` — spectral analysis
-- `matplotlib` — CLI plot output (optional)
-- `pytest` — dev dependency
+- `yt-dlp` — URL のダウンロード (Python API 経由)
+- `ffmpeg` / `ffprobe` — PCM 変換・長さの取得・チャンネル数の検出
+- `numpy`, `scipy` — スペクトル解析
+- `matplotlib` — CLI のプロット出力 (任意)
+- `pytest` — 開発用の依存
 
-## GUI usage
+## GUI の使い方
 
-### Development
+### 開発時の起動
 
 ```
 pip install -e ".[gui]"
 analyze-spectrum-gui
 ```
 
-### Build & Distribution
+### ビルドと配布
 
 ```bash
 # Windows
@@ -154,12 +154,12 @@ analyze-spectrum-gui
 
 > **注意**: 必ずプロジェクト固有の venv の python (`.venv/bin/python` / `.venv/Scripts/python`) で実行すること (グローバル規約「開発環境」)。
 
-### GUI dependencies
+### GUI の依存
 
-- `pywebview` — optional dependency
-- `numpy`, `scipy` — spectral analysis
+- `pywebview` — 任意の依存 (`gui` extra)
+- `numpy`, `scipy` — スペクトル解析
 - `yt-dlp` — Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
-- ffmpeg, ffprobe, deno — bundled in build_assets/bin/
+- ffmpeg, ffprobe, deno — `build_assets/bin/` に同梱
 - `py-analyze-common` — git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## テスト
@@ -169,21 +169,21 @@ pytest -q                                          # 全テスト
 python -m playwright install --with-deps chromium  # 初回のみ (test_frontend.py が使う)
 ```
 
-## GUI endpoints
+## GUI エンドポイント
 
-| Endpoint | Method | Description |
+| エンドポイント | メソッド | 説明 |
 |----------|--------|-------------|
-| `/analyze` | POST | URL or local file → spectral analysis. NDJSON stream. 結果はキャッシュに保存、同一ソース+duration はキャッシュから返却 |
-| `/compare` | POST | 複数トラック比較分析. NDJSON stream. 各トラックを個別キャッシュ、未キャッシュ分のみ解析。Transfer function は `_transfer_functions_from_dicts()` で再計算 |
+| `/analyze` | POST | URL またはローカルファイルのスペクトル解析。NDJSON ストリーム。結果はキャッシュに保存、同一ソース+duration はキャッシュから返却 |
+| `/compare` | POST | 複数トラック比較分析。NDJSON ストリーム。各トラックを個別キャッシュ、未キャッシュ分のみ解析。Transfer function は `_transfer_functions_from_dicts()` で再計算 |
 | `/save` | POST | 単体分析結果 JSON をネイティブダイアログで保存。`source` + `duration` パラメータ指定時はキャッシュファイルから直接コピー (再シリアライズ不要)。比較モードでは JSON 保存なし (画像のみ) |
-| `/save-image` | POST | チャート composite PNG (base64) を保存 |
+| `/save-image` | POST | チャートの合成 PNG (base64) を保存 |
 | `/load` | POST | 単体解析 JSON 読み込み (compare JSON は拒否)。複数ファイル選択対応 (`allow_multiple=True`)。スキーマバージョンチェック: 旧スキーマは `schema_outdated` フラグを返却。現行スキーマのみキャッシュ登録 |
 | `/browse` | POST | ネイティブダイアログでローカル音声ファイル選択 |
-| `/upload` | POST | Drag & Drop ファイルを一時保存 (octet-stream, max 500MB) |
+| `/upload` | POST | ドラッグ & ドロップしたファイルを一時保存 (octet-stream、最大 500MB) |
 
-## Response format (GUI NDJSON)
+## レスポンス形式 (GUI NDJSON)
 
-### Single analysis result
+### 単体解析の結果
 
 ```json
 {
@@ -231,7 +231,7 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
 }
 ```
 
-### Comparison result (NDJSON レスポンスのみ、JSON 保存・読み込みは非対応)
+### 比較の結果 (NDJSON レスポンスのみ、JSON 保存・読み込みは非対応)
 
 ```json
 {
@@ -249,30 +249,30 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
 }
 ```
 
-## Analysis parameters
+## 解析パラメータ
 
-| Parameter | Value | Rationale |
+| パラメータ | 値 | 根拠 |
 |-----------|-------|-----------|
-| Sample rate | 48000 Hz | Standard for audio production |
-| Mono downmix | `0.5*L + 0.5*R` | Preserves per-channel level (not ffmpeg default `sqrt(2)/2`) |
-| True Peak | Stereo, per-channel | ITU-R BS.1770 compliance |
-| PCM format | float32 | numpy native, no quantization |
-| Welch nperseg | 4096 | ~85ms window, good freq resolution (11.7 Hz) |
-| Welch overlap | 50% (2048) | Standard for Welch method |
-| 1/3 oct range | 25 Hz - 10 kHz | Covers full voice + music range |
-| Low/Intel bands | 20-200 / 1-5k Hz | ANSI S3.5 importance function weighted |
-| Centroid range | 80 - 8000 Hz | Voice-relevant band |
-| HPF passband ref | 300 - 600 Hz | Above typical HPF, below voice formants |
-| HF Rolloff threshold | -10 dB | Below mid-band (500-2kHz) reference |
-| True Peak oversample | 4x | ITU-R BS.1770, chunked (30s) for memory |
+| サンプルレート | 48000 Hz | 音声制作の標準 |
+| モノラルダウンミックス | `0.5*L + 0.5*R` | チャンネルあたりのレベルを保持 (ffmpeg 既定の `sqrt(2)/2` は使わない) |
+| True Peak | ステレオ、チャンネル別 | ITU-R BS.1770 準拠 |
+| PCM 形式 | float32 | numpy でそのまま扱え、量子化が無い |
+| Welch nperseg | 4096 | 窓長 約 85ms、周波数分解能 11.7 Hz |
+| Welch オーバーラップ | 50% (2048) | Welch 法の標準 |
+| 1/3 オクターブ範囲 | 25 Hz - 10 kHz | 声と音楽の帯域を覆う |
+| Low/Intel 帯域 | 20-200 / 1-5k Hz | ANSI S3.5 の重要度関数による重み付け |
+| 重心の範囲 | 80 - 8000 Hz | 声に関わる帯域 |
+| HPF passband 基準 | 300 - 600 Hz | 一般的な HPF より上、声のフォルマントより下 |
+| HF Rolloff しきい値 | -10 dB | Mid 帯域 (500-2kHz) の基準からの低下量 |
+| True Peak オーバーサンプリング | 4x | ITU-R BS.1770。メモリ節約のため 30 秒単位で分割処理 |
 
-## Design decisions
+## 設計判断
 
 ### アクセントカラー
 
 analyze-spectrum はブルー系 (`--accent: #1565C0`)、analyze-loudness はパープル系 (`--accent: #9C27B0`)。ドメインで色を分離: ブルー = 周波数スペクトル、パープル = ラウドネス (音量)。CSS 変数名は両プロジェクトで異なる (`--text` vs `--fg`, `--bg-card` vs `--surface`, `--text-secondary` vs `--fg-muted`)。
 
-### yt-dlp Python API (not bundled binary)
+### yt-dlp は Python API で利用 (バイナリは同梱しない)
 
 `yt_dlp.YoutubeDL` を Python ライブラリとして直接呼び出し、`FFmpegExtractAudio` postprocessor で音声抽出。バイナリ同梱を避けることで、macOS 向けの codesign 再署名で発生する Team ID 不一致問題 (onefile バイナリ内部の Python.framework が再署名できず hardened runtime で拒否される) を根本的に回避している。
 
@@ -312,8 +312,8 @@ analyze-loudness に未実装だった比較機能をコア仕様として取り
 
 ### フロントエンドチャート
 
-uPlot (log-freq PSD overlay) + Canvas 自前描画 (1/3 oct bars, transfer function,
-low-end detail, mid-high detail)。analyze-loudness と同じ vendor 構成。
+uPlot (対数周波数の PSD 重ね描き) + Canvas 自前描画 (1/3 オクターブ棒グラフ、transfer function、
+低域の詳細、中高域の詳細)。analyze-loudness と同じ vendor 構成。
 
 ### 結果キャッシュ (GUI)
 
@@ -376,7 +376,7 @@ PyInstaller の `EXE(icon=...)` は EXE ファイル自体のアイコン (エ�
 
 pywebview 6.x の `parse_file_type()` は `file_types` の description 部分を `[\w ]+` で検証する。スラッシュ (`/`) やハイフン (`-`) 等を含むと `ValueError` になるため、description はスペース区切りの英数字のみで記述する (例: "Audio Video Files")。
 
-### WebView2 Drag & Drop
+### WebView2 のドラッグ & ドロップ
 
 `AllowExternalDrop = False` を pywebview の `shown` + `loaded` イベントで設定。
 JavaScript 側は window capture フェーズで `stopImmediatePropagation` により
@@ -403,7 +403,7 @@ WebView2 ネイティブハンドラへの伝播を遮断。
 
 バージョンバンプ時は `__init__.py` の `__version__` のみ変更する。
 
-## Known limitations
+## 既知の制約
 
 - 比較は最大 6 トラック (チャートの可読性)
 - リアルタイム入力 (マイク) は対象外
