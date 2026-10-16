@@ -142,6 +142,7 @@ h1 {
 }
 
 .theme-toggle { font-size: 16px; }
+.theme-toggle svg { display: block; margin: 0 auto; }
 .lang-toggle { font-size: 13px; font-weight: 600; }
 
 .theme-toggle:hover,
