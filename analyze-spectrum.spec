@@ -33,6 +33,7 @@ a = Analysis(
     binaries=_BINARIES,
     datas=[
         (os.path.join(ROOT, "frontend"), "frontend"),
+        (os.path.join(ROOT, "vendor/py-analyze-common/src/analyze_common/web/common.css"), "analyze_common/web"),
         (os.path.join(ROOT, "THIRD_PARTY_LICENSES.txt"), "."),
         (os.path.join(ROOT, "build_assets/icon.ico"), "build_assets"),
     ],
@@ -48,6 +49,7 @@ a = Analysis(
         "analyze_common.ffmpeg",
         "analyze_common.download",
         "analyze_common.json_util",
+        "analyze_common.web",
         "webview",
         "scipy.signal._signaltools",
     ],
