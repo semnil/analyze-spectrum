@@ -8,7 +8,7 @@ analyze-loudness と同一アーキテクチャ (pywebview + ローカル HTTP �
 
 ```mermaid
 graph LR
-    A["pywebview<br/>(WebView2)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
+    A["pywebview<br/>(WebView2 / WebKit)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
     B -->|"NDJSON stream"| C["Analysis Pipeline"]
     C --> D["yt_dlp.YoutubeDL API / local file"]
     D --> E["ffmpeg → PCM<br/>(mono + stereo float32, 48kHz)"]
@@ -106,7 +106,7 @@ analyze-spectrum/
 ## CLI usage
 
 ```
-python -m venv .venv
+python3 -m venv .venv            # Windows: python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
@@ -190,7 +190,7 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
   "type": "result",
   "data": {
     "meta": {
-      "version": "0.9.0",
+      "version": "X.Y.Z",
       "schema_version": 1,
       "analyzed_at": "2026-04-03T12:34:56+00:00",
       "source": "recording.m4a"
@@ -332,7 +332,7 @@ low-end detail, mid-high detail)。analyze-loudness と同じ vendor 構成。
 ページロード時のちらつきを防ぐ 2 段構成:
 
 - **フロントエンド** (`frontend/index.html`): `<head>` 内インライン `<script>` で CSS ペイント前に `localStorage` からテーマを解決し、`<html>` に `data-theme` 属性を付与
-- **バックエンド** (`gui.py` の `_resolve_background_color()`): WebView2 LevelDB (localStorage プロファイル) を読み取り、未解決時は Windows レジストリの `AppsUseLightTheme` にフォールバックして pywebview の `background_color` を設定
+- **バックエンド** (`gui.py` の `_resolve_background_color()`): localStorage プロファイル (Windows は WebView2 の LevelDB、macOS は WebKit の `WebsiteData/LocalStorage`) を読み取り、未解決時は OS のダークモード設定 (`analyze_common.theme.is_dark_mode()`: Windows はレジストリの `AppsUseLightTheme`、macOS は `AppleInterfaceStyle`) にフォールバックして pywebview の `background_color` を設定
 
 ### Load JSON 保留ソース保持
 
