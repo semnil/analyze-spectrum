@@ -49,58 +49,64 @@ ffmpeg のデフォルト `-ac 1` は `sqrt(2)/2 * L + sqrt(2)/2 * R` の係数�
 `pan=mono|c0=0.5*c0+0.5*c1` を使用してチャンネルあたりのレベルを保持する。
 True Peak は ITU-R BS.1770 に従いステレオ PCM で各チャンネル個別に測定する。
 
-## Project structure
+## ディレクトリ構成
 
-```
-analyze-spectrum/
-├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ), workflow-checks.yml (全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査), workflow-checks-test.yml (検査のフィクスチャテストを実行)
-├── .github/tests/              # workflow-checks-test.sh (workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト)
-├── CLAUDE.md
-├── README.md
-├── pyproject.toml
-├── src/analyze_spectrum/
-│   ├── __init__.py             # vendor への sys.path 注入, SCHEMA_VERSION, make_meta()
-│   ├── __main__.py
-│   ├── analysis.py             # spectral analysis core
-│   ├── cli.py                  # argparse + CLI orchestration
-│   ├── gui.py                  # pywebview + local HTTP server
-│   ├── download.py             # yt_dlp.YoutubeDL API, ffprobe duration
-│   └── pcm.py                  # ffmpeg → PCM conversion (mono + stereo)
-├── frontend/
-│   ├── index.html
-│   ├── main.js                 # fetch + NDJSON progress + DOM rendering + theme toggle
-│   ├── i18n.js                 # en/ja DICT + window.i18n.t / setLang
-│   ├── style.css
-│   ├── charts/
-│   │   ├── spectrum.js         # PSD overlay (log-freq, multi-track)
-│   │   ├── octave.js           # 1/3 octave grouped bar chart
-│   │   ├── transfer.js         # transfer function (Δ dB)
-│   │   ├── lowend.js           # low-end detail (20-500Hz linear)
-│   │   └── midhigh.js          # mid-high detail (500Hz-20kHz log)
-│   └── vendor/                 # uPlot (bundled)
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py             # shared WAV fixture (_make_wav_bytes, wav_file, wav_file_b)
-│   ├── test_analysis.py
-│   ├── test_pcm.py
-│   ├── test_cli.py
-│   ├── test_gui.py
-│   ├── test_integration.py     # HTTP integration tests (real HTTPServer, no pywebview)
-│   ├── test_dialog_busy.py     # ネイティブダイアログの排他 (_dialog_lock)
-│   ├── test_frontend.py        # Playwright headless Chromium runner
-│   └── frontend/
-│       ├── test_ui.html        # test harness page
-│       └── test_ui.js          # browser-based UI state tests
-├── docs/
-│   ├── architecture.md
-│   ├── screenshot.png
-│   └── security-audit.md
-├── vendor/py-analyze-common/   # git submodule (sys.path 注入で利用)
-├── build.py
-├── analyze-spectrum.spec
-├── installer.iss
-├── THIRD_PARTY_LICENSES.txt
-└── build_assets/bin/           # ffmpeg, ffprobe, deno (git 管理外)
+```mermaid
+graph LR
+    root["analyze-spectrum/"]
+    root --> wf[".github/workflows/"]
+    wf --> wf_ci["ci.yaml<br>PR / push"]
+    wf --> wf_rel["release.yaml<br>v* タグ"]
+    wf --> wf_chk["workflow-checks.yml<br>全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査"]
+    wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストを実行"]
+    root --> ght[".github/tests/"]
+    ght --> ght_sh["workflow-checks-test.sh<br>workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト"]
+    root --> r_claude["CLAUDE.md"]
+    root --> r_readme["README.md"]
+    root --> r_pyproj["pyproject.toml"]
+    root --> src["src/analyze_spectrum/"]
+    src --> src_init["__init__.py<br>vendor への sys.path 注入、SCHEMA_VERSION、make_meta()"]
+    src --> src_main["__main__.py"]
+    src --> src_ana["analysis.py<br>スペクトル解析の本体"]
+    src --> src_cli["cli.py<br>argparse と CLI の処理の流れ"]
+    src --> src_gui["gui.py<br>pywebview とローカル HTTP サーバー"]
+    src --> src_dl["download.py<br>yt_dlp.YoutubeDL API、ffprobe による長さの取得"]
+    src --> src_pcm["pcm.py<br>ffmpeg による PCM 変換 (mono + stereo)"]
+    root --> fe["frontend/"]
+    fe --> fe_idx["index.html"]
+    fe --> fe_main["main.js<br>fetch、NDJSON の進捗、DOM 描画、テーマ切替"]
+    fe --> fe_i18n["i18n.js<br>en/ja の DICT と window.i18n.t / setLang"]
+    fe --> fe_css["style.css"]
+    fe --> ch["charts/"]
+    ch --> ch_spec["spectrum.js<br>PSD の重ね描き (対数周波数、複数トラック)"]
+    ch --> ch_oct["octave.js<br>1/3 オクターブのグループ棒グラフ"]
+    ch --> ch_tf["transfer.js<br>transfer function (Δ dB)"]
+    ch --> ch_low["lowend.js<br>低域の詳細 (20-500Hz、線形)"]
+    ch --> ch_mh["midhigh.js<br>中高域の詳細 (500Hz-20kHz、対数)"]
+    fe --> fe_vendor["vendor/<br>uPlot (同梱)"]
+    root --> t["tests/"]
+    t --> t_init["__init__.py"]
+    t --> t_conf["conftest.py<br>共有 WAV フィクスチャ (_make_wav_bytes, wav_file, wav_file_b)"]
+    t --> t_ana["test_analysis.py"]
+    t --> t_pcm["test_pcm.py"]
+    t --> t_cli["test_cli.py"]
+    t --> t_gui["test_gui.py"]
+    t --> t_int["test_integration.py<br>HTTP 統合テスト (実 HTTPServer、pywebview なし)"]
+    t --> t_dlg["test_dialog_busy.py<br>ネイティブダイアログの排他 (_dialog_lock)"]
+    t --> t_fe["test_frontend.py<br>Playwright headless Chromium の実行役"]
+    t --> tf["frontend/"]
+    tf --> tf_html["test_ui.html<br>テストハーネスのページ"]
+    tf --> tf_js["test_ui.js<br>ブラウザ上の UI 状態テスト"]
+    root --> docs["docs/"]
+    docs --> docs_arch["architecture.md"]
+    docs --> docs_shot["screenshot.png"]
+    docs --> docs_sec["security-audit.md"]
+    root --> vend["vendor/py-analyze-common/<br>git submodule (sys.path 注入で利用)"]
+    root --> r_build["build.py"]
+    root --> r_spec["analyze-spectrum.spec"]
+    root --> r_iss["installer.iss"]
+    root --> r_lic["THIRD_PARTY_LICENSES.txt"]
+    root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (git 管理外)"]
 ```
 
 ## CLI の使い方
