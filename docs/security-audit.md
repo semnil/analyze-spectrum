@@ -265,20 +265,20 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 
 ```mermaid
 graph TD
-    A["User Input<br/>(URL / local path / drop file)"] --> B{"gui.py<br/>validation"}
+    A["User Input<br>(URL / local path / drop file)"] --> B{"gui.py<br>validation"}
     B -->|"invalid"| C["400/413 error"]
-    B -->|"drop file"| U["/upload<br/>sanitize + size + ext"]
+    B -->|"drop file"| U["/upload<br>sanitize + size + ext"]
     U --> D["resolve_source"]
     B -->|"valid"| D
-    D --> E1["yt_dlp.YoutubeDL<br/>(Python API)"]
-    D --> E2["ffprobe / ffmpeg<br/>(subprocess list args)"]
-    E1 --> F["NDJSON response<br/>(127.0.0.1 only)"]
+    D --> E1["yt_dlp.YoutubeDL<br>(Python API)"]
+    D --> E2["ffprobe / ffmpeg<br>(subprocess list args)"]
+    E1 --> F["NDJSON response<br>(127.0.0.1 only)"]
     E2 --> F
-    F --> G["pywebview<br/>(WebView sandbox)"]
-    G -->|"Save JSON"| H["Native file dialog<br/>-> write JSON"]
-    G -->|"Save Image"| I["Native file dialog<br/>-> write PNG"]
-    G -->|"Load JSON"| J["Native file dialog<br/>-> read JSON -> render()"]
-    G -->|"Browse"| K["Native file dialog<br/>-> return path"]
+    F --> G["pywebview<br>(WebView sandbox)"]
+    G -->|"Save JSON"| H["Native file dialog<br>-> write JSON"]
+    G -->|"Save Image"| I["Native file dialog<br>-> write PNG"]
+    G -->|"Load JSON"| J["Native file dialog<br>-> read JSON -> render()"]
+    G -->|"Browse"| K["Native file dialog<br>-> return path"]
 ```
 
 ## Compliance Notes
