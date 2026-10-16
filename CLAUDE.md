@@ -121,7 +121,7 @@ analyze-spectrum "https://www.youtube.com/watch?v=XXXXX"
 analyze-spectrum ./recording.m4a
 
 # A/B comparison
-analyze-spectrum --compare original.m4a eq_v1.m4a eq_v2.m4a
+analyze-spectrum original.m4a eq_v1.m4a eq_v2.m4a
 
 # Duration limit (middle extraction)
 analyze-spectrum "https://..." --duration 2
