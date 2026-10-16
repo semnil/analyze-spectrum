@@ -581,17 +581,19 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant REG as Windows Registry
-    participant LDB as WebView2 LevelDB
+    participant OS as OS dark mode setting
+    participant LS as localStorage profile
     participant PY as gui.py
     participant HTML as index.html
     participant CSS as style.css
 
-    PY->>LDB: localStorage["spectrum-theme"] 読み取り
-    LDB-->>PY: "light" / "dark" / "auto" / (not found)
-    PY->>REG: AppsUseLightTheme (フォールバック)
-    REG-->>PY: 0 or 1
-    PY->>PY: _resolve_background_color() → "#1e1e1e" or "#f5f5f5"
+    Note over LS: Windows: WebView2 LevelDB<br>macOS: WebKit WebsiteData/LocalStorage
+    PY->>LS: localStorage["spectrum-theme"] 読み取り
+    LS-->>PY: "light" / "dark" / (not found)
+    PY->>OS: is_dark_mode() (フォールバック)
+    Note over OS: Windows: AppsUseLightTheme<br>macOS: AppleInterfaceStyle
+    OS-->>PY: dark or light
+    PY->>PY: _resolve_background_color() returns "#1a1a2e" or "#fafafa"
     PY->>PY: webview.create_window(background_color=bg)
 
     Note over HTML: <head> inline script
