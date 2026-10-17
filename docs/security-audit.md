@@ -183,7 +183,7 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 - **Risk**: VERY LOW
 - **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_handle_load`, `_handle_browse`
 - **Analysis**:
-  - `/load`: ユーザー選択パスから JSON を読み込み、`spectrum` フィールドの存在を検証。`tracks` キーを含む古い compare 形式は明示的に 400 で拒否 (loading individual tracks への誘導)。`schema_version` が古い場合は再分析を促す
+  - `/load`: ユーザー選択パスから JSON を読み込み、`spectrum` フィールドの存在を検証。`tracks` キーを含む古い compare 形式は明示的に 400 で拒否 (loading individual tracks への誘導)。描画に要る項目が欠けている場合は再分析を促し、`meta.schema_version` が整数でなければ 400 で拒否
   - `/browse`: 音声ファイル選択ダイアログを開き、選択パスを返却するのみ (読み込みや実行は行わない)
   - どちらも `OSError` / `JSONDecodeError` を catch しエラーレスポンスを返却
   - 127.0.0.1 + ランダムポートのため外部からの呼び出し不可

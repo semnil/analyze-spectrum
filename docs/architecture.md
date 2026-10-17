@@ -550,7 +550,7 @@ flowchart TD
     IT --> A["/analyze — cache hit/miss, duration limit"]
     IT --> B["/compare — track-level caching"]
     IT --> C["/save — direct cache copy"]
-    IT --> D["/load — single/multi, schema version check, cache registration"]
+    IT --> D["/load — single/multi, required-field check, cache registration"]
     IT --> E["/upload — octet-stream, 500MB limit, error cases"]
 ```
 
