@@ -112,6 +112,31 @@ class SpectrumResult:
         return _json_safe(d)
 
 
+def missing_result_fields(data: dict) -> list[str]:
+    """Return the dotted paths of structural fields a serialized result lacks.
+
+    These are the containers and series the GUI renders from; scalar metrics
+    are not listed because the GUI displays an absent scalar as a placeholder.
+    """
+    missing = []
+    for group, keys in (("spectrum", ("freqs", "psd_db")),
+                        ("bands", ("centers", "energy_db"))):
+        obj = data.get(group)
+        for k in keys:
+            if not isinstance(obj, dict) or not isinstance(obj.get(k), list):
+                missing.append(f"{group}.{k}")
+    summary = data.get("summary")
+    band_energy = summary.get("band_energy") if isinstance(summary, dict) else None
+    if not isinstance(summary, dict):
+        missing.append("summary")
+    elif not isinstance(band_energy, dict):
+        missing.append("summary.band_energy")
+    else:
+        missing.extend(f"summary.band_energy.{k}" for k in BAND_DEFS
+                       if k not in band_energy)
+    return missing
+
+
 from analyze_common.json_util import json_safe as _json_safe  # noqa: E402
 
 

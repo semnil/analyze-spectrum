@@ -183,7 +183,7 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 - **Risk**: VERY LOW
 - **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_handle_load`, `_handle_browse`
 - **Analysis**:
-  - `/load`: ユーザー選択パスから JSON を読み込み、`spectrum` フィールドの存在を検証。`tracks` キーを含む古い compare 形式は明示的に 400 で拒否 (loading individual tracks への誘導)。`schema_version` が古い場合は再分析を促す
+  - `/load`: ユーザー選択パスから JSON を読み込み、`spectrum` フィールドの存在を検証。`tracks` キーを含む古い compare 形式は明示的に 400 で拒否 (loading individual tracks への誘導)。描画に要る項目が欠けている場合は再分析を促し、`meta.schema_version` が整数でなければ 400 で拒否
   - `/browse`: 音声ファイル選択ダイアログを開き、選択パスを返却するのみ (読み込みや実行は行わない)
   - どちらも `OSError` / `JSONDecodeError` を catch しエラーレスポンスを返却
   - 127.0.0.1 + ランダムポートのため外部からの呼び出し不可
@@ -266,20 +266,20 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 
 ```mermaid
 graph TD
-    A["User Input<br/>(URL / local path / drop file)"] --> B{"gui.py<br/>validation"}
+    A["User Input<br>(URL / local path / drop file)"] --> B{"gui.py<br>validation"}
     B -->|"invalid"| C["400/413 error"]
-    B -->|"drop file"| U["/upload<br/>sanitize + size + ext"]
+    B -->|"drop file"| U["/upload<br>sanitize + size + ext"]
     U --> D["resolve_source"]
     B -->|"valid"| D
-    D --> E1["yt_dlp.YoutubeDL<br/>(Python API)"]
-    D --> E2["ffprobe / ffmpeg<br/>(subprocess list args)"]
-    E1 --> F["NDJSON response<br/>(127.0.0.1 only)"]
+    D --> E1["yt_dlp.YoutubeDL<br>(Python API)"]
+    D --> E2["ffprobe / ffmpeg<br>(subprocess list args)"]
+    E1 --> F["NDJSON response<br>(127.0.0.1 only)"]
     E2 --> F
-    F --> G["pywebview<br/>(WebView sandbox)"]
-    G -->|"Save JSON"| H["Native file dialog<br/>-> write JSON"]
-    G -->|"Save Image"| I["Native file dialog<br/>-> write PNG"]
-    G -->|"Load JSON"| J["Native file dialog<br/>-> read JSON -> render()"]
-    G -->|"Browse"| K["Native file dialog<br/>-> return path"]
+    F --> G["pywebview<br>(WebView sandbox)"]
+    G -->|"Save JSON"| H["Native file dialog<br>-> write JSON"]
+    G -->|"Save Image"| I["Native file dialog<br>-> write PNG"]
+    G -->|"Load JSON"| J["Native file dialog<br>-> read JSON -> render()"]
+    G -->|"Browse"| K["Native file dialog<br>-> return path"]
 ```
 
 ## Compliance Notes

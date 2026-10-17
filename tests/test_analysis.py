@@ -16,6 +16,7 @@ from analyze_spectrum.analysis import (
     compute_third_octave_bands,
     compute_welch,
     estimate_hpf,
+    missing_result_fields,
 )
 
 
@@ -267,3 +268,40 @@ class TestCompareTracks:
         assert len(comp.transfer_functions) == 1
         tf = comp.transfer_functions[0]
         assert len(tf["delta_db"]) == len(r1.freqs)
+
+
+class TestMissingResultFields:
+    def _result(self):
+        return analyze_track(_sine(1000), label="t").to_dict()
+
+    def test_serialized_result_is_complete(self):
+        assert missing_result_fields(self._result()) == []
+
+    @pytest.mark.parametrize("drop, expected", [
+        (("spectrum",), ["spectrum.freqs", "spectrum.psd_db"]),
+        (("spectrum", "psd_db"), ["spectrum.psd_db"]),
+        (("bands",), ["bands.centers", "bands.energy_db"]),
+        (("bands", "centers"), ["bands.centers"]),
+        (("summary",), ["summary"]),
+        (("summary", "band_energy"), ["summary.band_energy"]),
+        (("summary", "band_energy", "air_5k_10k"), ["summary.band_energy.air_5k_10k"]),
+    ])
+    def test_reports_each_missing_field(self, drop, expected):
+        d = self._result()
+        parent = d
+        for k in drop[:-1]:
+            parent = parent[k]
+        del parent[drop[-1]]
+        assert missing_result_fields(d) == expected
+
+    def test_wrong_container_type_counts_as_missing(self):
+        d = self._result()
+        d["spectrum"]["freqs"] = "not a list"
+        d["summary"]["band_energy"] = []
+        assert missing_result_fields(d) == ["spectrum.freqs", "summary.band_energy"]
+
+    def test_absent_scalar_metric_is_not_missing(self):
+        d = self._result()
+        del d["summary"]["crest_factor_db"]
+        del d["rms_dbfs"]
+        assert missing_result_fields(d) == []

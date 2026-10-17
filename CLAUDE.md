@@ -184,7 +184,7 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
 | `/compare` | POST | 複数トラック比較分析。NDJSON ストリーム。各トラックを個別キャッシュ、未キャッシュ分のみ解析。Transfer function は `_transfer_functions_from_dicts()` で再計算 |
 | `/save` | POST | 単体分析結果 JSON をネイティブダイアログで保存。`source` + `duration` パラメータ指定時はキャッシュファイルから直接コピー (再シリアライズ不要)。比較モードでは JSON 保存なし (画像のみ) |
 | `/save-image` | POST | チャートの合成 PNG (base64) を保存 |
-| `/load` | POST | 単体解析 JSON 読み込み (compare JSON は拒否)。複数ファイル選択対応 (`allow_multiple=True`)。スキーマバージョンチェック: 旧スキーマは `schema_outdated` フラグを返却。現行スキーマのみキャッシュ登録 |
+| `/load` | POST | 単体解析 JSON 読み込み (compare JSON は拒否)。複数ファイル選択対応 (`allow_multiple=True`)。描画に要る項目 (`missing_result_fields()`) が欠けた単一ファイルは `schema_outdated` フラグを返却。項目が揃ったものだけキャッシュ登録。`meta.schema_version` が整数でなければ 400 |
 | `/browse` | POST | ネイティブダイアログでローカル音声ファイル選択 |
 | `/upload` | POST | ドラッグ & ドロップしたファイルを一時保存 (octet-stream、最大 500MB) |
 
@@ -331,7 +331,7 @@ uPlot (対数周波数の PSD 重ね描き) + Canvas 自前描画 (1/3 オクタ
 - **単体分析**: `/analyze` の結果を temp JSON として保存。再リクエスト時はキャッシュから返却
 - **比較分析**: `/compare` はトラック単位でキャッシュ参照。未キャッシュ分のみ解析を実行し、transfer function は全トラックの dict から `_transfer_functions_from_dicts()` で再計算
 - **Save 最適化**: `/save` でフロントエンドから `source` + `duration` を受信した場合、キャッシュファイルを直接コピー (再シリアライズ回避)
-- **Load → キャッシュ登録**: `/load` で読み込んだデータ (現行スキーマのみ) をキャッシュに登録し、後続の Save や Compare で再利用
+- **Load → キャッシュ登録**: `/load` で読み込んだデータ (描画に要る項目が揃ったもののみ) をキャッシュに登録し、後続の Save や Compare で再利用
 - **フロントエンド状態追跡**: `lastSource`, `lastDuration` で直近の分析コンテキストを保持し、Save 時のキャッシュ参照に使用
 
 ### ホワイトフラッシュ防止
@@ -354,9 +354,9 @@ uPlot (対数周波数の PSD 重ね描き) + Canvas 自前描画 (1/3 オクタ
 唯一の定義元は `src/analyze_spectrum/__init__.py` の `SCHEMA_VERSION` (整数)。`gui.py` は `_SCHEMA_VERSION` として別名 import し、`meta` は同ファイルの `make_meta()` が組み立てる。
 
 - `meta.version`: アプリバージョン (表示用)
-- `meta.schema_version`: スキーマバージョン (互換性判定用)
-- `/load` 時にスキーマバージョンを比較し、旧スキーマの場合は `schema_outdated` フラグを返却
-- 旧スキーマデータはキャッシュに登録しない (再解析時に最新スキーマで再取得)
+- `meta.schema_version`: スキーマバージョン。`/load` は整数であること (無くてもよい) だけを検証し、値では互換性を判定しない
+- 互換性は**バージョン番号ではなく項目の有無で判定する**。描画に要る項目の一覧は `analysis.py` の `missing_result_fields()` が唯一の定義元で、`spectrum.freqs` / `spectrum.psd_db` / `bands.centers` / `bands.energy_db` / `summary.band_energy` の各帯域を見る。数値指標の欠落は対象外 (画面では `?` と表示する)
+- 項目が欠けた単一ファイルは `schema_outdated` フラグを返却し、キャッシュに登録しない (再解析で最新の形式を取得)。複数ファイルの読み込みでも、項目が欠けたものはキャッシュに登録しない
 - Compare JSON の保存・読み込みは廃止 (単体解析結果のみ)
 
 ### フロントエンド状態管理

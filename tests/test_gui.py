@@ -3,6 +3,7 @@
 import importlib
 import json
 import os
+import threading
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -273,3 +274,42 @@ class TestTransferFunctionsFromDicts:
         # Verify values are rounded to 2 decimal places
         for v in result[0]["delta_db"]:
             assert v == round(v, 2)
+
+
+def _parallel_get_failures(server, rounds=5, parallel=24):
+    """Open ``parallel`` connections at once per round; return the failed requests."""
+    import socket
+    port = server.server_address[1]
+    failures = []
+
+    def one():
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=10) as s:
+                s.sendall(b"GET /index.html HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+                data = b""
+                while chunk := s.recv(65536):
+                    data += chunk
+            if not data.startswith(b"HTTP/1.0 200"):
+                failures.append(data[:40])
+        except OSError as e:
+            failures.append(type(e).__name__)
+
+    for _ in range(rounds):
+        threads = [threading.Thread(target=one) for _ in range(parallel)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    return failures
+
+
+class TestHTTPServerBacklog:
+    def test_parallel_page_load_connections_are_all_served(self, _mock_webview):
+        gui_mod = _mock_webview
+        srv = gui_mod._HTTPServer(("127.0.0.1", 0), gui_mod.AnalyzeHandler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            assert _parallel_get_failures(srv) == []
+        finally:
+            srv.shutdown()
+            srv.server_close()

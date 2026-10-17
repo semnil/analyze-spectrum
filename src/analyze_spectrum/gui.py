@@ -22,7 +22,7 @@ import numpy as np
 import webview
 
 from analyze_spectrum import SCHEMA_VERSION as _SCHEMA_VERSION, __version__, make_meta as _make_meta
-from analyze_spectrum.analysis import _json_safe, analyze_track
+from analyze_spectrum.analysis import _json_safe, analyze_track, missing_result_fields
 from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
 
@@ -710,23 +710,32 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             if "spectrum" not in data:
                 self._json_error(400, f"Invalid analysis JSON: {Path(fp).name}")
                 return
+            # meta.schema_version is optional; when present it must be a plain
+            # int (bool is a subclass of int and is rejected).  Its value does
+            # not decide compatibility — the presence of fields does.
+            meta = data.get("meta")
+            if isinstance(meta, dict) and "schema_version" in meta:
+                sv = meta["schema_version"]
+                if not isinstance(sv, int) or isinstance(sv, bool):
+                    self._json_error(
+                        400,
+                        f"Invalid analysis JSON: meta.schema_version must be an integer: "
+                        f"{Path(fp).name}",
+                    )
+                    return
             items.append(data)
 
         if len(items) == 1:
             data = items[0]
             resp = {"loaded": True, "type": "single", "data": data}
-            # Schema version check for single file load.  Treat meta as an
-            # empty dict when missing or explicitly null so chained .get()
-            # calls never raise AttributeError on old / hand-edited JSON.
+            # A result lacking any field the GUI renders from is outdated: the
+            # client offers re-analysis of its source instead of caching it.
+            # Treat meta as an empty dict when missing or explicitly null so
+            # chained .get() calls never raise AttributeError.
             meta = data.get("meta")
             if not isinstance(meta, dict):
                 meta = {}
-            schema_ver = meta.get("schema_version", 0)
-            # Defend against malformed JSON: coerce non-int values to 0 so the
-            # '<' comparison below cannot raise TypeError (str vs int).
-            if not isinstance(schema_ver, int) or isinstance(schema_ver, bool):
-                schema_ver = 0
-            if schema_ver < _SCHEMA_VERSION:
+            if missing_result_fields(data):
                 source = meta.get("source", "")
                 if not isinstance(source, str):
                     source = ""
@@ -743,8 +752,11 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 self._cache_loaded(data)
             self._json_response(200, resp)
         else:
+            # Outdated items are returned for the queue but not cached, so a
+            # later Compare re-analyzes their sources.
             for data in items:
-                self._cache_loaded(data)
+                if not missing_result_fields(data):
+                    self._cache_loaded(data)
             self._json_response(200, {"loaded": True, "type": "multi", "items": items})
 
     @staticmethod
@@ -967,13 +979,20 @@ def _resolve_background_color(storage_key: str) -> str:
     return _BG_DARK if mode == "dark" else _BG_LIGHT
 
 
+class _HTTPServer(ThreadingHTTPServer):
+    """Loopback server whose listen backlog holds the burst of connections a
+    webview opens while loading the page and its scripts in parallel."""
+
+    request_queue_size = 64
+
+
 def main():
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):
         bin_dir = str(Path(sys._MEIPASS) / "bin")
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), AnalyzeHandler)
+    server = _HTTPServer(("127.0.0.1", 0), AnalyzeHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
