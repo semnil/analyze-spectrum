@@ -25,6 +25,7 @@ from analyze_spectrum import SCHEMA_VERSION as _SCHEMA_VERSION, __version__, mak
 from analyze_spectrum.analysis import _json_safe, analyze_track, estimate_parametric_eq, missing_result_fields
 from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
+from analyze_common.web import COMMON_CSS
 
 # Temporary directory for uploaded (drag & drop) files, cleaned up on exit
 _upload_dir = tempfile.mkdtemp(prefix="spectrum_uploads_")
@@ -287,10 +288,28 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return None
         return result if isinstance(result, str) else result[0]
 
+    _COMMON_CSS_URL = "/common/common.css"
+
     def do_GET(self):
         if not self._check_host():
             return
+        if self.path.split("?", 1)[0] == self._COMMON_CSS_URL:
+            self._send_common_css()
+            return
         super().do_GET()
+
+    def _send_common_css(self):
+        """Serve analyze_common's shared stylesheet, which lives outside FRONTEND_DIR."""
+        try:
+            body = COMMON_CSS.read_bytes()
+        except OSError:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/css; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
         if not self._check_host():

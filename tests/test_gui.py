@@ -316,3 +316,32 @@ class TestHTTPServerBacklog:
         finally:
             srv.shutdown()
             srv.server_close()
+
+
+class TestCommonCss:
+    def _get(self, handler_class, path):
+        import http.client
+        from http.server import HTTPServer
+        srv = HTTPServer(("127.0.0.1", 0), handler_class)
+        t = threading.Thread(target=srv.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
+        conn.request("GET", path, headers={"Host": "127.0.0.1"})
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        t.join(timeout=5)
+        srv.server_close()
+        return resp, body
+
+    def test_common_css_served_from_analyze_common(self, _mock_webview):
+        from analyze_common.web import COMMON_CSS
+        resp, body = self._get(_mock_webview.AnalyzeHandler, "/common/common.css?v=1")
+        assert resp.status == 200
+        assert resp.getheader("Content-Type").startswith("text/css")
+        assert body == COMMON_CSS.read_bytes()
+
+    def test_index_loads_common_css_before_style_css(self, _mock_webview):
+        from pathlib import Path
+        html = (Path(_mock_webview.FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
+        assert 0 <= html.index('href="common/common.css"') < html.index('href="style.css"')
