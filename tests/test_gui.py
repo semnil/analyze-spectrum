@@ -345,3 +345,42 @@ class TestCommonCss:
         from pathlib import Path
         html = (Path(_mock_webview.FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
         assert 0 <= html.index('href="common/common.css"') < html.index('href="style.css"')
+
+
+class TestContentTypeGate:
+    """Simple (no-preflight) cross-origin content types are refused."""
+
+    def _post(self, gui_mod, path, body, headers):
+        import http.client
+        from http.server import HTTPServer
+        srv = HTTPServer(("127.0.0.1", 0), gui_mod.AnalyzeHandler)
+        t = threading.Thread(target=srv.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
+        conn.request("POST", path, body=body, headers={"Content-Length": str(len(body)), **headers})
+        resp = conn.getresponse()
+        data = resp.read()
+        conn.close()
+        t.join(timeout=5)
+        srv.server_close()
+        return resp.status, data
+
+    @pytest.mark.parametrize("ctype", ["text/plain", "application/x-www-form-urlencoded", ""])
+    def test_analyze_rejects_simple_types(self, _mock_webview, tmp_path, ctype):
+        body = json.dumps({"url": str(tmp_path / "a.wav")}).encode()
+        headers = {"Content-Type": ctype} if ctype else {}
+        status, data = self._post(_mock_webview, "/analyze", body, headers)
+        assert status == 415
+        assert b"Loading file" not in data
+
+    def test_json_with_charset_reaches_the_handler(self, _mock_webview):
+        status, data = self._post(_mock_webview, "/save-image", b"{}",
+                                  {"Content-Type": "application/json; charset=utf-8"})
+        assert status != 415
+        assert b"Content-Type must be" not in data
+
+    def test_upload_needs_octet_stream(self, _mock_webview):
+        from urllib.parse import quote
+        status, _ = self._post(_mock_webview, "/upload", b"x",
+                               {"Content-Type": "text/plain", "X-Filename": quote("a.wav")})
+        assert status == 415

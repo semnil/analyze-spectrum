@@ -1,6 +1,6 @@
 # Security Audit Report
 
-**Date**: 2026-04-18 (SEC-22 と Summary の件数は 2026-04-26 に追補、CI/CD 節は 2026-09-30 に確認)
+**Date**: 2026-04-18 (SEC-22 と Summary の件数は 2026-04-26 に追補、CI/CD 節は 2026-09-30 に確認、SEC-23 は 2026-10-17 に追補)
 **Scope**:
 - 2026-04-18 の監査 (2026-04-26 に SEC-22 を追補): CLI (`src/analyze_spectrum/`), GUI (`src/analyze_spectrum/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-spectrum.spec`, `installer.iss`)
 - 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
@@ -9,7 +9,7 @@
 
 | Category | Findings | Open | Resolved | Accepted |
 |----------|----------|------|----------|----------|
-| Local HTTP Server | 2 | 0 | 1 | 1 |
+| Local HTTP Server | 3 | 0 | 2 | 1 |
 | Input Validation | 4 | 0 | 4 | 0 |
 | Command Injection | 1 | 0 | 0 | 1 |
 | File I/O (Save/Load/Browse) | 5 | 0 | 2 | 3 |
@@ -19,11 +19,11 @@
 | Subprocess Management | 2 | 0 | 1 | 1 |
 | Bundled Binaries | 2 | 0 | 2 | 0 |
 | Resource Management | 2 | 0 | 0 | 2 |
-| **Total** | **22** | **0** | **12** | **10** |
+| **Total** | **23** | **0** | **13** | **10** |
 
-**Open: 0** / Resolved: 12 / Accepted (risk acknowledged): 10
+**Open: 0** / Resolved: 13 / Accepted (risk acknowledged): 10
 
-Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-04-18 の監査の初版は SEC-01〜SEC-21 の 21 件、Resolved 11)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
+Summary の件数は 2026-10-17 に SEC-23 を追加した時点のもの (2026-04-18 の監査の初版は SEC-01〜SEC-21 の 21 件、Resolved 11。2026-04-26 の SEC-22 追補で 22 件、Resolved 12)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
 
 ---
 
@@ -94,6 +94,13 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_handle_upload`
 - **Resolution**: 受信チャンクループが `remaining > 0` のまま抜けた場合 (Content-Length 分を受信しきれなかった場合) は `os.unlink` で途中ファイルを削除し 400 エラー。クライアント切断時でもディスクに不完全データが残らない。
+
+### SEC-23: 事前確認の要らない Content-Type の POST を受け付ける -- RESOLVED
+
+- **Added**: 2026-10-17 (2026-04-18 の監査の後に追補。Summary の件数もこの時点で更新)
+- **Risk**: MEDIUM -> RESOLVED
+- **Location**: [gui.py](../src/analyze_spectrum/gui.py) `do_POST`, `_check_content_type`
+- **Resolution**: POST の本文を Content-Type に関係なく JSON として読んでいたため、ランダムなポートを見つけた別サイトのページが、CORS の事前確認 (preflight) の要らない `text/plain` や `application/x-www-form-urlencoded` の POST で `/analyze` を起動できた (ローカルのパスも解析対象にできる)。修正前は `/analyze` に `text/plain` / フォーム形式 / Content-Type なしの POST を送ると 200 で解析が始まり、`text/plain` の `/upload` はファイルを保存した。Host 検証の後に `_check_content_type()` を置き、Content-Type (`;` より前を小文字にしたもの) が JSON のエンドポイントでは `application/json`、`/upload` では `application/octet-stream` でなければ 415 を返す。ブラウザはこれらの型の別オリジンへの POST を事前確認の後にしか送らず、このサーバーは事前確認に応答しない。analyze-loudness にも同じ修正がある。
 
 ### SEC-22: pywebview ダイアログ例外のサイレント握りつぶし -- RESOLVED
 
@@ -254,7 +261,7 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 | Path traversal via /upload filename | Arbitrary file write | `sanitize_filename` (`/`, `\` 等を `_` 化) + extension allowlist | Resolved (SEC-08) |
 | Oversized upload | Disk exhaustion | 500 MB limit + incomplete-upload cleanup | Resolved (SEC-09, SEC-10) |
 | Malicious bundled binary | Code execution | SHA256 checksum verification | Resolved (SEC-01) |
-| Local CSRF | Unintended analysis | Random port, JSON Content-Type preflight, custom headers for /upload | Very low risk |
+| Local CSRF | Unintended analysis | Random port + Content-Type gate (`application/json`, `/upload` は `application/octet-stream`。他は 415) | Resolved (SEC-23) |
 | Disk exhaustion (large video) | DoS | `TemporaryDirectory` auto-cleanup | Low risk |
 | Arbitrary file write via /save | Data overwrite | Native dialog + 127.0.0.1 + random port | Very low risk |
 | Arbitrary file read via /load | Info disclosure | Native dialog + 127.0.0.1 + random port + schema validation | Very low risk |

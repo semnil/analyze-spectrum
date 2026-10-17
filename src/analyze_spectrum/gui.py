@@ -311,8 +311,21 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _check_content_type(self) -> bool:
+        """Accept only the Content-Type the frontend sends.  Browsers send
+        cross-origin requests with these types only after a CORS preflight,
+        which this server never answers."""
+        expected = "application/octet-stream" if self.path == "/upload" else "application/json"
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != expected:
+            self._json_error(415, f"Content-Type must be {expected}")
+            return False
+        return True
+
     def do_POST(self):
         if not self._check_host():
+            return
+        if not self._check_content_type():
             return
         _STREAM_ENDPOINTS = ("/analyze", "/compare")
         handlers = {
