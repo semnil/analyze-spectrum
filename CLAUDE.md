@@ -192,6 +192,8 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
 | `/browse` | POST | ネイティブダイアログでローカル音声ファイル選択 |
 | `/upload` | POST | ドラッグ & ドロップしたファイルを一時保存 (octet-stream、最大 500MB) |
 
+POST は Host 検証の後に Content-Type を確かめ、`/upload` は `application/octet-stream`、それ以外は `application/json` (`;` より後の charset 等は無視) でなければ 415 を返す (`docs/security-audit.md` の SEC-23)。
+
 ## レスポンス形式 (GUI NDJSON)
 
 ### 単体解析の結果
