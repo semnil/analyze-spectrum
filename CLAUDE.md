@@ -56,7 +56,8 @@ graph LR
     root["analyze-spectrum/"]
     root --> wf[".github/workflows/"]
     wf --> wf_ci["ci.yaml<br>PR / push"]
-    wf --> wf_rel["release.yaml<br>v* タグ"]
+    wf --> wf_rel["release.yaml<br>v* タグ / タグ上の workflow_dispatch"]
+    wf --> wf_tag["tag-release.yml<br>master の CI 成功後、版上げならタグを打ち release.yaml を起動"]
     wf --> wf_chk["workflow-checks.yml<br>全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査"]
     wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストを実行"]
     root --> ght[".github/tests/"]
@@ -391,11 +392,11 @@ WebView2 ネイティブハンドラへの伝播を遮断。
 ## リリース手順
 
 1. `src/analyze_spectrum/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
-2. マージ後、master の HEAD に `vX.Y.Z` タグを打って push する
+2. マージ後、master への push で走った CI が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する
 3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、Release を作成する (`draft: true`)
 4. Release の publish は人が行う
 
-タグ push が唯一のリリーストリガー (他に `workflow_dispatch`)。マージだけではリリースされない。
+版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
 
 ## バージョン管理
 
