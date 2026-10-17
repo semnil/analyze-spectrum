@@ -410,13 +410,20 @@ function makeNdjsonResponse(type, data) {
   setThemeMode("light");
   assertEqual(document.documentElement.getAttribute("data-theme"), "light", "Theme starts light");
 
+  assert(themeBtn.querySelector("svg") !== null, "Light icon is an SVG");
+  assertEqual(themeBtn.textContent, "", "Light icon has no text glyph");
+
   themeBtn.click();
   assertEqual(document.documentElement.getAttribute("data-theme"), "dark", "Toggle to dark");
+  assert(themeBtn.querySelector("svg") !== null, "Dark icon is an SVG");
+  assertEqual(themeBtn.textContent, "", "Dark icon has no text glyph");
 
   themeBtn.click();
   // auto depends on OS, just check attribute is set
   var autoTheme = document.documentElement.getAttribute("data-theme");
   assert(autoTheme === "light" || autoTheme === "dark", "Auto resolves to light or dark");
+  assert(themeBtn.querySelector("svg") !== null, "Auto icon is an SVG");
+  assertEqual(themeBtn.textContent, "", "Auto icon has no text glyph");
 
   // ================================================
   suite("Clear All resets track list");
