@@ -64,12 +64,22 @@ var _THEME_ICON_SHAPES = {
   ],
 };
 
+// Warning triangle for status messages, same drawing conventions as the theme icons.
+var _WARNING_ICON_SHAPES = [
+  ["path", { d: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" }],
+  ["path", { d: "M12 9v4M12 17h.01" }],
+];
+
 function _createThemeIcon(mode) {
+  return _createIcon(_THEME_ICON_SHAPES[mode], 18);
+}
+
+function _createIcon(shapes, size) {
   var ns = "http://www.w3.org/2000/svg";
   var svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", "18");
-  svg.setAttribute("height", "18");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
   svg.setAttribute("fill", "none");
   svg.setAttribute("stroke", "currentColor");
   svg.setAttribute("stroke-width", "2");
@@ -77,7 +87,7 @@ function _createThemeIcon(mode) {
   svg.setAttribute("stroke-linejoin", "round");
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("focusable", "false");
-  _THEME_ICON_SHAPES[mode].forEach(function(shape) {
+  shapes.forEach(function(shape) {
     var el = document.createElementNS(ns, shape[0]);
     Object.keys(shape[1]).forEach(function(k) { el.setAttribute(k, shape[1][k]); });
     svg.appendChild(el);
@@ -1673,7 +1683,7 @@ function showError(message) {
   const icon = document.createElement("span");
   icon.className = "error-icon";
   icon.setAttribute("aria-hidden", "true");
-  icon.textContent = "\u26A0";
+  icon.appendChild(_createIcon(_WARNING_ICON_SHAPES, 16));
   statusEl.appendChild(icon);
   const text = document.createElement("span");
   text.className = "error-text";
