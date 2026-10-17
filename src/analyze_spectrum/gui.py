@@ -22,7 +22,7 @@ import numpy as np
 import webview
 
 from analyze_spectrum import SCHEMA_VERSION as _SCHEMA_VERSION, __version__, make_meta as _make_meta
-from analyze_spectrum.analysis import _json_safe, analyze_track, missing_result_fields
+from analyze_spectrum.analysis import _json_safe, analyze_track, estimate_parametric_eq, missing_result_fields
 from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
 
@@ -209,6 +209,7 @@ def _transfer_functions_from_dicts(track_dicts: list[dict]) -> list[dict]:
             "label": f"{other['label']} \u2212 {ref['label']}",
             "freqs": grid.tolist(),
             "delta_db": np.round(delta, 2).tolist(),
+            "eq": estimate_parametric_eq(grid, delta, sample_rate=ref_sr or 48000),
         }
         if ref_sr is None or o_sr is None:
             tf["warning"] = "sample_rate unknown; frequency comparison may be approximate"

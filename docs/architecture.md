@@ -148,6 +148,8 @@ flowchart TD
     CMP --> TRACKS["tracks[]"]
 
     TF --> RES["CompareResult"]
+    TF --> EQ["estimate_parametric_eq()<br>preamp + peaking bands"]
+    EQ --> RES
     TRACKS --> RES
 ```
 
@@ -367,6 +369,7 @@ Canvas チャートは `getThemeColors()` で描画時にテーマカラーを�
 | PSD Spectrum | uPlot | log(freq) Hz | Power dB | Single / Multi-track overlay |
 | 1/3 Octave | Canvas | Band center Hz | Energy dB | Single / Grouped bars |
 | Transfer Function | Canvas | log(freq) Hz | Delta dB | Multi-track only |
+| Estimated EQ | HTML table | - | - | Multi-track only (transfer function ごとに 1 表) |
 | Low-End Detail | Canvas | Linear freq 20-500Hz | Power dB | Single / Multi-track overlay |
 | Mid-High Detail | Canvas | log(freq) 500Hz-20kHz | Power dB | Single / Multi-track overlay |
 

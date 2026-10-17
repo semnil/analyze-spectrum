@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from analyze_spectrum import SCHEMA_VERSION, __version__, make_meta
-from analyze_spectrum.analysis import analyze_track, compare_tracks
+from analyze_spectrum.analysis import EQ_BANDS_DEFAULT, analyze_track, compare_tracks
 from analyze_spectrum.download import compute_middle, is_url, resolve_source
 from analyze_spectrum.pcm import extract_audio, probe_info
 
@@ -53,6 +53,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="Analyze only N minutes from the middle")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Output directory for JSON results")
+    def _non_negative_int(v):
+        n = int(v)
+        if n < 0:
+            raise argparse.ArgumentTypeError(f"must be 0 or greater, got {v!r}")
+        return n
+
+    parser.add_argument("--eq-bands", type=_non_negative_int, default=EQ_BANDS_DEFAULT,
+                        help=f"Max peaking bands in the estimated EQ per transfer function "
+                             f"(default {EQ_BANDS_DEFAULT})")
     parser.add_argument("--json", action="store_true",
                         help="Output raw JSON to stdout")
     parser.add_argument("--version", action="version",
@@ -93,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             _print_summary(result)
 
     if len(results) >= 2:
-        comparison = compare_tracks(results)
+        comparison = compare_tracks(results, eq_bands=args.eq_bands)
         print(f"\n=== Transfer Functions ===")
         for tf in comparison.transfer_functions:
             # Show summary of transfer function
@@ -106,6 +115,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    Low (<200Hz):  {np.mean(delta[low_mask]):+.1f} dB avg")
             print(f"    Mid (500-2k):  {np.mean(delta[mid_mask]):+.1f} dB avg")
             print(f"    Pres (2-5k):   {np.mean(delta[hi_mask]):+.1f} dB avg")
+            eq = tf.get("eq")
+            if eq is not None:
+                lo, hi = eq["fit_range_hz"]
+                print(f"    Estimated EQ ({lo:.0f}-{hi:.0f} Hz, residual {eq['residual_rms_db']:.2f} dB rms):")
+                print(f"      Preamp: {eq['preamp_db']:+.1f} dB")
+                for b in eq["bands"]:
+                    print(f"      Peak {b['freq_hz']:8.1f} Hz  {b['gain_db']:+5.1f} dB  Q {b['q']:.2f}")
 
         output_data = comparison.to_dict()
         output_data["meta"] = {

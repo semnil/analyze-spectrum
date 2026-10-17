@@ -117,6 +117,12 @@ function fakeCompareResult(sources) {
       label: tracks[1].label + " - " + tracks[0].label,
       freqs: [100, 200, 400, 800],
       delta_db: [1, 2, -1, 0],
+      eq: {
+        preamp_db: -1.5,
+        bands: [{ freq_hz: 85.4, gain_db: 3.2, q: 1.1 }, { freq_hz: 2500, gain_db: -2.0, q: 2.5 }],
+        residual_rms_db: 0.31,
+        fit_range_hz: [20, 16000],
+      },
     }],
     meta: { version: "1.0.0", analyzed_at: "2026-01-01T00:00:00Z", sources: sources },
   };
@@ -557,6 +563,89 @@ function makeNdjsonResponse(type, data) {
   document.getElementById("submit-btn").click();
   await new Promise(function(r) { setTimeout(r, 500); });
   assert(!isBusy, "Not busy after single analysis");
+
+  // ================================================
+  suite("Compare result renders the estimated EQ table");
+  // ================================================
+
+  resetState();
+  var cmp = fakeCompareResult(["A.wav", "B.wav"]);
+  renderCompare(cmp);
+  var eqTable = document.querySelector(".eq-table");
+  assert(eqTable !== null, "EQ table rendered");
+  var eqRows = eqTable ? eqTable.querySelectorAll("tr") : [];
+  function eqCell(r, c) { return eqRows[r] && eqRows[r].children[c] ? eqRows[r].children[c].textContent : null; }
+  assertEqual(eqRows.length, 4, "Header + preamp + 2 peaks");
+  assertEqual(eqCell(1, 2), "-1.5 dB", "Preamp gain");
+  assertEqual(eqCell(2, 1), "85.4 Hz", "Peak 1 frequency below 100 Hz keeps 1 decimal");
+  assertEqual(eqCell(3, 1), "2500 Hz", "Peak 2 frequency");
+  assertEqual(eqCell(2, 2), "+3.2 dB", "Peak 1 gain");
+  assertEqual(eqCell(3, 3), "2.50", "Peak 2 Q");
+  var eqNote = document.querySelector(".eq-tables .eq-note");
+  assert(eqNote !== null && eqNote.textContent.indexOf("0.31 dB RMS") !== -1, "Residual shown");
+
+  cmp.transfer_functions[0].eq = null;
+  clearResults();
+  renderCompare(cmp);
+  assertEqual(document.querySelectorAll(".eq-table").length, 0, "No table without an estimate");
+  eqNote = document.querySelector(".eq-tables .eq-note");
+  assertEqual(eqNote ? eqNote.textContent : null, window.i18n.t("eq.no_fit"), "No-fit note shown");
+  clearResults();
+
+  // ================================================
+  suite("Save Image includes the estimated EQ tables");
+  // ================================================
+
+  function _captureTexts(data) {
+    var drawn = [];
+    var origFill = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function(text, x, y) {
+      drawn.push({ text: String(text), y: y, h: this.canvas.height / 2 });
+      return origFill.apply(this, arguments);
+    };
+    var url;
+    try { url = captureImage(data); } finally { CanvasRenderingContext2D.prototype.fillText = origFill; }
+    return { url: url, drawn: drawn };
+  }
+  function _yOf(drawn, text, minY) {
+    for (var i = 0; i < drawn.length; i++) {
+      if (drawn[i].text === text && drawn[i].y >= (minY || 0)) return drawn[i];
+    }
+    return null;
+  }
+
+  resetState();
+  var cmpImg = fakeCompareResult(["A.wav", "B.wav"]);
+  cmpImg.transfer_functions.push({ label: "C - A", freqs: [100, 200, 400, 800], delta_db: [0, 0, 0, 0], eq: null });
+  renderCompare(cmpImg);
+  var cap = _captureTexts(cmpImg);
+  assert(cap.url !== null, "Compare image captured");
+  var eqTexts = [
+    window.i18n.t("Estimated EQ"), cmpImg.transfer_functions[0].label, window.i18n.t("Preamp"), "-1.5 dB",
+    window.i18n.t("Peak") + " 1", "85.4 Hz", "+3.2 dB", "1.10",
+    window.i18n.t("Peak") + " 2", "2500 Hz", "-2.0 dB", "2.50",
+    window.i18n.t("eq.fit_range") + ": 20-16000 Hz / " + window.i18n.t("eq.residual") + ": 0.31 dB RMS",
+    "C - A", window.i18n.t("eq.no_fit"),
+  ];
+  var lastY = -1;
+  for (var ei = 0; ei < eqTexts.length; ei++) {
+    var hit = _yOf(cap.drawn, eqTexts[ei], lastY);
+    assert(hit !== null, "Saved image draws " + JSON.stringify(eqTexts[ei]));
+    if (hit) {
+      assert(hit.y >= lastY, "EQ text in reading order: " + JSON.stringify(eqTexts[ei]));
+      assert(hit.y < hit.h, "EQ text inside the image: " + JSON.stringify(eqTexts[ei]));
+      lastY = hit.y;
+    }
+  }
+  clearResults();
+
+  resetState();
+  var singleImg = fakeResult("A.wav");
+  renderSingle(singleImg);
+  var capSingle = _captureTexts(singleImg);
+  assert(capSingle.url !== null, "Single analysis image still captured");
+  assertEqual(_yOf(capSingle.drawn, window.i18n.t("Estimated EQ")), null, "No EQ section for a single analysis");
+  clearResults();
 
   // ================================================
   // Summary

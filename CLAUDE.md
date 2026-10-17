@@ -34,6 +34,7 @@ graph LR
 11. **HPF -3dB 推定**: passband (300-600Hz) 平均から -3dB 交差点を探索
 12. **HF Rolloff**: Mid-band 平均から -10dB 下回る周波数を検出
 13. **Transfer Function**: 2 ファイル間の PSD 差分 (dB)
+14. **EQ 推定**: Transfer Function にプリアンプのゲインと最大 N 個のピーキングフィルタ (RBJ biquad) を当てはめる (`estimate_parametric_eq()`)。基準トラックにこの EQ を掛けると比較トラックに近づく。1/6 オクターブで平滑化し 1/24 オクターブ刻みの対数周波数グリッドに載せた差分に対し、残差の最大点にバンドを 1 つずつ足して全パラメータを最小二乗で当てはめ直す。残差の最大値が 0.5 dB を下回ったら追加をやめる
 
 ### 参照規格
 
@@ -126,6 +127,9 @@ analyze-spectrum original.m4a eq_v1.m4a eq_v2.m4a
 
 # Duration limit (middle extraction)
 analyze-spectrum "https://..." --duration 2
+
+# Estimated EQ: up to 3 peaking bands per transfer function (default 5)
+analyze-spectrum original.m4a eq_v1.m4a --eq-bands 3
 ```
 
 ### CLI の依存
@@ -249,7 +253,13 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
       {
         "label": "v3 - original",
         "freqs": ["..."],
-        "delta_db": ["..."]
+        "delta_db": ["..."],
+        "eq": {
+          "preamp_db": -2.0,
+          "bands": [{"freq_hz": 89.7, "gain_db": 4.9, "q": 0.87}],
+          "residual_rms_db": 0.06,
+          "fit_range_hz": [20.0, 16000.0]
+        }
       }
     ]
   }
@@ -272,6 +282,9 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
 | HPF passband 基準 | 300 - 600 Hz | 一般的な HPF より上、声のフォルマントより下 |
 | HF Rolloff しきい値 | -10 dB | Mid 帯域 (500-2kHz) の基準からの低下量 |
 | True Peak オーバーサンプリング | 4x | ITU-R BS.1770。メモリ節約のため 30 秒単位で分割処理 |
+| EQ 推定の範囲 | 20 Hz - 16 kHz (上限は 0.45 × sample rate も超えない) | `EQ_FIT_RANGE` |
+| EQ 推定のバンド数 | 既定 5 (CLI `--eq-bands`) | `EQ_BANDS_DEFAULT` |
+| EQ のゲイン / Q の範囲 | ±24 dB / 0.3 - 10 | `EQ_GAIN_LIMIT_DB` / `EQ_Q_RANGE` |
 
 ## 設計判断
 

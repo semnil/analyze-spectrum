@@ -952,6 +952,7 @@ function renderCompare(data) {
 
   if (data.transfer_functions && data.transfer_functions.length > 0) {
     _addCanvasChart("Transfer Function", "280px", renderTransfer, data.transfer_functions);
+    renderEqTables(data.transfer_functions);
   }
 
   _addCanvasChart("Low-End Detail", "280px", renderLowEnd, data.tracks);
@@ -1003,6 +1004,7 @@ var _TIP_KEYS = {
   "Transfer Function": "tip.chart_transfer",
   "Low-End Detail": "tip.chart_lowend",
   "Mid-High Detail": "tip.chart_midhigh",
+  "Estimated EQ": "tip.chart_eq",
 };
 
 function _tipFor(key) {
@@ -1160,6 +1162,57 @@ function renderCompareSummary(tracks) {
     }
     resultsEl.appendChild(table);
   }
+}
+
+// One entry per transfer function: caption, table (preamp row, then each
+// peaking filter; null when there is no estimate) and note.  Shared by the
+// on-screen tables and the saved image.
+function _buildEqTables(transferFunctions) {
+  return transferFunctions.map(function(tf) {
+    const eq = tf.eq;
+    if (!eq) return { caption: tf.label, header: null, rows: [], note: window.i18n.t("eq.no_fit") };
+    const rows = [[window.i18n.t("Preamp"), "-", fmtSign(eq.preamp_db, 1) + " dB", "-"]];
+    eq.bands.forEach(function(b, i) {
+      rows.push([
+        window.i18n.t("Peak") + " " + (i + 1),
+        fmt(b.freq_hz, b.freq_hz < 100 ? 1 : 0) + " Hz",
+        fmtSign(b.gain_db, 1) + " dB",
+        fmt(b.q, 2),
+      ]);
+    });
+    return {
+      caption: tf.label,
+      header: ["Filter", "Frequency", "Gain", "Q"],
+      rows: rows,
+      note: window.i18n.t("eq.fit_range") + ": " + fmt(eq.fit_range_hz[0], 0) + "-" +
+        fmt(eq.fit_range_hz[1], 0) + " Hz / " + window.i18n.t("eq.residual") + ": " +
+        fmt(eq.residual_rms_db, 2) + " dB RMS",
+    };
+  });
+}
+
+function renderEqTables(transferFunctions) {
+  const div = document.createElement("div");
+  div.className = "chart-row eq-tables";
+  _chartTitle(div, "Estimated EQ");
+  for (const spec of _buildEqTables(transferFunctions)) {
+    const caption = document.createElement("div");
+    caption.className = "eq-caption";
+    caption.textContent = spec.caption;
+    div.appendChild(caption);
+    if (spec.header) {
+      const table = document.createElement("table");
+      table.className = "summary-table eq-table";
+      _addRow(table, spec.header, true);
+      for (const row of spec.rows) _addRow(table, row, false);
+      div.appendChild(table);
+    }
+    const note = document.createElement("div");
+    note.className = "eq-note";
+    note.textContent = spec.note;
+    div.appendChild(note);
+  }
+  resultsEl.appendChild(div);
 }
 
 function renderLegend(tracks) {
@@ -1384,6 +1437,21 @@ function captureImage(data) {
 
   let totalH = PAD + 32 + tablesH; // title + tables
 
+  // Estimated EQ section, drawn right after the Transfer Function chart
+  const EQ_CAPTION_H = 22;
+  const EQ_NOTE_H = 20;
+  const eqTables = data.tracks && data.transfer_functions && data.transfer_functions.length > 0
+    ? _buildEqTables(data.transfer_functions) : [];
+  var eqH = 0;
+  if (eqTables.length > 0) {
+    eqH = 24;
+    for (const spec of eqTables) {
+      eqH += EQ_CAPTION_H + EQ_NOTE_H + 8;
+      if (spec.header) eqH += TABLE_ROW_H * (1 + spec.rows.length);
+    }
+  }
+  totalH += eqH;
+
   // Chart heights (each entry has canvas + title)
   const TITLE_H = 24;
   const chartSizes = [];
@@ -1449,6 +1517,31 @@ function captureImage(data) {
     const x = (W - drawW) / 2;
     ctx.drawImage(canvas, x, y, drawW, drawH);
     y += drawH + 16;
+
+    if (title === "Transfer Function" && eqTables.length > 0) {
+      ctx.fillStyle = dark ? "#e0e0e0" : "#333";
+      ctx.font = "bold 14px 'Segoe UI', 'Meiryo', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(window.i18n.t("Estimated EQ"), W / 2, y + 16);
+      y += 24;
+      for (const spec of eqTables) {
+        ctx.fillStyle = dark ? "#e0e0e0" : "#333";
+        ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(spec.caption, PAD, y + 16);
+        y += EQ_CAPTION_H;
+        if (spec.header) y = _drawTable(ctx, PAD, y, W - PAD * 2, spec.header, spec.rows, dark);
+        ctx.fillStyle = dark ? "#aaa" : "#707070";
+        ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(spec.note, PAD, y + 15);
+        y += EQ_NOTE_H + 8;
+      }
+      // Chart titles below are drawn with the baseline _drawTable leaves set.
+      ctx.textBaseline = "middle";
+    }
   }
 
   return comp.toDataURL("image/png");

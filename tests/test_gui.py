@@ -247,6 +247,9 @@ class TestTransferFunctionsFromDicts:
         assert result[0]["label"] == "eq \u2212 ref"
         assert result[0]["freqs"] == [100, 200, 400]
         assert result[0]["delta_db"] == [2.0, 2.0, -2.0]
+        eq = result[0]["eq"]
+        assert set(eq) == {"preamp_db", "bands", "residual_rms_db", "fit_range_hz"}
+        assert eq["fit_range_hz"] == [20.0, 400.0]
 
     def test_three_tracks(self, _clear_cache):
         gui_mod = _clear_cache
