@@ -183,7 +183,7 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 - **Risk**: VERY LOW
 - **Location**: [gui.py](../src/analyze_spectrum/gui.py) `_handle_load`, `_handle_browse`
 - **Analysis**:
-  - `/load`: ユーザー選択パスから JSON を読み込み、`spectrum` フィールドの存在を検証。`tracks` キーを含む古い compare 形式は明示的に 400 で拒否 (loading individual tracks への誘導)。`schema_version` が古い場合は再分析を促す
+  - `/load`: ユーザー選択パスから JSON を読み込み、`spectrum` フィールドの存在を検証。`tracks` キーを含む古い compare 形式は明示的に 400 で拒否 (loading individual tracks への誘導)。描画に要る項目が欠けている場合は再分析を促し、`meta.schema_version` が整数でなければ 400 で拒否
   - `/browse`: 音声ファイル選択ダイアログを開き、選択パスを返却するのみ (読み込みや実行は行わない)
   - どちらも `OSError` / `JSONDecodeError` を catch しエラーレスポンスを返却
   - 127.0.0.1 + ランダムポートのため外部からの呼び出し不可
@@ -218,13 +218,14 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 
 | 項目 | 対策 |
 |------|------|
-| 外部 action のピン留め | `ci.yaml` / `release.yaml` / `workflow-checks-test.yml` の `uses:` はコミット SHA (40 桁) と同じ行のバージョンコメント (`@<sha> # vX.Y.Z`) で固定する。タグ参照ではないため、タグの付け替えで実行内容が変わらない |
+| 外部 action のピン留め | `ci.yaml` / `release.yaml` / `tag-release.yml` / `workflow-checks-test.yml` の `uses:` はコミット SHA (40 桁) と同じ行のバージョンコメント (`@<sha> # vX.Y.Z`) で固定する。タグ参照ではないため、タグの付け替えで実行内容が変わらない |
 | 固定の検査 (`workflow-checks.yml`) | PR ごとに `pull_request_target` で既定ブランチの定義を実行し、PR の head のワークフロー・action ファイルを GitHub API (git trees / blobs) でデータとして取得して yq で読む。PR のコードは checkout も実行もせず、トークンは `contents: read`。対象は `jobs.<id>.uses` / `jobs.<id>.steps[*].uses` / `action.yml` の `runs.steps[*].uses` |
 | 同一リポジトリの参照 | ステップの `./` は runner の作業領域に対して解決される (前のステップが置いた内容を実行しうる) ため拒否し、`$/` (実行中のコミットに解決) を使わせる。ジョブ単位の再利用ワークフローは `./` / `$/` とも呼び出し元と同じコミットから読まれるため許可する。ローカル参照のパスは `A-Z a-z 0-9 . _ -` と `/` に限り、空・`.`・`..`・末尾が `.` の要素と、参照先までの経路上の git tree のシンボリックリンク・サブモジュール (ASCII の大文字小文字を区別せず照合) を拒否する |
 | 取得対象の健全性 | ワークフロー・action ファイルが通常ファイルでない (シンボリックリンク等) とき、action ファイル名が小文字の `action.yml` / `action.yaml` でないときは失敗する |
 | 検査の自己改変の防止 | `workflow-checks.yml` のパス・mode・blob SHA が既定ブランチと一致しない PR は失敗する。検査を変更するときは必須チェックを一時的に外してからマージする |
 | 必須チェック | master のルールセットで `action-pins` を必須とし、ベースブランチへの追随を求める (`strict_required_status_checks_policy: true`)。バイパスは設定していない |
 | 検査の回帰テスト | `.github/tests/workflow-checks-test.sh` を `workflow-checks-test.yml` が実行する (検査ファイル・テストを変更する PR と master への push)。偽の `gh` がフィクスチャの git tree を返し、拒否すべき参照と通すべき参照の判定と失敗理由を検査する |
+| 版上げからのタグ作成 (`tag-release.yml`、2026-10-17 追加) | `workflow_run` で CI の完了後に走り、master への `push` で成功した run だけを処理する。checkout するのは CI が検査した `head_sha`。権限は `contents: write` (タグの push) と `actions: write` (`release.yaml` の dispatch)。既存のタグは動かさない |
 | `pull_request_target` の許可 | public リポジトリの `pull_request_target` は 2026-11-02 から明示的な許可が必要なため、`workflow-checks.yml` を対象とした Actions の許可ポリシーを設定している |
 
 ---
@@ -265,20 +266,20 @@ Summary の件数は 2026-04-26 に SEC-22 を追加した時点のもの (2026-
 
 ```mermaid
 graph TD
-    A["User Input<br/>(URL / local path / drop file)"] --> B{"gui.py<br/>validation"}
+    A["User Input<br>(URL / local path / drop file)"] --> B{"gui.py<br>validation"}
     B -->|"invalid"| C["400/413 error"]
-    B -->|"drop file"| U["/upload<br/>sanitize + size + ext"]
+    B -->|"drop file"| U["/upload<br>sanitize + size + ext"]
     U --> D["resolve_source"]
     B -->|"valid"| D
-    D --> E1["yt_dlp.YoutubeDL<br/>(Python API)"]
-    D --> E2["ffprobe / ffmpeg<br/>(subprocess list args)"]
-    E1 --> F["NDJSON response<br/>(127.0.0.1 only)"]
+    D --> E1["yt_dlp.YoutubeDL<br>(Python API)"]
+    D --> E2["ffprobe / ffmpeg<br>(subprocess list args)"]
+    E1 --> F["NDJSON response<br>(127.0.0.1 only)"]
     E2 --> F
-    F --> G["pywebview<br/>(WebView sandbox)"]
-    G -->|"Save JSON"| H["Native file dialog<br/>-> write JSON"]
-    G -->|"Save Image"| I["Native file dialog<br/>-> write PNG"]
-    G -->|"Load JSON"| J["Native file dialog<br/>-> read JSON -> render()"]
-    G -->|"Browse"| K["Native file dialog<br/>-> return path"]
+    F --> G["pywebview<br>(WebView sandbox)"]
+    G -->|"Save JSON"| H["Native file dialog<br>-> write JSON"]
+    G -->|"Save Image"| I["Native file dialog<br>-> write PNG"]
+    G -->|"Load JSON"| J["Native file dialog<br>-> read JSON -> render()"]
+    G -->|"Browse"| K["Native file dialog<br>-> return path"]
 ```
 
 ## Compliance Notes

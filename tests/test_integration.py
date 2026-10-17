@@ -319,23 +319,26 @@ class TestLoadEndpoint:
         assert status == 400
         assert "compare" in json.loads(raw)["error"].lower()
 
-    def test_load_schema_outdated_url(self, _server, wav_file, tmp_path):
-        """Loading a JSON with old schema_version and URL source."""
-        base, gui_mod = _server
-        _, raw = _post(base, "/analyze", {"url": wav_file})
-        result_data = [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
-
-        # Set schema_version to 0 to simulate old format
-        result_data["meta"]["schema_version"] = 0
-        result_data["meta"]["source"] = "https://example.com/test"
-
-        json_path = str(tmp_path / "old_schema.json")
+    def _load_one(self, base, gui_mod, tmp_path, data, name):
+        json_path = str(tmp_path / name)
         with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(result_data, f)
-
+            json.dump(data, f)
         gui_mod._window = MagicMock()
         gui_mod._window.create_file_dialog.return_value = [json_path]
-        status, raw = _post(base, "/load", {})
+        return _post(base, "/load", {})
+
+    def _analyzed(self, base, wav):
+        _, raw = _post(base, "/analyze", {"url": wav})
+        return [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
+
+    def test_load_schema_outdated_url(self, _server, wav_file, tmp_path):
+        """A result missing a rendered field, with a URL source, is outdated."""
+        base, gui_mod = _server
+        result_data = self._analyzed(base, wav_file)
+        del result_data["summary"]["band_energy"]
+        result_data["meta"]["source"] = "https://example.com/test"
+
+        status, raw = self._load_one(base, gui_mod, tmp_path, result_data, "old_schema.json")
         assert status == 200
         resp = json.loads(raw)
         assert resp["loaded"] is True
@@ -343,44 +346,79 @@ class TestLoadEndpoint:
         assert resp["source_available"] is True
 
     def test_load_schema_outdated_missing_file(self, _server, wav_file, tmp_path):
-        """Loading old schema JSON where the local file no longer exists."""
+        """Outdated result whose local source file no longer exists."""
         base, gui_mod = _server
-        _, raw = _post(base, "/analyze", {"url": wav_file})
-        result_data = [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
-
-        result_data["meta"]["schema_version"] = 0
+        result_data = self._analyzed(base, wav_file)
+        del result_data["bands"]
         result_data["meta"]["source"] = "/nonexistent/old_recording.wav"
 
-        json_path = str(tmp_path / "old_schema_missing.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(result_data, f)
-
-        gui_mod._window = MagicMock()
-        gui_mod._window.create_file_dialog.return_value = [json_path]
-        status, raw = _post(base, "/load", {})
+        status, raw = self._load_one(base, gui_mod, tmp_path, result_data, "old_schema_missing.json")
         assert status == 200
         resp = json.loads(raw)
         assert resp["schema_outdated"] is True
         assert resp["source_available"] is False
 
-    def test_load_schema_outdated_no_version(self, _server, wav_file, tmp_path):
-        """JSON without schema_version is treated as outdated."""
+    @pytest.mark.parametrize("version", [0, None])
+    def test_load_complete_result_ignores_version_value(self, _server, wav_file, tmp_path, version):
+        """A result with every rendered field loads as current and is cached,
+        whatever meta.schema_version says or whether it is present."""
         base, gui_mod = _server
-        _, raw = _post(base, "/analyze", {"url": wav_file})
-        result_data = [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
+        result_data = self._analyzed(base, wav_file)
+        src = f"/nonexistent/complete_{version}.wav"
+        result_data["meta"]["source"] = src
+        if version is None:
+            del result_data["meta"]["schema_version"]
+        else:
+            result_data["meta"]["schema_version"] = version
 
-        del result_data["meta"]["schema_version"]
-
-        json_path = str(tmp_path / "no_schema_ver.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(result_data, f)
-
-        gui_mod._window = MagicMock()
-        gui_mod._window.create_file_dialog.return_value = [json_path]
-        status, raw = _post(base, "/load", {})
+        status, raw = self._load_one(base, gui_mod, tmp_path, result_data, "complete.json")
         assert status == 200
         resp = json.loads(raw)
-        assert resp["schema_outdated"] is True
+        assert "schema_outdated" not in resp
+        assert gui_mod._cache_get(src, None) is not None
+
+    def test_load_outdated_result_not_cached(self, _server, wav_file, tmp_path):
+        base, gui_mod = _server
+        result_data = self._analyzed(base, wav_file)
+        src = "/nonexistent/outdated_not_cached.wav"
+        result_data["meta"]["source"] = src
+        del result_data["summary"]["band_energy"]["air_5k_10k"]
+
+        status, raw = self._load_one(base, gui_mod, tmp_path, result_data, "outdated.json")
+        assert json.loads(raw)["schema_outdated"] is True
+        assert gui_mod._cache_get(src, None) is None
+
+    @pytest.mark.parametrize("version", ["1", 1.0, True, [1]])
+    def test_load_non_int_schema_version_rejected(self, _server, wav_file, tmp_path, version):
+        base, gui_mod = _server
+        result_data = self._analyzed(base, wav_file)
+        result_data["meta"]["schema_version"] = version
+
+        status, raw = self._load_one(base, gui_mod, tmp_path, result_data, "bad_version.json")
+        assert status == 400
+        assert "schema_version" in json.loads(raw)["error"]
+
+    def test_load_multi_caches_only_complete_items(self, _server, wav_file, wav_file_b, tmp_path):
+        base, gui_mod = _server
+        complete = self._analyzed(base, wav_file)
+        complete["meta"]["source"] = "/nonexistent/multi_complete.wav"
+        outdated = self._analyzed(base, wav_file_b)
+        outdated["meta"]["source"] = "/nonexistent/multi_outdated.wav"
+        del outdated["spectrum"]["psd_db"]
+        paths = []
+        for i, d in enumerate([complete, outdated]):
+            p = str(tmp_path / f"multi_{i}.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(d, f)
+            paths.append(p)
+
+        gui_mod._window = MagicMock()
+        gui_mod._window.create_file_dialog.return_value = paths
+        status, raw = _post(base, "/load", {})
+        assert status == 200
+        assert len(json.loads(raw)["items"]) == 2
+        assert gui_mod._cache_get("/nonexistent/multi_complete.wav", None) is not None
+        assert gui_mod._cache_get("/nonexistent/multi_outdated.wav", None) is None
 
     def test_load_invalid_json(self, _server, tmp_path):
         base, gui_mod = _server

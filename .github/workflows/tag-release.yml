@@ -1,0 +1,110 @@
+name: Tag Release
+run-name: ${{ github.event.workflow_run.head_branch }} tag release 🏷️
+
+# Turns a merged version bump into a release. When CI finishes green on a push to master
+# and that push changed __version__ in src/analyze_spectrum/__init__.py, this tags the
+# tested commit as vX.Y.Z and dispatches release.yaml on the tag.
+# A tag pushed with GITHUB_TOKEN starts no workflow, so release.yaml is started with
+# workflow_dispatch on the tag ref instead of by its push: tags trigger.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+
+concurrency:
+  group: tag-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create and push the tag
+  actions: write # dispatch release.yaml
+
+jobs:
+  tag:
+    name: Tag Version Bump 🏷️
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Tag and Dispatch Release 🏷️
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          : Tag and Dispatch Release
+          if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
+          set -euo pipefail
+          shopt -s extglob
+
+          version_file=src/analyze_spectrum/__init__.py
+          read_version() {
+            sed -n 's/^__version__ = "\(.*\)"$/\1/p'
+          }
+
+          version=$(read_version < "${version_file}")
+          if [[ -z "${version}" ]]; then
+            echo "::error::could not read __version__ from ${version_file} at ${HEAD_SHA}"
+            exit 1
+          fi
+
+          # The first parent is the previous tip of master for both merge and squash merges.
+          if ! parent=$(git rev-parse --verify --quiet "${HEAD_SHA}^"); then
+            echo "no first parent — nothing to compare"
+            exit 0
+          fi
+          prev_src=$(git show "${parent}:${version_file}")
+          prev=$(printf '%s\n' "${prev_src}" | read_version)
+          if [[ -z "${prev}" ]]; then
+            echo "::error::could not read __version__ at ${parent} — refusing to tag"
+            exit 1
+          fi
+          if [[ "${prev}" == "${version}" ]]; then
+            echo "version unchanged at ${version} — not a release"
+            exit 0
+          fi
+
+          # Same shapes release.yaml's check-event accepts.
+          case "${version}" in
+            +([0-9]).+([0-9]).+([0-9]) | +([0-9]).+([0-9]).+([0-9])-@(beta|rc|alpha)*([0-9.]) )
+              ;;
+            *)
+              echo "::error::__version__ ${version} is not a release version — refusing to tag ${HEAD_SHA}"
+              exit 1
+              ;;
+          esac
+
+          tag="v${version}"
+          echo "version ${prev} -> ${version}"
+
+          # A tag already on the remote is never moved. One at this commit with no release.yaml
+          # run on it gets the dispatch, so a re-run after a failed dispatch starts the build.
+          listed=$(git ls-remote --tags origin "refs/tags/${tag}" "refs/tags/${tag}^{}")
+          peeled=$(printf '%s\n' "${listed}" | awk -v ref="refs/tags/${tag}^{}" '$2 == ref { print $1 }')
+          direct=$(printf '%s\n' "${listed}" | awk -v ref="refs/tags/${tag}" '$2 == ref { print $1 }')
+          existing=${peeled:-${direct}}
+          if [[ -z "${existing}" ]]; then
+            git tag "${tag}" "${HEAD_SHA}"
+            git push origin "refs/tags/${tag}"
+            echo "tagged ${tag} at ${HEAD_SHA}"
+          elif [[ "${existing}" != "${HEAD_SHA}" ]]; then
+            echo "${tag} already exists at ${existing}, not ${HEAD_SHA} — leaving it alone"
+            exit 0
+          else
+            runs=$(gh run list --workflow release.yaml --branch "${tag}" --json databaseId --jq length)
+            if (( runs > 0 )); then
+              echo "${tag} already names ${HEAD_SHA} and release.yaml has run on it — leaving it alone"
+              exit 0
+            fi
+            echo "${tag} already names ${HEAD_SHA} and release.yaml has not run on it"
+          fi
+          gh workflow run release.yaml --ref "${tag}"
+          echo "dispatched release.yaml on ${tag}"

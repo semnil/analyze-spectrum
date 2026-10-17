@@ -30,7 +30,8 @@ jobs:
           if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
           shopt -s extglob
 
-          if [[ "${GITHUB_EVENT_NAME}" != 'push' ]]; then
+          # A tag push, or a dispatch on a tag ref (tag-release.yml), releases.
+          if [[ "${GITHUB_REF_TYPE}" != 'tag' ]]; then
             echo 'validTag=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi

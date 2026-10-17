@@ -11,17 +11,17 @@ pywebview (WebView2) + ローカル HTTP サーバーの構成で、
 ```mermaid
 graph LR
     subgraph Desktop Application
-        A["pywebview<br/>(WebView2)"]
-        B["Local HTTP Server<br/>(gui.py)"]
+        A["pywebview<br>(WebView2)"]
+        B["Local HTTP Server<br>(gui.py)"]
     end
 
     subgraph Analysis Pipeline
-        C["Source Resolution<br/>(download.py)"]
-        D["PCM Extraction<br/>(pcm.py)"]
-        E["Spectral Analysis<br/>(analysis.py)"]
+        C["Source Resolution<br>(download.py)"]
+        D["PCM Extraction<br>(pcm.py)"]
+        E["Spectral Analysis<br>(analysis.py)"]
     end
 
-    A -->|"HTTP<br/>127.0.0.1:random"| B
+    A -->|"HTTP<br>127.0.0.1:random"| B
     B -->|"NDJSON stream"| C
     C -->|"yt_dlp API / local file"| D
     D -->|"ffmpeg → mono f32le 48kHz"| E
@@ -34,24 +34,24 @@ graph LR
 ```mermaid
 graph TD
     subgraph "src/analyze_spectrum/"
-        INIT["__init__.py<br/>_subprocess_kwargs()"]
+        INIT["__init__.py<br>_subprocess_kwargs()"]
         MAIN["__main__.py"]
-        CLI["cli.py<br/>argparse + orchestration"]
-        GUI["gui.py<br/>pywebview + HTTPServer"]
-        DL["download.py<br/>yt_dlp.YoutubeDL, is_url, resolve_source"]
-        PCM["pcm.py<br/>ffmpeg → PCM"]
-        ANA["analysis.py<br/>Welch PSD, 1/3 oct, metrics"]
+        CLI["cli.py<br>argparse + orchestration"]
+        GUI["gui.py<br>pywebview + HTTPServer"]
+        DL["download.py<br>yt_dlp.YoutubeDL, is_url, resolve_source"]
+        PCM["pcm.py<br>ffmpeg → PCM"]
+        ANA["analysis.py<br>Welch PSD, 1/3 oct, metrics"]
     end
 
     subgraph "frontend/"
         HTML["index.html"]
         JS["main.js"]
         CSS["style.css"]
-        SP["charts/spectrum.js<br/>uPlot PSD overlay"]
-        OC["charts/octave.js<br/>1/3 oct bar chart"]
-        TF["charts/transfer.js<br/>transfer function"]
-        LE["charts/lowend.js<br/>20-500Hz detail"]
-        MH["charts/midhigh.js<br/>500Hz-20kHz detail"]
+        SP["charts/spectrum.js<br>uPlot PSD overlay"]
+        OC["charts/octave.js<br>1/3 oct bar chart"]
+        TF["charts/transfer.js<br>transfer function"]
+        LE["charts/lowend.js<br>20-500Hz detail"]
+        MH["charts/midhigh.js<br>500Hz-20kHz detail"]
     end
 
     MAIN --> CLI
@@ -78,19 +78,19 @@ graph TD
 
 ```mermaid
 flowchart TD
-    INPUT["Input<br/>YouTube URL / Local File"]
+    INPUT["Input<br>YouTube URL / Local File"]
     RESOLVE{"is_url?"}
-    YTDLP["yt_dlp.YoutubeDL<br/>(audio extraction)"]
+    YTDLP["yt_dlp.YoutubeDL<br>(audio extraction)"]
     LOCAL["Local file path"]
-    PROBE["ffprobe<br/>(duration)"]
-    MIDDLE{"--duration<br/>specified?"}
-    EXTRACT_FULL["ffmpeg<br/>full extraction"]
-    EXTRACT_MID["ffmpeg<br/>middle extraction<br/>(-ss / -t)"]
-    PCM["mono float32 PCM<br/>(48kHz)"]
-    WELCH["scipy.signal.welch<br/>nperseg=4096, overlap=50%<br/>(chunked if >10min)"]
+    PROBE["ffprobe<br>(duration)"]
+    MIDDLE{"--duration<br>specified?"}
+    EXTRACT_FULL["ffmpeg<br>full extraction"]
+    EXTRACT_MID["ffmpeg<br>middle extraction<br>(-ss / -t)"]
+    PCM["mono float32 PCM<br>(48kHz)"]
+    WELCH["scipy.signal.welch<br>nperseg=4096, overlap=50%<br>(chunked if >10min)"]
     PSD["PSD (freqs, power)"]
     METRICS["Summary Metrics"]
-    BANDS["1/3 Octave Bands<br/>(27 bands, 25Hz-10kHz)<br/>with PSD interpolation"]
+    BANDS["1/3 Octave Bands<br>(27 bands, 25Hz-10kHz)<br>with PSD interpolation"]
     RESULT["SpectrumResult"]
 
     INPUT --> RESOLVE
@@ -117,10 +117,10 @@ flowchart TD
 flowchart LR
     PSD["Welch PSD"]
 
-    PSD --> LI["Low/Intel Ratio<br/>10*log10(E[20-200] / E[1k-5k])"]
-    PSD --> SC["Spectral Centroid<br/>sum(f*Pxx) / sum(Pxx)<br/>(80-8kHz)"]
-    PSD --> HPF["HPF -3dB Estimate<br/>passband ref: 300-600Hz"]
-    PSD --> BE["Band Energy<br/>Sub/Low/Low-Mid/Mid/Presence/Air"]
+    PSD --> LI["Low/Intel Ratio<br>10*log10(E[20-200] / E[1k-5k])"]
+    PSD --> SC["Spectral Centroid<br>sum(f*Pxx) / sum(Pxx)<br>(80-8kHz)"]
+    PSD --> HPF["HPF -3dB Estimate<br>passband ref: 300-600Hz"]
+    PSD --> BE["Band Energy<br>Sub/Low/Low-Mid/Mid/Presence/Air"]
 
     LI --> S["summary"]
     SC --> S
@@ -144,7 +144,7 @@ flowchart TD
     A2 --> CMP
     AN --> CMP
 
-    CMP --> TF["Transfer Functions<br/>delta_db = other.psd_db - ref.psd_db"]
+    CMP --> TF["Transfer Functions<br>delta_db = other.psd_db - ref.psd_db"]
     CMP --> TRACKS["tracks[]"]
 
     TF --> RES["CompareResult"]
@@ -204,7 +204,7 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     REQ["POST /analyze or /compare"]
-    KEY["Cache Key<br/>source + duration (+ mtime for local)"]
+    KEY["Cache Key<br>source + duration (+ mtime for local)"]
     HIT{"Cache Hit?"}
     CACHED["Read cached JSON"]
     ANALYZE["Run analysis pipeline"]
@@ -250,8 +250,8 @@ Save 最適化: `/save` に `source` + `duration` パラメータが含まれる
 flowchart LR
     subgraph "Input Methods"
         URL["URL text input"]
-        BROWSE["Browse button<br/>(/browse → native dialog)"]
-        DND["Drag & Drop<br/>(/upload → temp file)"]
+        BROWSE["Browse button<br>(/browse → native dialog)"]
+        DND["Drag & Drop<br>(/upload → temp file)"]
     end
 
     URL --> INPUT["url-input field"]
@@ -375,17 +375,17 @@ Canvas チャートは `getThemeColors()` で描画時にテーマカラーを�
 ```mermaid
 flowchart LR
     DATA["Analysis Result JSON"]
-    DATA --> SP["spectrum.js<br/>renderSpectrum()"]
-    DATA --> OC["octave.js<br/>renderOctave()"]
-    DATA --> TF["transfer.js<br/>renderTransfer()"]
-    DATA --> LE["lowend.js<br/>renderLowEnd()"]
-    DATA --> MH["midhigh.js<br/>renderMidHigh()"]
+    DATA --> SP["spectrum.js<br>renderSpectrum()"]
+    DATA --> OC["octave.js<br>renderOctave()"]
+    DATA --> TF["transfer.js<br>renderTransfer()"]
+    DATA --> LE["lowend.js<br>renderLowEnd()"]
+    DATA --> MH["midhigh.js<br>renderMidHigh()"]
 
-    SP -->|uPlot| C1["PSD Overlay<br/>(log-freq)"]
+    SP -->|uPlot| C1["PSD Overlay<br>(log-freq)"]
     OC -->|Canvas| C2["1/3 Oct Bars"]
     TF -->|Canvas| C3["Transfer Function"]
-    LE -->|Canvas| C4["Low-End Detail<br/>+ HPF marker<br/>+ Band regions"]
-    MH -->|Canvas| C5["Mid-High Detail<br/>(500Hz-20kHz)"]
+    LE -->|Canvas| C4["Low-End Detail<br>+ HPF marker<br>+ Band regions"]
+    MH -->|Canvas| C5["Mid-High Detail<br>(500Hz-20kHz)"]
 ```
 
 ## 6. Build & Distribution
@@ -397,21 +397,21 @@ flowchart TD
     BUILD["python build.py"]
     DL_ASSETS["Download Assets"]
 
-    DL_ASSETS --> DENO["deno.exe<br/>(GitHub Releases)"]
-    DL_ASSETS --> FFMPEG["ffmpeg.exe / ffprobe.exe<br/>(BtbN/FFmpeg-Builds)"]
-    DL_ASSETS --> UPLOT["uPlot JS/CSS<br/>(jsDelivr CDN)"]
+    DL_ASSETS --> DENO["deno.exe<br>(GitHub Releases)"]
+    DL_ASSETS --> FFMPEG["ffmpeg.exe / ffprobe.exe<br>(BtbN/FFmpeg-Builds)"]
+    DL_ASSETS --> UPLOT["uPlot JS/CSS<br>(jsDelivr CDN)"]
 
     BUILD --> DL_ASSETS
     DL_ASSETS --> VERIFY["SHA256 Checksum Verification"]
-    VERIFY --> PYINST["PyInstaller<br/>(analyze-spectrum.spec)"]
+    VERIFY --> PYINST["PyInstaller<br>(analyze-spectrum.spec)"]
 
     PYINST --> BUNDLE["dist/analyze-spectrum/"]
     BUNDLE --> EXE["analyze-spectrum.exe"]
-    BUNDLE --> BIN["bin/<br/>ffmpeg, ffprobe, deno"]
-    BUNDLE --> FE["frontend/<br/>HTML, JS, CSS, vendor"]
+    BUNDLE --> BIN["bin/<br>ffmpeg, ffprobe, deno"]
+    BUNDLE --> FE["frontend/<br>HTML, JS, CSS, vendor"]
 
     BUNDLE --> ISS{"--installer?"}
-    ISS -->|Yes| INNO["Inno Setup<br/>(installer.iss)"]
+    ISS -->|Yes| INNO["Inno Setup<br>(installer.iss)"]
     INNO --> SETUP["SpectrumAnalyzer-X.Y.Z-setup.exe"]
 ```
 
@@ -539,8 +539,8 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 ```mermaid
 flowchart TD
     IT["test_integration.py"]
-    SRV["HTTPServer (random port)<br/>gui.py (AnalyzeHandler)"]
-    PIPE["Analysis Pipeline<br/>(pcm.py + analysis.py)"]
+    SRV["HTTPServer (random port)<br>gui.py (AnalyzeHandler)"]
+    PIPE["Analysis Pipeline<br>(pcm.py + analysis.py)"]
     MOCK["webview → MagicMock"]
 
     IT -->|"HTTP POST"| SRV
@@ -550,7 +550,7 @@ flowchart TD
     IT --> A["/analyze — cache hit/miss, duration limit"]
     IT --> B["/compare — track-level caching"]
     IT --> C["/save — direct cache copy"]
-    IT --> D["/load — single/multi, schema version check, cache registration"]
+    IT --> D["/load — single/multi, required-field check, cache registration"]
     IT --> E["/upload — octet-stream, 500MB limit, error cases"]
 ```
 
@@ -581,17 +581,19 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant REG as Windows Registry
-    participant LDB as WebView2 LevelDB
+    participant OS as OS dark mode setting
+    participant LS as localStorage profile
     participant PY as gui.py
     participant HTML as index.html
     participant CSS as style.css
 
-    PY->>LDB: localStorage["spectrum-theme"] 読み取り
-    LDB-->>PY: "light" / "dark" / "auto" / (not found)
-    PY->>REG: AppsUseLightTheme (フォールバック)
-    REG-->>PY: 0 or 1
-    PY->>PY: _resolve_background_color() → "#1e1e1e" or "#f5f5f5"
+    Note over LS: Windows: WebView2 LevelDB<br>macOS: WebKit WebsiteData/LocalStorage
+    PY->>LS: localStorage["spectrum-theme"] 読み取り
+    LS-->>PY: "light" / "dark" / (not found)
+    PY->>OS: is_dark_mode() (フォールバック)
+    Note over OS: Windows: AppsUseLightTheme<br>macOS: AppleInterfaceStyle
+    OS-->>PY: dark or light
+    PY->>PY: _resolve_background_color() returns "#1a1a2e" or "#fafafa"
     PY->>PY: webview.create_window(background_color=bg)
 
     Note over HTML: <head> inline script
