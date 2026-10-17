@@ -648,6 +648,31 @@ function makeNdjsonResponse(type, data) {
   clearResults();
 
   // ================================================
+  suite("UI sources and status icons contain no emoji");
+  // ================================================
+
+  var _PICTO = /\p{Extended_Pictographic}/u;
+  function _decodeJsEscapes(src) {
+    return src
+      .replace(/\\u\{([0-9a-fA-F]+)\}/g, function(_, h) { return String.fromCodePoint(parseInt(h, 16)); })
+      .replace(/\\u([0-9a-fA-F]{4})/g, function(_, h) { return String.fromCharCode(parseInt(h, 16)); })
+      .replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCodePoint(parseInt(h, 16)); });
+  }
+  for (var _src of ["index.html", "i18n.js", "main.js", "charts/spectrum.js", "charts/octave.js", "charts/transfer.js", "charts/lowend.js", "charts/midhigh.js"]) {
+    var _resp = await _origFetch.call(window, "../../frontend/" + _src);
+    var _text = await _resp.text();
+    assert(_resp.ok && _text.length > 100, _src + " fetched for the emoji scan");
+    var _hit = _decodeJsEscapes(_text).match(_PICTO);
+    assert(_hit === null, _src + " has no emoji" + (_hit ? " (found U+" + _hit[0].codePointAt(0).toString(16).toUpperCase() + ")" : ""));
+  }
+  resetState();
+  showError("boom");
+  assert(statusEl.querySelector(".error-icon svg") !== null, "Error icon is an SVG");
+  assert(!_PICTO.test(statusEl.textContent), "Error status text has no emoji");
+  statusEl.textContent = "";
+  statusEl.className = "";
+
+  // ================================================
   // Summary
   // ================================================
 
