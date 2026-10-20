@@ -1,9 +1,11 @@
 name: Tag Release
 run-name: ${{ github.event.workflow_run.head_branch }} tag release 🏷️
 
-# Turns a merged version bump into a release. When CI finishes green on a push to master
-# and that push changed __version__ in src/analyze_spectrum/__init__.py, this tags the
-# tested commit as vX.Y.Z and dispatches release.yaml on the tag.
+# Turns a merged version bump into a release. When CI finishes green on master, from a push
+# or from a workflow_dispatch run, and that commit changed __version__ in
+# src/analyze_spectrum/__init__.py, this tags the tested commit as vX.Y.Z and dispatches
+# release.yaml on the tag. ffmpeg-watch.yml merges its bump with GITHUB_TOKEN, which starts
+# no push run, and dispatches CI on master instead.
 # A tag pushed with GITHUB_TOKEN starts no workflow, so release.yaml is started with
 # workflow_dispatch on the tag ref instead of by its push: tags trigger.
 on:
@@ -23,7 +25,9 @@ permissions:
 jobs:
   tag:
     name: Tag Version Bump 🏷️
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
