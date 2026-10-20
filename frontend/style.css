@@ -188,6 +188,7 @@ h1 {
 }
 
 .compare-bar button {
+  min-height: 36px;
   padding: 8px 20px;
   border: none;
   border-radius: 6px;

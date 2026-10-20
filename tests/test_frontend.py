@@ -118,6 +118,27 @@ def test_confirm_modal_buttons_are_44px_targets():
         server.server_close()
 
 
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_clear_all_button_is_at_least_36px_tall():
+    """Clear All meets the 36 px desktop target height."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            for source in ("a.wav", "b.wav"):
+                page.fill("#url-input", source)
+                page.click("#add-btn")
+            height = page.evaluate("document.getElementById('clear-btn').getBoundingClientRect().height")
+            assert height >= 36, f"#clear-btn is {height} px tall"
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 _RESOLVE_VAR_JS = """(name) => {
   const probe = document.createElement("div");
   probe.style.background = "var(" + name + ")";
