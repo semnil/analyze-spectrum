@@ -333,7 +333,7 @@ function _confirmModal(message, detail) {
       if (e.target === backdrop) close(false);
     });
     var focusable = [cancel, ok];
-    document.addEventListener("keydown", function trap(e) {
+    function trap(e) {
       if (e.key === "Escape") {
         close(false);
         return;
@@ -345,7 +345,8 @@ function _confirmModal(message, detail) {
         else idx = (idx + 1) % focusable.length;
         focusable[idx].focus();
       }
-    });
+    }
+    document.addEventListener("keydown", trap);
     ok.focus();
   });
 }
