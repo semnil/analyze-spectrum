@@ -19,7 +19,9 @@ run-name: ffmpeg watch 🔭
 # on master either, so after the bump merges land dispatches CI on master; tag-release.yml takes that run like a push
 # run, tags the bump and starts release.yaml. The draft Release is published by hand.
 #
-# An open pull request from an earlier run (head branch ffmpeg-watch/...) stops land before it changes anything.
+# An open pull request from an earlier run (head branch ffmpeg-watch/...) stops land before it changes anything. The
+# branch names carry the run id and attempt, so a branch an earlier run pushed without opening its pull request does
+# not collide with the next run's.
 # The repository setting "Allow GitHub Actions to create and approve pull requests" has to be on for land.
 on:
   schedule:
@@ -243,7 +245,7 @@ jobs:
           }
 
           if [[ "${PIN_UPDATE}" == true ]]; then
-            branch="ffmpeg-watch/pin-${SERIES}"
+            branch="ffmpeg-watch/pin-${SERIES}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             start "${branch}"
             cp "${CANDIDATE}" "${pin_file}"
             diff=$(git diff -- "${pin_file}")
@@ -255,7 +257,7 @@ jobs:
           fi
 
           if [[ "${BUMP}" == true ]]; then
-            branch="ffmpeg-watch/bump-v${NEXT_VERSION}"
+            branch="ffmpeg-watch/bump-v${NEXT_VERSION}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             start "${branch}"
             read_version() { sed -n 's/^__version__ = "\(.*\)"$/\1/p' "${version_file}"; }
             current=$(read_version)
