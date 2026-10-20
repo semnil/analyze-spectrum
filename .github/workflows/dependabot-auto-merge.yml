@@ -11,8 +11,12 @@ name: Dependabot auto-merge
 # steps and not on the job, and the trigger carries no filter: the job reports on every pull request.
 # A merge made by auto-merge is attributed to GITHUB_TOKEN, so the push it makes to the default branch
 # starts no workflow.
+# workflow_dispatch on a branch reports `auto-merge` on that branch's head commit with both steps skipped. It is for
+# a pull request GITHUB_TOKEN opens (ffmpeg-watch.yml), whose pull_request run waits for an approval. A dispatch on a
+# dependabot/ branch fails: that branch is decided by its pull_request run.
 on:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,6 +29,11 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - name: Refuse a dispatch on a Dependabot branch
+        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref_name, 'dependabot/')
+        run: |
+          echo "::error::a dependabot/ branch is decided by its pull_request run, not by a dispatch"
+          exit 1
       - id: metadata
         if: github.event.pull_request.user.login == 'dependabot[bot]'
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
