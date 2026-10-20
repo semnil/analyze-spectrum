@@ -59,7 +59,7 @@ graph LR
     wf --> wf_ci["ci.yaml<br>PR / push"]
     wf --> wf_rel["release.yaml<br>v* タグ / タグ上の workflow_dispatch"]
     wf --> wf_tag["tag-release.yml<br>master の CI 成功後、版上げならタグを打ち release.yaml を起動"]
-    wf --> wf_chk["workflow-checks.yml<br>全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査"]
+    wf --> wf_chk["workflow-checks.yml<br>全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査。<br>PR 番号を渡す workflow_dispatch でも同じ検査を行い、<br>結果を PR の head commit に action-pins の check run として載せる"]
     wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストを実行"]
     wf --> wf_dam["dependabot-auto-merge.yml<br>Dependabot の PR で更新が semver の patch なら自動マージを予約。必須チェック auto-merge"]
     root --> ght[".github/tests/"]
