@@ -1,0 +1,296 @@
+name: ffmpeg watch
+run-name: ffmpeg watch 🔭
+
+# Turns a new osxexperts.net ffmpeg build into a patch release, merging its own pull requests without review.
+#
+# detect compares build_assets/ffmpeg.json with the osxexperts.net page (analyze_common.ffmpeg_release). When the
+# page offers other Apple Silicon builds, it requires the same release series in the latest release of
+# BtbN/FFmpeg-Builds, checks both macOS binaries against the page's SHA256 and keeps the new pin as an artifact.
+# It also decides on a patch release: when __version__ equals the latest vX.Y.Z tag and either the pin changes now
+# or the pin on master already differs from the one that tag released: the pin file at the tag, or, for a tag without
+# it, the pin file as the first commit after the tag added it.
+#
+# smoke downloads the pin's binaries on macOS and Windows with build.py and runs tests/test_ffmpeg_binary.py on them.
+#
+# land lands up to two pull requests with GITHUB_TOKEN, one after the other: the new pin, then the version bump on its
+# own. A pull request GITHUB_TOKEN opens starts no pull_request_target run and its pull_request runs wait for an
+# approval, so land dispatches the required checks itself: CI (Test) and dependabot-auto-merge.yml (auto-merge) on the
+# pull request's branch, and workflow-checks.yml on master, which posts action-pins on the pull request's head commit.
+# It waits for all three and merges. A merge with GITHUB_TOKEN starts no CI on master either, so after the bump merges
+# land dispatches tag-release.yml with the merge commit, which has the tree of the pull request's head where CI passed;
+# tag-release.yml tags it and starts release.yaml, and a merge that lands after the bump does not change the commit that
+# gets tagged. When __version__ has no tag yet (a run stopped after its bump merged), detect reports the commit that set
+# it (release_sha) and land dispatches tag-release.yml with that. The draft Release is published by hand.
+#
+# An open pull request from an earlier run (head branch ffmpeg-watch/...) stops land before it changes anything. The
+# branch names carry the run id and attempt, so a branch an earlier run pushed without opening its pull request does
+# not collide with the next run's.
+# The repository setting "Allow GitHub Actions to create and approve pull requests" has to be on for land.
+on:
+  schedule:
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ffmpeg-watch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect 🔭
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      pin_update: ${{ steps.detect.outputs.pin_update }}
+      bump: ${{ steps.detect.outputs.bump }}
+      series: ${{ steps.detect.outputs.series }}
+      version: ${{ steps.detect.outputs.version }}
+      next_version: ${{ steps.detect.outputs.next_version }}
+      release_sha: ${{ steps.detect.outputs.release_sha }}
+    steps:
+      - name: Check Ref ☑️
+        run: |
+          if [[ "${GITHUB_REF}" != refs/heads/master ]]; then
+            echo "::error::run this workflow on master, not ${GITHUB_REF}"
+            exit 1
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set Up Python 🐍
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Dependencies 📦
+        timeout-minutes: 10
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Compare the Pin with osxexperts.net 🔭
+        id: detect
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: vendor/py-analyze-common/src
+        run: |
+          python -m analyze_common.ffmpeg_release detect \
+            --pin build_assets/ffmpeg.json \
+            --version-file src/analyze_spectrum/__init__.py \
+            --candidate "${RUNNER_TEMP}/ffmpeg.json" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Upload the New Pin 📡
+        if: steps.detect.outputs.pin_update == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ffmpeg-pin
+          path: ${{ runner.temp }}/ffmpeg.json
+          if-no-files-found: error
+
+  smoke:
+    name: Test the Binaries on ${{ matrix.os }} 🧪
+    needs: detect
+    if: needs.detect.outputs.pin_update == 'true' || needs.detect.outputs.bump == 'true' || needs.detect.outputs.release_sha != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set Up Python 🐍
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Dependencies 📦
+        timeout-minutes: 10
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest
+
+      - name: Download the New Pin 📥
+        if: needs.detect.outputs.pin_update == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ffmpeg-pin
+          path: build_assets
+
+      - name: Download ffmpeg 📥
+        timeout-minutes: 10
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python build.py --ffmpeg-only
+
+      - name: Run the App's Parsers on It 🧪
+        env:
+          EXPECT_FFMPEG_DIR: build_assets/bin
+        run: python -m pytest -q tests/test_ffmpeg_binary.py
+
+  land:
+    name: Land the Pin and the Bump 🛬
+    needs: [detect, smoke]
+    if: needs.detect.outputs.pin_update == 'true' || needs.detect.outputs.bump == 'true' || needs.detect.outputs.release_sha != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # push the pull request branches
+      pull-requests: write # open and merge the pull requests
+      actions: write # dispatch CI, dependabot-auto-merge.yml and workflow-checks.yml
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Download the New Pin 📥
+        if: needs.detect.outputs.pin_update == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ffmpeg-pin
+          path: ${{ runner.temp }}/pin
+
+      - name: Land 🛬
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIN_UPDATE: ${{ needs.detect.outputs.pin_update }}
+          BUMP: ${{ needs.detect.outputs.bump }}
+          SERIES: ${{ needs.detect.outputs.series }}
+          VERSION: ${{ needs.detect.outputs.version }}
+          NEXT_VERSION: ${{ needs.detect.outputs.next_version }}
+          RELEASE_SHA: ${{ needs.detect.outputs.release_sha }}
+          CANDIDATE: ${{ runner.temp }}/pin/ffmpeg.json
+        run: |
+          : Land the Pin and the Bump
+          if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
+          set -euo pipefail
+
+          version_file=src/analyze_spectrum/__init__.py
+          pin_file=build_assets/ffmpeg.json
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          open=$(gh pr list --state open --json number,headRefName \
+            --jq '[.[] | select(.headRefName | startswith("ffmpeg-watch/")) | "#\(.number)"] | join(" ")')
+          if [[ -n "${open}" ]]; then
+            echo "::error::pull requests from an earlier run are still open: ${open}"
+            exit 1
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # find_run <workflow> <jq condition>: the newest workflow_dispatch run of <workflow> that matches.
+          find_run() {
+            local workflow="$1" condition="$2" id
+            for _ in $(seq 36); do
+              id=$(gh run list --workflow "${workflow}" --event workflow_dispatch --limit 20 \
+                --json databaseId,headSha,displayTitle --jq "[.[] | select(${condition})][0].databaseId // empty")
+              if [[ -n "${id}" ]]; then
+                echo "${id}"
+                return 0
+              fi
+              sleep 5
+            done
+            echo "::error::no ${workflow} run with ${condition} appeared" >&2
+            return 1
+          }
+
+          # start <branch>: a new branch at the tip of master.
+          start() {
+            git fetch --quiet origin master
+            git switch --quiet --create "$1" FETCH_HEAD
+          }
+
+          # land <branch> <title> <body> <path>...: commit the paths, open the pull request, run its required checks
+          # through workflow_dispatch and merge it once they pass.
+          land() {
+            local branch="$1" title="$2" body="$3" sha pr ci automerge pins
+            shift 3
+            git add -- "$@"
+            git commit --quiet -m "${title}"
+            sha=$(git rev-parse HEAD)
+            git push --quiet origin "HEAD:refs/heads/${branch}"
+            gh pr create --base master --head "${branch}" --title "${title}" --body "${body}" > /dev/null
+            pr=$(gh pr view "${branch}" --json number --jq .number)
+            echo "opened #${pr}: ${title}"
+            gh workflow run ci.yaml --ref "${branch}"
+            gh workflow run dependabot-auto-merge.yml --ref "${branch}"
+            gh workflow run workflow-checks.yml --ref master -f pr="${pr}"
+            ci=$(find_run ci.yaml ".headSha == \"${sha}\"")
+            automerge=$(find_run dependabot-auto-merge.yml ".headSha == \"${sha}\"")
+            pins=$(find_run workflow-checks.yml ".displayTitle == \"Workflow checks for #${pr}\"")
+            gh run watch "${ci}" --exit-status --compact --interval 30
+            gh run watch "${automerge}" --exit-status --compact --interval 15
+            gh run watch "${pins}" --exit-status --compact --interval 15
+            gh pr checks "${pr}" --required
+            gh pr merge "${pr}" --merge --match-head-commit "${sha}"
+            echo "merged #${pr}"
+            landed_pr="${pr}"
+          }
+
+          # tag_release <commit> <version>: dispatch tag-release.yml with <commit>, which tags it v<version> and starts
+          # release.yaml.
+          tag_release() {
+            gh workflow run tag-release.yml --ref master -f sha="$1"
+            echo "dispatched tag-release.yml with $1 for v$2"
+          }
+
+          if [[ "${PIN_UPDATE}" == true ]]; then
+            branch="ffmpeg-watch/pin-${SERIES}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            start "${branch}"
+            cp "${CANDIDATE}" "${pin_file}"
+            diff=$(git diff -- "${pin_file}")
+            fence=$(printf '\140\140\140')
+            body=$(printf '%s\n\n%sdiff\n%s\n%s\n\n%s\n' \
+              "同梱する ffmpeg / ffprobe を osxexperts.net の Apple Silicon 版と BtbN/FFmpeg-Builds の ${SERIES} 系列に更新する。macOS の 2 ファイルはページの SHA256 と照合し、両 OS で取得したものに tests/test_ffmpeg_binary.py を通した。" \
+              "${fence}" "${diff}" "${fence}" "${run_url}")
+            land "${branch}" "build: 同梱する ffmpeg を ${SERIES} に更新する" "${body}" "${pin_file}"
+          fi
+
+          if [[ "${BUMP}" == true ]]; then
+            branch="ffmpeg-watch/bump-v${NEXT_VERSION}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            start "${branch}"
+            read_version() { sed -n 's/^__version__ = "\(.*\)"$/\1/p' "${version_file}"; }
+            current=$(read_version)
+            if [[ "${current}" != "${VERSION}" ]]; then
+              echo "::error::__version__ on master is ${current}, not ${VERSION} as detect read it — not bumping"
+              exit 1
+            fi
+            sed -i "s/^__version__ = \"${VERSION}\"$/__version__ = \"${NEXT_VERSION}\"/" "${version_file}"
+            if [[ "$(read_version)" != "${NEXT_VERSION}" ]]; then
+              echo "::error::could not write __version__ = \"${NEXT_VERSION}\" to ${version_file}"
+              exit 1
+            fi
+            body=$(printf '%s\n\n%s\n' "ffmpeg ${SERIES} を同梱する patch リリース。版上げだけを含む。" "${run_url}")
+            land "${branch}" "chore: バージョンを v${NEXT_VERSION} に更新" "${body}" "${version_file}"
+            merged=$(gh pr view "${landed_pr}" --json mergeCommit --jq .mergeCommit.oid)
+            if ! [[ "${merged}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::could not read the merge commit of #${landed_pr} (got '${merged}')"
+              exit 1
+            fi
+            tag_release "${merged}" "${NEXT_VERSION}"
+          elif [[ -n "${RELEASE_SHA}" ]]; then
+            tag_release "${RELEASE_SHA}" "${VERSION}"
+          fi

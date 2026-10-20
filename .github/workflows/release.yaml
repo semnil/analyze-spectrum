@@ -85,6 +85,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - name: Test the Bundled ffmpeg 🧪
+        env:
+          EXPECT_FFMPEG_DIR: dist/analyze-spectrum/_internal/bin
+        run: python -m pytest -q tests/test_ffmpeg_binary.py
+
       - name: Upload Artifacts 📡
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -218,6 +223,11 @@ jobs:
             --sign "$IDENTITY" "$APP"
 
           codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Test the Bundled ffmpeg 🧪
+        env:
+          EXPECT_FFMPEG_DIR: dist/Spectrum Analyzer.app/Contents/Frameworks/bin
+        run: python -m pytest -q tests/test_ffmpeg_binary.py
 
       - name: Build DMG 💿
         run: python build.py --installer --skip-download --skip-build

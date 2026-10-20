@@ -58,13 +58,15 @@ graph LR
     root --> wf[".github/workflows/"]
     wf --> wf_ci["ci.yaml<br>PR / push"]
     wf --> wf_rel["release.yaml<br>v* タグ / タグ上の workflow_dispatch"]
-    wf --> wf_tag["tag-release.yml<br>master の CI 成功後、版上げならタグを打ち release.yaml を起動"]
+    wf --> wf_tag["tag-release.yml<br>master の push の CI の成功後か、コミットを渡す workflow_dispatch で、版上げならそのコミットにタグを打ち release.yaml を起動"]
+    wf --> wf_ffw["ffmpeg-watch.yml<br>毎日 osxexperts.net の新しい ffmpeg を検出し、固定値の更新と版上げの PR を<br>GITHUB_TOKEN で作ってレビューなしでマージする"]
     wf --> wf_chk["workflow-checks.yml<br>全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査。<br>PR 番号を渡す workflow_dispatch でも同じ検査を行い、<br>結果を PR の head commit に action-pins の check run として載せる"]
-    wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストと、dependabot-auto-merge.yml の<br>workflow_dispatch の入口のテストを実行"]
+    wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストと、dependabot-auto-merge.yml の<br>workflow_dispatch の入口と tag-release.yml のタグの段のテストを実行"]
     wf --> wf_dam["dependabot-auto-merge.yml<br>Dependabot の PR で更新が semver の patch なら自動マージを予約。必須チェック auto-merge。<br>workflow_dispatch では起動したブランチの head commit に auto-merge を報告する (dependabot/ のブランチと、dependabot[bot] が作った PR に含まれるコミットでは失敗する)"]
     root --> ght[".github/tests/"]
     ght --> ght_sh["workflow-checks-test.sh<br>workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト"]
     ght --> ght_am["dependabot-auto-merge-test.sh<br>dependabot-auto-merge.yml の両トリガーと、Dependabot のコミットへの dispatch を断る段のテスト"]
+    ght --> ght_tag["tag-release-test.sh<br>tag-release.yml の検査とタグの段を偽の gh とフィクスチャのリポジトリで実行するテスト"]
     root --> r_claude["CLAUDE.md"]
     root --> r_readme["README.md"]
     root --> r_pyproj["pyproject.toml"]
@@ -98,6 +100,8 @@ graph LR
     t --> t_gui["test_gui.py"]
     t --> t_int["test_integration.py<br>HTTP 統合テスト (実 HTTPServer、pywebview なし)"]
     t --> t_dlg["test_dialog_busy.py<br>ネイティブダイアログの排他 (_dialog_lock)"]
+    t --> t_ffb["test_ffmpeg_binary.py<br>PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる<br>(EXPECT_FFMPEG_DIR で同梱バイナリを指定)"]
+    t --> t_rwf["test_release_workflow.py<br>release.yaml が配布物に入った ffmpeg / ffprobe に<br>test_ffmpeg_binary.py を通すこと"]
     t --> t_fe["test_frontend.py<br>Playwright headless Chromium の実行役"]
     t --> tf["frontend/"]
     tf --> tf_html["test_ui.html<br>テストハーネスのページ"]
@@ -111,6 +115,7 @@ graph LR
     root --> r_spec["analyze-spectrum.spec"]
     root --> r_iss["installer.iss"]
     root --> r_lic["THIRD_PARTY_LICENSES.txt"]
+    root --> ba_pin["build_assets/ffmpeg.json<br>同梱する ffmpeg / ffprobe の系列と、macOS のビルドの URL・SHA256"]
     root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (git 管理外)"]
 ```
 
@@ -164,7 +169,7 @@ analyze-spectrum-gui
 .venv/bin/python build.py --installer      # + DMG
 ```
 
-フラグ: `--skip-download` (外部アセット取得をスキップ) / `--skip-build` (PyInstaller をスキップ、`dist/` がある前提) / `--update-checksums` (アセットを取得して `checksums.json` を更新)。
+フラグ: `--skip-download` (外部アセット取得をスキップ) / `--skip-build` (PyInstaller をスキップ、`dist/` がある前提) / `--update-checksums` (アセットを取得して `checksums.json` を更新) / `--ffmpeg-only` (ffmpeg / ffprobe だけを `build_assets/bin/` に取得して終わる)。
 
 > **注意**: 必ずプロジェクト固有の venv の python (`.venv/bin/python` / `.venv/Scripts/python`) で実行すること (グローバル規約「開発環境」)。
 
@@ -182,6 +187,7 @@ analyze-spectrum-gui
 ```bash
 pytest -q                                          # 全テスト
 python -m playwright install --with-deps chromium  # 初回のみ (test_frontend.py が使う)
+python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q tests/test_ffmpeg_binary.py  # 同梱する ffmpeg / ffprobe で
 ```
 
 ## GUI エンドポイント
@@ -325,7 +331,22 @@ analyze-spectrum はブルー系 (`--accent: #1565C0`)、analyze-loudness はパ
 
 ### macOS は Apple Silicon (arm64) 専用 (v1.3.0+)
 
-ffmpeg / ffprobe は osxexperts.net の arm64 ネイティブビルドを SHA256 ハードコード検証付きで取得する (`build.py` の `_OSXEXPERTS_ARM64`)。evermeet.cx (x86_64) は (a) bundle に Intel Mach-O が混入すると macOS 26 で「Intel プロセッサ用アプリの対応は終了します」警告が出る、(b) GitHub Actions macos runner から接続タイムアウトが発生するため不採用。Intel Mac サポートは v1.2.0 までで打ち切り。osxexperts URL はバージョン埋め込み (`ffmpeg81arm.zip` 等) のため ffmpeg メジャー更新時は URL + SHA256 を更新する。
+ffmpeg / ffprobe は osxexperts.net の arm64 ネイティブビルドを取得する。evermeet.cx (x86_64) は (a) bundle に Intel Mach-O が混入すると macOS 26 で「Intel プロセッサ用アプリの対応は終了します」警告が出る、(b) GitHub Actions macos runner から接続タイムアウトが発生するため不採用。Intel Mac サポートは v1.2.0 までで打ち切り。
+
+### 同梱する ffmpeg の固定
+
+`build_assets/ffmpeg.json` が、両 OS で同梱する ffmpeg / ffprobe の系列 (`series`、例 `8.1`) と、macOS のビルドの URL と SHA256 を持つ。読み書きと検証は py-analyze-common の `analyze_common/ffmpeg_release.py` が行い、`build.py` はそれを呼ぶ。
+
+- macOS: `build.py` が osxexperts.net の zip を取得し、中のバイナリを固定値の SHA256 と照合する (不一致でビルドを止める)。この SHA256 は osxexperts.net のページがダウンロードの横に載せる値と同じもの
+- Windows: BtbN/FFmpeg-Builds の `latest` にある同じ系列のビルド (`ffmpeg-n{series}-latest-win64-lgpl-{series}.zip`、無ければ `gpl`)。中身は日ごとに入れ替わるので SHA256 は固定しない。系列が `latest` から無くなるとビルドが止まる
+- 更新: `.github/workflows/ffmpeg-watch.yml` が毎日行い、patch リリースまで進める ([リリース手順](#リリース手順)の「ffmpeg の更新による patch リリース」)。osxexperts.net の URL は版から決まらない (`ffmpeg81arm.zip` / `ffmpeg9arm.zip`) ので、固定値はページのリンクから取る。手で行うときは、次のコマンドが、ページに別のビルドがあるときだけ、BtbN に同じ系列があることと、両ファイルがページの SHA256 と一致することを確かめてから、新しい固定値を `--candidate` に書く。`pin_update=true` なら、その中身を `build_assets/ffmpeg.json` に写す
+
+  ```bash
+  PYTHONPATH=vendor/py-analyze-common/src .venv/bin/python -m analyze_common.ffmpeg_release detect \
+    --pin build_assets/ffmpeg.json --version-file src/analyze_spectrum/__init__.py --candidate <tmpdir>/ffmpeg.json
+  ```
+
+- 確認: `tests/test_ffmpeg_binary.py` が、numpy で書いた 48 kHz の 16-bit ステレオ WAV (左右で別の正弦波) を PATH の ffmpeg / ffprobe とアプリの `extract_audio()` / `probe_info()` で読み、返る float32 の PCM が書いたサンプルの 1/32768 倍と一致すること (中盤の切り出しを含む) と、チャンネル数・長さを確かめる。`EXPECT_FFMPEG_DIR` に同梱バイナリのディレクトリを渡すと、そこの ffmpeg / ffprobe が先に見つかることを確かめ、見つからなければ skip せずに失敗する ([テスト](#テスト)の最後の行)。リリースのビルド (`.github/workflows/release.yaml`) は、配布物に入ったコピー (Windows は PyInstaller が集めた `dist/analyze-spectrum/_internal/bin`、macOS は署名した後の `.app` の `Contents/Frameworks/bin`) をこのテストに通し、失敗すると成果物のアップロードと Draft Release の作成へ進まない (`tests/test_release_workflow.py` が、その段の位置と渡すディレクトリを spec・`installer.iss` と照らして確かめる)
 
 ### PCM 変換方式
 
@@ -451,11 +472,24 @@ gh secret set UPDATE_SIGNING_KEY --repo semnil/analyze-spectrum < ~/.analyze-upd
 版上げ PR を出す前に、yt-dlp のピンの版を全長ダウンロードで確かめる ([yt-dlp のバージョン固定](#yt-dlp-のバージョン固定))。
 
 1. `src/analyze_spectrum/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
-2. マージ後、master への push で走った CI が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する
-3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、署名した更新用マニフェスト (`latest.json`、[自動更新](#自動更新)) と合わせて Release を作成する (`draft: true`)
+2. マージ後、master への push で走った CI が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する (ffmpeg-watch.yml のマージでは、ffmpeg-watch.yml がマージコミットを渡して `tag-release.yml` を起動する。[ffmpeg の更新による patch リリース](#ffmpeg-の更新による-patch-リリース)の 3)
+3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、署名した更新用マニフェスト (`latest.json`、[自動更新](#自動更新)) と合わせて Release を作成する (`draft: true`)。ビルドは成果物をアップロードする前に、配布物に入った ffmpeg / ffprobe を `tests/test_ffmpeg_binary.py` に通す ([同梱する ffmpeg の固定](#同梱する-ffmpeg-の固定)の「確認」)
 4. Release の publish は人が行う。publish した Release が `releases/latest` になり、インストール済みのアプリの更新確認に出る (プレリリースは `latest` にならないので出ない)
 
-版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
+版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`tag-release.yml` の `workflow_dispatch` は入力 `sha` のコミットを扱い、master 上にあり、そのコミットか tree が同じ親コミット (master の先端を含んだ状態でマージした PR の先端) で CI が成功しているときだけタグを打つ。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
+
+### ffmpeg の更新による patch リリース
+
+`.github/workflows/ffmpeg-watch.yml` が毎日 (と `workflow_dispatch` で) 次を行い、Draft Release の作成まで人の手を通さない。PR は bot がレビューなしでマージする。
+
+1. detect: `build_assets/ffmpeg.json` と osxexperts.net のページを比べる ([同梱する ffmpeg の固定](#同梱する-ffmpeg-の固定))。ページに別のビルドがあれば、BtbN に同じ系列があることと両ファイルの SHA256 を確かめて新しい固定値を作る。`__version__` が最新の `vX.Y.Z` タグと同じで、固定値が今回変わるか、今の固定値がそのタグの出した固定値 (タグにある固定値のファイル、タグに無ければタグの後で最初にそのファイルを足したときの固定値) と違うときは patch リリースを行う
+2. smoke: macOS と Windows のランナーで、`build.py --ffmpeg-only` で取得した固定値のバイナリに `tests/test_ffmpeg_binary.py` を通す
+3. land: GITHUB_TOKEN で、固定値の PR (`ffmpeg-watch/pin-<series>-<run id>-<attempt>`) と、版上げだけの PR (`ffmpeg-watch/bump-v<version>-<run id>-<attempt>`、`chore: バージョンを vX.Y.Z に更新`) を順に作る。GITHUB_TOKEN が作った PR では `pull_request_target` が走らず、`pull_request` の run は承認待ちになるので、各 PR の必須チェックを自分で `workflow_dispatch` する: CI (`Test 🧪`) と `dependabot-auto-merge.yml` (`auto-merge`) をそのブランチで、`workflow-checks.yml` (`action-pins`) を master で PR 番号を渡して。3 つの成功と `gh pr checks --required` を待ってからマージする。GITHUB_TOKEN のマージでは master の push の CI も走らないので、版上げのマージ後に、そのマージコミットを渡して `tag-release.yml` を `workflow_dispatch` で起動する。マージコミットの tree は CI が通った PR の先端と同じで、`tag-release.yml` はそれを確かめてからタグを打つ。版上げの後に別のマージが入っても、タグを打つコミットは変わらない
+4. Release の publish は人が行う ([リリース手順](#リリース手順)の 4)
+
+- 前提: リポジトリの設定「Allow GitHub Actions to create and approve pull requests」(Settings → Actions → General) が on であること。off だと land の `gh pr create` が失敗する
+- 前回の実行の PR (head が `ffmpeg-watch/` の open な PR) が残っていると、land は何も変えずに失敗する。その PR を閉じるかマージしてから再実行する。ブランチ名は実行 (run id と attempt) ごとに違うので、PR を作る前に失敗した実行が push したブランチは、次の実行の push と衝突しない (そのブランチは PR の無いまま残る)。固定値の PR だけがマージされて版上げが残ったときは、次の実行の detect が「今の固定値が最新のタグの出した固定値と違う」として版上げから再開する。版上げがマージされたのにタグが無いとき (版上げのマージの後で止まった実行) は、次の実行の detect が `__version__` をその値にした master のコミット (`release_sha`) を報告し、land がそのコミットを渡して `tag-release.yml` を起動する。タグが既にあれば何もしない
+- smoke か、各 PR で dispatch した必須チェック (CI・auto-merge・action-pins) のどれかが失敗すると、その時点で止まり、マージしない
 
 ## バージョン管理
 

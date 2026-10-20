@@ -1,9 +1,14 @@
 name: Tag Release
-run-name: ${{ github.event.workflow_run.head_branch }} tag release 🏷️
+run-name: ${{ github.event.workflow_run.head_branch || inputs.sha }} tag release 🏷️
 
 # Turns a merged version bump into a release. When CI finishes green on a push to master
 # and that push changed __version__ in src/analyze_spectrum/__init__.py, this tags the
 # tested commit as vX.Y.Z and dispatches release.yaml on the tag.
+# workflow_dispatch with a commit (sha) does the same for that commit, which has to be on master
+# and have a successful CI run on it or on a parent with the same tree (the head of a pull request
+# merged while it contained the tip of master). ffmpeg-watch.yml merges its bump with GITHUB_TOKEN,
+# which starts no push run, and dispatches this with the merge commit, whose pull request head
+# passed CI; a merge that lands after the bump does not take its place.
 # A tag pushed with GITHUB_TOKEN starts no workflow, so release.yaml is started with
 # workflow_dispatch on the tag ref instead of by its push: tags trigger.
 on:
@@ -11,9 +16,14 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit on master to tag (it or a parent with its tree needs a successful CI run)
+        required: true
 
 concurrency:
-  group: tag-release-${{ github.event.workflow_run.head_sha }}
+  group: tag-release-${{ github.event.workflow_run.head_sha || inputs.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -23,21 +33,57 @@ permissions:
 jobs:
   tag:
     name: Tag Version Bump 🏷️
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:
         shell: bash
     steps:
+      - name: Check the Dispatched SHA ☑️
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          if ! [[ "${SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be a 40-character commit SHA (got ${SHA})"
+            exit 1
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || inputs.sha }}
           fetch-depth: 0
+
+      - name: Check the Dispatched Commit ☑️
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SHA: ${{ inputs.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! git merge-base --is-ancestor "${SHA}" origin/master; then
+            echo "::error::${SHA} is not on master — refusing to tag it"
+            exit 1
+          fi
+          # A successful CI run on the commit itself or on a parent with the same tree.
+          tree=$(git rev-parse "${SHA}^{tree}")
+          read -r -a commits <<< "$(git rev-list --parents -n 1 "${SHA}")"
+          for commit in "${commits[@]}"; do
+            if [[ "$(git rev-parse "${commit}^{tree}")" != "${tree}" ]]; then
+              continue
+            fi
+            runs=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow ci.yaml --commit "${commit}" --status success --json databaseId --jq length)
+            if (( runs > 0 )); then
+              echo "CI passed on ${commit}, which has the tree of ${SHA}"
+              exit 0
+            fi
+          done
+          echo "::error::no successful CI run on ${SHA} or on a parent with its tree — refusing to tag it"
+          exit 1
 
       - name: Tag and Dispatch Release 🏷️
         env:
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           : Tag and Dispatch Release
