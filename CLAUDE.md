@@ -178,7 +178,7 @@ analyze-spectrum-gui
 - `yt-dlp` — Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
 - `certifi` — 自動更新の HTTPS 接続が使う CA 証明書 (`gui` extra。macOS の frozen のアプリは、同梱の OpenSSL が指す CA のパスが利用者の Mac に無い)。PyInstaller は certifi が無くても警告だけで先へ進むため、`build.py` の `check_prerequisites()` が certifi を import できないときはビルドを止める
 - ffmpeg, ffprobe, deno — `build_assets/bin/` に同梱
-- `py-analyze-common` — git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化・自動更新を提供。pyproject.toml には記載せず `sys.path` 注入で利用
+- `py-analyze-common` — git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化・自動更新・テーマと言語の保存を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## テスト
 
@@ -199,6 +199,8 @@ python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q te
 | `/load` | POST | 単体解析 JSON 読み込み (compare JSON は拒否)。複数ファイル選択対応 (`allow_multiple=True`)。描画に要る項目 (`missing_result_fields()`) が欠けた単一ファイルは `schema_outdated` フラグを返却。項目が揃ったものだけキャッシュ登録。`meta.schema_version` が整数でなければ 400 |
 | `/browse` | POST | ネイティブダイアログでローカル音声ファイル選択 |
 | `/upload` | POST | ドラッグ & ドロップしたファイルを一時保存 (octet-stream、最大 500MB) |
+| `/common/settings.js` | GET | py-analyze-common の `settings.js` の前に、設定ファイルに保存したテーマと言語 (`window.analyzeSettingsStored`) を付けて返す。読み込みのたびに設定ファイルを読む (`Cache-Control: no-store`) |
+| `/settings` | POST | テーマか言語のどちらか 1 つを設定ファイルに保存する (`{"theme": "light" \| "dark" \| "auto"}` か `{"lang": "en" \| "ja"}`)。それ以外は 400、保存の失敗は 500。応答は保存後の `{"theme", "lang"}` |
 | `/update/status` | POST | 今の版と、このビルドが自分を更新できるかと、起動時の確認の設定 (`{"current", "supported", "launch_check"}`) |
 | `/update/settings` | POST | 起動時の確認の設定を保存する (`{"launch_check": true \| false}`、真偽値以外は 400、保存の失敗は 500) |
 | `/update/check` | POST | 最新リリースの `latest.json` を読み、新しい版があれば `{"available": true, "version"}`、無ければ `{"available": false}`。取得・解析の失敗は 502 |
@@ -378,8 +380,8 @@ uPlot (対数周波数の PSD 重ね描き) + Canvas 自前描画 (1/3 オクタ
 
 ページロード時のちらつきを防ぐ 2 段構成:
 
-- **フロントエンド** (`frontend/index.html`): `<head>` 内インライン `<script>` で CSS ペイント前に `localStorage` からテーマを解決し、`<html>` に `data-theme` 属性を付与
-- **バックエンド** (`gui.py` の `_resolve_background_color()`): localStorage プロファイル (Windows は WebView2 の LevelDB、macOS は WebKit の `WebsiteData/LocalStorage`) を読み取り、未解決時は OS のダークモード設定 (`analyze_common.theme.is_dark_mode()`: Windows はレジストリの `AppsUseLightTheme`、macOS は `AppleInterfaceStyle`) にフォールバックして pywebview の `background_color` を設定
+- **フロントエンド** (`frontend/index.html`): `<head>` で `common/settings.js` と `i18n.js` を読み、続くインライン `<script>` が CSS ペイント前に `window.analyzeSettings.theme` からテーマを解決して `<html>` に `data-theme` 属性を、`i18n.js` が決めた言語を `lang` 属性を付与
+- **バックエンド** (`gui.py`): `analyze_common.ui_settings.UiSettings.background_color()` が設定ファイルのテーマから pywebview の `background_color` を決める。auto (保存が無いときを含む) は OS のダークモード設定 (`analyze_common.theme.is_dark_mode()`: Windows はレジストリの `AppsUseLightTheme`、macOS は `AppleInterfaceStyle`) に従う
 
 ### Load JSON 保留ソース保持
 
@@ -409,11 +411,20 @@ Submit 時に `urlInput` の pending 値と `compareSources` を統合してモ�
 
 ### ダークモード
 
-CSS 変数 + `[data-theme]` でライト / ダーク / auto の 3 ステート。選択は `localStorage("spectrum-theme")` に保存し、保存値が `light` / `dark` 以外のときは auto として扱う。トグルは light -> dark -> auto の順に巡回し、アイコンは太陽 / 三日月 / 半分を塗った円の SVG (`_createThemeIcon()` が生成)。auto では `prefers-color-scheme` の変化を購読して再適用する。初期適用はペイント前 ([ホワイトフラッシュ防止](#ホワイトフラッシュ防止))。
+CSS 変数 + `[data-theme]` でライト / ダーク / auto の 3 ステート。選択は設定ファイルの `theme` に保存し ([テーマと言語の保存](#テーマと言語の保存))、保存値が `light` / `dark` 以外のときは auto として扱う。トグルは light -> dark -> auto の順に巡回し、アイコンは太陽 / 三日月 / 半分を塗った円の SVG (`_createThemeIcon()` が生成)。auto では `prefers-color-scheme` の変化を購読して再適用する。初期適用はペイント前 ([ホワイトフラッシュ防止](#ホワイトフラッシュ防止))。
 
 ### i18n (多言語)
 
-`frontend/i18n.js` で en / ja を管理。初期言語は `navigator.language` (`ja*` -> ja、他は en)、選択は `localStorage("spectrum-lang")` に保存。静的マークアップは `data-i18n*` 属性を DOMContentLoaded で置換し、`main.js` が動的に作る文字列は `window.i18n.t(key)` を直接呼ぶ。
+`frontend/i18n.js` で en / ja を管理。初期言語は `navigator.language` (`ja*` -> ja、他は en)、選択は設定ファイルの `lang` に保存 ([テーマと言語の保存](#テーマと言語の保存))。静的マークアップは `data-i18n*` 属性を DOMContentLoaded で置換し、`main.js` が動的に作る文字列は `window.i18n.t(key)` を直接呼ぶ。`main.js` が状態に合わせて書く文字 (テーマボタンの `aria-label`、送信ボタンの文字と `aria-label`) を持つ要素には `data-i18n*` を付けず、`main.js` が読み込み時と `window.i18n.onChange` で書く (付けると DOMContentLoaded と言語の切り替えのたびに固定の文に戻る)。
+
+### テーマと言語の保存
+
+テーマと言語の選択は、自動更新の「起動時に確認」と同じ設定ファイル (場所は [自動更新](#自動更新) の「設定」の行) に置く。webview の localStorage を使わない理由も同じ行にある。
+
+- 仕組みの本体は py-analyze-common にあり、analyze-loudness と共通: 値の検証・ウィンドウの背景色・ページへ渡すスクリプトは `analyze_common/ui_settings.py` の `UiSettings`、ページ側の読み書きは `analyze_common/web/settings.js` (`window.analyzeSettings`。spec が同梱する)
+- `gui.py` は設定ファイルの `SettingsStore` を 1 つだけ作り (`_settings`)、`Updater` と `UiSettings` の両方に渡す。同じファイルを同じロックで読み書きする
+- ページは `/common/settings.js` で保存した値を受け取る。`main.js` はテーマと言語を切り替えるたびに `window.analyzeSettings.save()` で `/settings` に保存する。保存は 1 つずつ順に送るので、すばやく切り替えても最後に選んだ値が残る
+- 保存に失敗すると、選んだテーマ・言語はアプリを閉じるまで有効なままで、ステータス行に原因 (`err.setting_save_failed`) を出す
 
 ### ウィンドウアイコン
 

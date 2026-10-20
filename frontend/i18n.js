@@ -1,13 +1,12 @@
 // Two-language (en / ja) UI translation for analyze-spectrum.  Default follows
-// navigator.language ("ja*" -> ja, otherwise en); the user's choice is
-// persisted in localStorage("spectrum-lang").
+// navigator.language ("ja*" -> ja, otherwise en); the user's choice is kept in
+// the app's settings file, read from window.analyzeSettings.lang and saved by
+// main.js.
 //
 // Static markup uses data-i18n* attributes and is translated on
 // DOMContentLoaded.  Dynamic strings created in main.js call window.i18n.t(key)
 // directly.
 (function () {
-  const STORAGE_KEY = "spectrum-lang";
-
   const DICT = {
     en: {
       "app.title": "Spectrum Analyzer",
@@ -50,6 +49,7 @@
       "err.max_tracks": "Maximum 6 tracks for comparison",
       "err.duplicate_track": "This track is already added",
       "err.save_failed": "Save failed: ",
+      "err.setting_save_failed": "The setting could not be saved: ",
       "err.dialog_timeout": "The file dialog did not respond. Please try again.",
       "err.no_result": "No result received from server",
       "err.stream_interrupted": "Connection interrupted",
@@ -71,7 +71,6 @@
       "track.move_down_suffix": " down",
       "track.remove_prefix": "Remove track ",
       "track.remove_suffix": "",
-      "theme.aria_toggle": "Toggle color theme",
       "theme.title.light": "Light (click: Dark)",
       "theme.title.dark": "Dark (click: Auto)",
       "theme.title.auto": "Auto (click: Light)",
@@ -151,6 +150,7 @@
       "err.max_tracks": "比較できるのは最大 6 トラックまでです",
       "err.duplicate_track": "このトラックは既に追加されています",
       "err.save_failed": "保存に失敗しました: ",
+      "err.setting_save_failed": "設定を保存できませんでした: ",
       "err.dialog_timeout": "ファイルダイアログが応答しませんでした。もう一度お試しください。",
       "err.no_result": "サーバーから結果を受信できませんでした",
       "err.stream_interrupted": "接続が中断されました",
@@ -205,7 +205,6 @@
       "Q": "Q",
       "Preamp": "Preamp",
       "Peak": "Peak",
-      "theme.aria_toggle": "配色テーマを切り替え",
       "theme.title.light": "ライト (クリックでダーク)",
       "theme.title.dark": "ダーク (クリックで自動)",
       "theme.title.auto": "自動 (クリックでライト)",
@@ -251,13 +250,8 @@
     return l.startsWith("ja") ? "ja" : "en";
   }
 
-  let current;
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    current = saved === "ja" || saved === "en" ? saved : systemLang();
-  } catch (_) {
-    current = systemLang();
-  }
+  const saved = (window.analyzeSettings || {}).lang;
+  let current = saved === "ja" || saved === "en" ? saved : systemLang();
 
   function t(key) {
     const d = DICT[current] || DICT.en;
@@ -294,7 +288,6 @@
     setLang: function (lang) {
       if (lang !== "ja" && lang !== "en") return;
       current = lang;
-      try { localStorage.setItem(STORAGE_KEY, lang); } catch (_) {}
       applyStatic();
       listeners.forEach((fn) => { try { fn(lang); } catch (_) {} });
     },

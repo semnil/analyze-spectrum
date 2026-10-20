@@ -413,6 +413,7 @@ function makeNdjsonResponse(type, data) {
 
   resetState();
   var themeBtn = document.getElementById("theme-toggle");
+  window.analyzeSettings.saved = [];
   setThemeMode("light");
   assertEqual(document.documentElement.getAttribute("data-theme"), "light", "Theme starts light");
 
@@ -430,6 +431,9 @@ function makeNdjsonResponse(type, data) {
   assert(autoTheme === "light" || autoTheme === "dark", "Auto resolves to light or dark");
   assert(themeBtn.querySelector("svg") !== null, "Auto icon is an SVG");
   assertEqual(themeBtn.textContent, "", "Auto icon has no text glyph");
+  assertEqual(JSON.stringify(window.analyzeSettings.saved),
+    JSON.stringify([["theme", "light"], ["theme", "dark"], ["theme", "auto"]]),
+    "Each theme picked is saved in the settings file, in order");
 
   // ================================================
   suite("Clear All resets track list");
