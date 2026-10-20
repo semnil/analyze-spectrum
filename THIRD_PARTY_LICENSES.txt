@@ -1,5 +1,5 @@
-Third-Party Licenses for EQ Analyzer
-======================================
+Third-Party Licenses for Spectrum Analyzer
+============================================
 
 This application bundles the following third-party software.
 
