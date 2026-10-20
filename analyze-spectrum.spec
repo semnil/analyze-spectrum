@@ -37,6 +37,7 @@ a = Analysis(
         (os.path.join(ROOT, "vendor/py-analyze-common/src/analyze_common/web/update.js"), "analyze_common/web"),
         (os.path.join(ROOT, "vendor/py-analyze-common/src/analyze_common/web/settings.js"), "analyze_common/web"),
         (os.path.join(ROOT, "THIRD_PARTY_LICENSES.txt"), "."),
+        (os.path.join(ROOT, "licenses"), "licenses"),
         (os.path.join(ROOT, "build_assets/icon.ico"), "build_assets"),
     ],
     hiddenimports=[

@@ -102,6 +102,7 @@ graph LR
     t --> t_dlg["test_dialog_busy.py<br>ネイティブダイアログの排他 (_dialog_lock)"]
     t --> t_ffb["test_ffmpeg_binary.py<br>PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる<br>(EXPECT_FFMPEG_DIR で同梱バイナリを指定)"]
     t --> t_rwf["test_release_workflow.py<br>release.yaml が配布物に入った ffmpeg / ffprobe に<br>test_ffmpeg_binary.py を通すこと"]
+    t --> t_tpl["test_third_party_licenses.py<br>THIRD_PARTY_LICENSES.txt が指す GPL の全文と、<br>それを同梱する spec / installer.iss"]
     t --> t_fe["test_frontend.py<br>Playwright headless Chromium の実行役"]
     t --> tf["frontend/"]
     tf --> tf_html["test_ui.html<br>テストハーネスのページ"]
@@ -115,6 +116,7 @@ graph LR
     root --> r_spec["analyze-spectrum.spec"]
     root --> r_iss["installer.iss"]
     root --> r_lic["THIRD_PARTY_LICENSES.txt"]
+    root --> r_gpl["licenses/<br>GPL v2 / v3 の全文 (THIRD_PARTY_LICENSES.txt の FFmpeg の節が指す。<br>spec が同じ階層に同梱する)"]
     root --> ba_pin["build_assets/ffmpeg.json<br>同梱する ffmpeg / ffprobe の系列と、macOS のビルドの URL・SHA256"]
     root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (git 管理外)"]
 ```
