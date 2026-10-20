@@ -33,7 +33,7 @@
     <h1 data-i18n="app.title">Spectrum Analyzer</h1>
     <div class="toolbar">
       <button id="lang-toggle" class="lang-toggle" type="button" data-i18n-aria-label="lang.aria_toggle" aria-label="Switch language"></button>
-      <button id="theme-toggle" class="theme-toggle" type="button" data-i18n-aria-label="theme.aria_toggle" aria-label="Toggle color theme"></button>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme"></button>
     </div>
   </header>
 
@@ -42,7 +42,7 @@
       <label for="url-input" class="visually-hidden" data-i18n="url.label">YouTube URL or local audio file path</label>
       <input id="url-input" type="text" placeholder="YouTube URL or local file path" data-i18n-placeholder="url.placeholder" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
       <button id="browse-btn" type="button" data-i18n-aria-label="btn.browse.aria" aria-label="Browse local audio file"><svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span data-i18n="btn.browse">Browse</span></button>
-      <button id="submit-btn" type="submit" data-i18n="btn.analyze">Analyze</button>
+      <button id="submit-btn" type="submit">Analyze</button>
       <button id="add-btn" type="button" data-i18n="btn.add" data-i18n-aria-label="btn.add.aria" aria-label="Add another track for comparison">+ Add Track</button>
       <button id="load-btn" type="button" data-i18n-aria-label="btn.load_json.aria" aria-label="Load saved JSON result"><svg class="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg><span data-i18n="btn.load_json">Load JSON</span></button>
     </form>

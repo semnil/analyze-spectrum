@@ -141,6 +141,61 @@ def test_clear_all_button_is_at_least_36px_tall():
         server.server_close()
 
 
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_theme_and_submit_labels_follow_the_state_after_load_and_language_switch():
+    """main.js alone writes the theme button's accessible name and the submit
+    button's text, so the translation pass of i18n.js at DOMContentLoaded and on
+    a language switch does not replace them."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(locale="ja-JP")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            theme_state = "window.i18n.t('theme.aria_state.' + _themeMode)"
+            assert page.evaluate("window.i18n.lang()") == "ja"
+            assert page.get_attribute("#theme-toggle", "aria-label") == page.evaluate(theme_state)
+            assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.analyze')")
+            page.click("#lang-toggle")
+            assert page.evaluate("window.i18n.lang()") == "en"
+            assert page.get_attribute("#theme-toggle", "aria-label") == page.evaluate(theme_state)
+            assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.analyze')")
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_running_analysis_keeps_its_cancel_button_across_a_language_switch():
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(locale="en-US")
+            held = []
+            page.route("**/analyze", lambda route: held.append(route))
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            try:
+                page.fill("#url-input", "x.wav")
+                page.click("#submit-btn")
+                page.wait_for_function("isBusy")
+                page.click("#lang-toggle")
+                assert page.evaluate("window.i18n.lang()") == "ja"
+                assert page.evaluate("isBusy") is True
+                assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.cancel')")
+                assert page.get_attribute("#submit-btn", "aria-label") == page.evaluate("window.i18n.t('btn.cancel.aria')")
+            finally:
+                for route in held:
+                    route.abort()
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 _RESOLVE_VAR_JS = """(name) => {
   const probe = document.createElement("div");
   probe.style.background = "var(" + name + ")";

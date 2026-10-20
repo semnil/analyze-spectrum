@@ -195,7 +195,7 @@ window.i18n.onChange(function () {
   _applyLangButton();
   _applyTheme();
   _applyDropText();
-  if (!isBusy && submitBtn) submitBtn.textContent = _submitLabel();
+  if (submitBtn) _applySubmitButton();
   // Re-emit the active error so "Error: " prefix and Copy button follow
   // the new language without waiting for the next failure.
   if (_lastErrorMessage != null) showError(_lastErrorMessage);
@@ -411,22 +411,32 @@ function _submitLabel() {
   return _effectiveTrackCount() >= 2 ? window.i18n.t("btn.compare") : window.i18n.t("btn.analyze");
 }
 
+// The submit button's text and accessible name for the current state.  main.js
+// is their only writer: the button carries no data-i18n attribute, so the
+// language switch does not reset them.
+function _applySubmitButton() {
+  if (isBusy) {
+    submitBtn.textContent = window.i18n.t("btn.cancel");
+    submitBtn.setAttribute("aria-label", window.i18n.t("btn.cancel.aria"));
+  } else {
+    submitBtn.textContent = _submitLabel();
+    submitBtn.removeAttribute("aria-label");
+  }
+}
+
 function setBusy(busy) {
   isBusy = busy;
   browseBtn.disabled = busy;
   loadBtn.disabled = busy;
   addBtn.disabled = busy;
   clearBtn.disabled = busy;
+  _applySubmitButton();
   if (busy) {
-    submitBtn.textContent = window.i18n.t("btn.cancel");
     submitBtn.classList.add("cancelling");
-    submitBtn.setAttribute("aria-label", window.i18n.t("btn.cancel.aria"));
     statusEl.classList.add("loading");
     statusEl.setAttribute("aria-busy", "true");
   } else {
-    submitBtn.textContent = _submitLabel();
     submitBtn.classList.remove("cancelling");
-    submitBtn.removeAttribute("aria-label");
     statusEl.classList.remove("loading");
     statusEl.removeAttribute("aria-busy");
     activeAbort = null;
@@ -441,6 +451,7 @@ function setBusy(busy) {
     btn.disabled = busy;
   });
 }
+_applySubmitButton();
 
 
 function _swapTracks(i, j) {
