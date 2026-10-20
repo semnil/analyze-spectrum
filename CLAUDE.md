@@ -338,7 +338,7 @@ ffmpeg / ffprobe は osxexperts.net の arm64 ネイティブビルドを取得�
 `build_assets/ffmpeg.json` が、両 OS で同梱する ffmpeg / ffprobe の系列 (`series`、例 `8.1`) と、macOS のビルドの URL と SHA256 を持つ。読み書きと検証は py-analyze-common の `analyze_common/ffmpeg_release.py` が行い、`build.py` はそれを呼ぶ。
 
 - macOS: `build.py` が osxexperts.net の zip を取得し、中のバイナリを固定値の SHA256 と照合する (不一致でビルドを止める)。この SHA256 は osxexperts.net のページがダウンロードの横に載せる値と同じもの
-- Windows: BtbN/FFmpeg-Builds の `latest` にある同じ系列のビルド (`ffmpeg-n{series}-latest-win64-lgpl-{series}.zip`、無ければ `gpl`)。中身は日ごとに入れ替わるので SHA256 は固定しない。系列が `latest` から無くなるとビルドが止まる
+- Windows: BtbN/FFmpeg-Builds の `latest` にある同じ系列のビルド (`ffmpeg-n{series}-latest-win64-gpl-{series}.zip`。lgpl のビルドは使わない)。中身は日ごとに入れ替わるので SHA256 は固定しない。系列が `latest` から無くなるとビルドが止まる
 - 更新: `.github/workflows/ffmpeg-watch.yml` が毎日行い、patch リリースまで進める ([リリース手順](#リリース手順)の「ffmpeg の更新による patch リリース」)。osxexperts.net の URL は版から決まらない (`ffmpeg81arm.zip` / `ffmpeg9arm.zip`) ので、固定値はページのリンクから取る。手で行うときは、次のコマンドが、ページに別のビルドがあるときだけ、BtbN に同じ系列があることと、両ファイルがページの SHA256 と一致することを確かめてから、新しい固定値を `--candidate` に書く。`pin_update=true` なら、その中身を `build_assets/ffmpeg.json` に写す
 
   ```bash

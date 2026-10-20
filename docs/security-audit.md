@@ -327,7 +327,7 @@ graph TD
 - No network listeners on external interfaces
 - Outbound: the installed app checks GitHub Releases for a newer version at launch (can be turned off in Settings) and downloads an update only after the user accepts it (SEC-24)
 - Audio content analyzed locally, deleted after display / app exit
-- ffmpeg bundled under LGPL-3.0+ (Windows, BtbN lgpl build) and GPL-2.0+ (macOS, osxexperts.net build with libx264 / libx265); source availability required for redistribution
+- ffmpeg bundled under GPL-3.0+ (Windows, BtbN gpl build) and GPL-2.0+ (macOS, osxexperts.net build), both with libx264 / libx265; source availability required for redistribution
 - yt-dlp bundled under Unlicense (Python dependency, not binary)
 - deno bundled under MIT (required by yt-dlp for YouTube JS extraction)
 - THIRD_PARTY_LICENSES.txt included in installer
