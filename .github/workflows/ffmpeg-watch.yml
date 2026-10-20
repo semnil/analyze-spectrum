@@ -7,7 +7,8 @@ run-name: ffmpeg watch 🔭
 # page offers other Apple Silicon builds, it requires the same release series in the latest release of
 # BtbN/FFmpeg-Builds, checks both macOS binaries against the page's SHA256 and keeps the new pin as an artifact.
 # It also decides on a patch release: when __version__ equals the latest vX.Y.Z tag and either the pin changes now
-# or the pin on master already differs from the one at that tag.
+# or the pin on master already differs from the one that tag released: the pin file at the tag, or, for a tag without
+# it, the pin file as the first commit after the tag added it.
 #
 # smoke downloads the pin's binaries on macOS and Windows with build.py and runs tests/test_ffmpeg_binary.py on them.
 #

@@ -479,13 +479,13 @@ gh secret set UPDATE_SIGNING_KEY --repo semnil/analyze-spectrum < ~/.analyze-upd
 
 `.github/workflows/ffmpeg-watch.yml` が毎日 (と `workflow_dispatch` で) 次を行い、Draft Release の作成まで人の手を通さない。PR は bot がレビューなしでマージする。
 
-1. detect: `build_assets/ffmpeg.json` と osxexperts.net のページを比べる ([同梱する ffmpeg の固定](#同梱する-ffmpeg-の固定))。ページに別のビルドがあれば、BtbN に同じ系列があることと両ファイルの SHA256 を確かめて新しい固定値を作る。`__version__` が最新の `vX.Y.Z` タグと同じで、固定値が今回変わるか、今の固定値がそのタグの固定値と違うときは patch リリースを行う
+1. detect: `build_assets/ffmpeg.json` と osxexperts.net のページを比べる ([同梱する ffmpeg の固定](#同梱する-ffmpeg-の固定))。ページに別のビルドがあれば、BtbN に同じ系列があることと両ファイルの SHA256 を確かめて新しい固定値を作る。`__version__` が最新の `vX.Y.Z` タグと同じで、固定値が今回変わるか、今の固定値がそのタグの出した固定値 (タグにある固定値のファイル、タグに無ければタグの後で最初にそのファイルを足したときの固定値) と違うときは patch リリースを行う
 2. smoke: macOS と Windows のランナーで、`build.py --ffmpeg-only` で取得した固定値のバイナリに `tests/test_ffmpeg_binary.py` を通す
 3. land: GITHUB_TOKEN で、固定値の PR (`ffmpeg-watch/pin-<series>-<run id>-<attempt>`) と、版上げだけの PR (`ffmpeg-watch/bump-v<version>-<run id>-<attempt>`、`chore: バージョンを vX.Y.Z に更新`) を順に作る。GITHUB_TOKEN が作った PR では `pull_request_target` が走らず、`pull_request` の run は承認待ちになるので、各 PR の必須チェックを自分で `workflow_dispatch` する: CI (`Test 🧪`) と `dependabot-auto-merge.yml` (`auto-merge`) をそのブランチで、`workflow-checks.yml` (`action-pins`) を master で PR 番号を渡して。3 つの成功と `gh pr checks --required` を待ってからマージする。GITHUB_TOKEN のマージでは master の push の CI も走らないので、版上げのマージ後に master で CI を `workflow_dispatch` し、`tag-release.yml` がその run の成功でタグを打つ
 4. Release の publish は人が行う ([リリース手順](#リリース手順)の 4)
 
 - 前提: リポジトリの設定「Allow GitHub Actions to create and approve pull requests」(Settings → Actions → General) が on であること。off だと land の `gh pr create` が失敗する
-- 前回の実行の PR (head が `ffmpeg-watch/` の open な PR) が残っていると、land は何も変えずに失敗する。その PR を閉じるかマージしてから再実行する。ブランチ名は実行 (run id と attempt) ごとに違うので、PR を作る前に失敗した実行が push したブランチは、次の実行の push と衝突しない (そのブランチは PR の無いまま残る)。固定値の PR だけがマージされて版上げが残ったときは、次の実行の detect が「今の固定値が最新のタグと違う」として版上げから再開する
+- 前回の実行の PR (head が `ffmpeg-watch/` の open な PR) が残っていると、land は何も変えずに失敗する。その PR を閉じるかマージしてから再実行する。ブランチ名は実行 (run id と attempt) ごとに違うので、PR を作る前に失敗した実行が push したブランチは、次の実行の push と衝突しない (そのブランチは PR の無いまま残る)。固定値の PR だけがマージされて版上げが残ったときは、次の実行の detect が「今の固定値が最新のタグの出した固定値と違う」として版上げから再開する
 - smoke か、各 PR で dispatch した必須チェック (CI・auto-merge・action-pins) のどれかが失敗すると、その時点で止まり、マージしない
 
 ## バージョン管理
