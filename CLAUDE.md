@@ -61,6 +61,7 @@ graph LR
     wf --> wf_tag["tag-release.yml<br>master の CI 成功後、版上げならタグを打ち release.yaml を起動"]
     wf --> wf_chk["workflow-checks.yml<br>全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査"]
     wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストを実行"]
+    wf --> wf_dam["dependabot-auto-merge.yml<br>Dependabot の PR で更新が semver の patch なら自動マージを予約。必須チェック auto-merge"]
     root --> ght[".github/tests/"]
     ght --> ght_sh["workflow-checks-test.sh<br>workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト"]
     root --> r_claude["CLAUDE.md"]
