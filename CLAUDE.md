@@ -61,6 +61,7 @@ graph LR
     wf --> wf_tag["tag-release.yml<br>master の CI 成功後、版上げならタグを打ち release.yaml を起動"]
     wf --> wf_chk["workflow-checks.yml<br>全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査"]
     wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストを実行"]
+    wf --> wf_dam["dependabot-auto-merge.yml<br>Dependabot の PR で更新が semver の patch なら自動マージを予約。必須チェック auto-merge"]
     root --> ght[".github/tests/"]
     ght --> ght_sh["workflow-checks-test.sh<br>workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト"]
     root --> r_claude["CLAUDE.md"]
@@ -306,18 +307,16 @@ analyze-spectrum はブルー系 (`--accent: #1565C0`)、analyze-loudness はパ
 
 ### yt-dlp のバージョン固定
 
-`pyproject.toml` で `yt-dlp==<version>` の完全一致ピンを持つ。ピン値は analyze-loudness / analyze-spectrum / py-analyze-common の 3 つの `pyproject.toml` が持つミラーで、必ず同時に更新する。
+`pyproject.toml` で `yt-dlp==<version>` の完全一致ピンを持つ。同じピンを analyze-loudness / analyze-spectrum / py-analyze-common の 3 つの `pyproject.toml` が持ち、手で版を上げるときは 3 つを同時に更新する。Dependabot の更新が semver の patch のときはリポジトリごとに自動でマージされる (`.github/workflows/dependabot-auto-merge.yml`) ので、3 つの値は揃わないことがある。出荷物に入るのはこのリポジトリの `pyproject.toml` のピンで、py-analyze-common の `pyproject.toml` は出荷物のビルドに使われない (submodule を `sys.path` 注入で読むため)。
 
 固定する理由: 出荷物は PyInstaller が yt-dlp を PYZ に焼き込むため、インストール後に更新できない。無指定にするとビルドした時点の解決結果で版が決まり、出荷物に入った版を事後に特定できない。
 
-ピンの更新はリリース作業の一部として行う:
+ピンの版は、[リリース手順](#リリース手順) の版上げ PR を出す前に確かめる。Dependabot の自動マージで変わったピンは、この確認を経ずに master に入っている:
 
-1. `pip install -U yt-dlp` で候補版を入れる
-2. **全長ダウンロード**で確認する。`--test` (先頭 10 KiB のみ取得) では 403 を検出できない:
+1. このリポジトリの `pyproject.toml` のピンの版を入れた `.venv` で、**全長ダウンロード**を確認する。`--test` (先頭 10 KiB のみ取得) では 403 を検出できない:
    `.venv/bin/python -m yt_dlp -f bestaudio -o <tmpdir>/%(id)s.%(ext)s <URL>`
    通常動画・ライブアーカイブ・Shorts の 3 種で確認する
-3. 通った版を 3 つの `pyproject.toml` に書く。py-analyze-common を先にコミットし、submodule ポインタを更新する
-4. 出荷物を再ビルドする
+2. 通らなければ `pip install -U yt-dlp` で候補版を入れて同じ確認をし、通った版を 3 つの `pyproject.toml` に書く。py-analyze-common を先にコミットし、submodule ポインタを更新する
 
 この節は analyze-loudness の CLAUDE.md と同一内容のミラー。
 
@@ -435,6 +434,8 @@ gh secret set UPDATE_SIGNING_KEY --repo semnil/analyze-spectrum < ~/.analyze-upd
 2 行目が出力する公開鍵を `src/analyze_spectrum/update.py` の `PUBLIC_KEY` に書く。鍵を作り直すと、`PUBLIC_KEY` を書き換える前の版のアプリは新しい鍵で署名した更新を受け付けない (その版の利用者は新しいインストーラーを手で入れ直す)。
 
 ## リリース手順
+
+版上げ PR を出す前に、yt-dlp のピンの版を全長ダウンロードで確かめる ([yt-dlp のバージョン固定](#yt-dlp-のバージョン固定))。
 
 1. `src/analyze_spectrum/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
 2. マージ後、master への push で走った CI が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する
