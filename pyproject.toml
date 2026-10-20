@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 gui = [
     "pywebview>=5.0",
+    "certifi",  # CA bundle for the update check (analyze_common.update)
 ]
 dev = [
     "pytest>=8.0",

@@ -25,7 +25,9 @@ from analyze_spectrum import SCHEMA_VERSION as _SCHEMA_VERSION, __version__, mak
 from analyze_spectrum.analysis import _json_safe, analyze_track, estimate_parametric_eq, missing_result_fields
 from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
-from analyze_common.web import COMMON_CSS
+from analyze_spectrum.update import UPDATE_CONFIG
+from analyze_common.update import UpdateError, Updater, hold_instance_mutex
+from analyze_common.web import COMMON_CSS, UPDATE_JS
 
 # Temporary directory for uploaded (drag & drop) files, cleaned up on exit
 _upload_dir = tempfile.mkdtemp(prefix="spectrum_uploads_")
@@ -234,6 +236,7 @@ FRONTEND_DIR = _get_base_dir() / "frontend"
 _ICON_PATH = _get_base_dir() / "build_assets" / "icon.ico"
 
 _window = None
+_updater = Updater(UPDATE_CONFIG)
 
 
 class _ClientDisconnected(Exception):
@@ -288,25 +291,29 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return None
         return result if isinstance(result, str) else result[0]
 
-    _COMMON_CSS_URL = "/common/common.css"
+    # analyze_common's shared assets, which live outside FRONTEND_DIR.
+    _SHARED_ASSETS = {
+        "/common/common.css": (COMMON_CSS, "text/css; charset=utf-8"),
+        "/common/update.js": (UPDATE_JS, "text/javascript; charset=utf-8"),
+    }
 
     def do_GET(self):
         if not self._check_host():
             return
-        if self.path.split("?", 1)[0] == self._COMMON_CSS_URL:
-            self._send_common_css()
+        asset = self._SHARED_ASSETS.get(self.path.split("?", 1)[0])
+        if asset:
+            self._send_shared_asset(*asset)
             return
         super().do_GET()
 
-    def _send_common_css(self):
-        """Serve analyze_common's shared stylesheet, which lives outside FRONTEND_DIR."""
+    def _send_shared_asset(self, path: Path, content_type: str):
         try:
-            body = COMMON_CSS.read_bytes()
+            body = path.read_bytes()
         except OSError:
             self.send_error(404)
             return
         self.send_response(200)
-        self.send_header("Content-Type", "text/css; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -336,6 +343,10 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             "/load": self._handle_load,
             "/browse": self._handle_browse,
             "/upload": self._handle_upload,
+            "/update/status": self._handle_update_status,
+            "/update/settings": self._handle_update_settings,
+            "/update/check": self._handle_update_check,
+            "/update/install": self._handle_update_install,
         }
         handler = handlers.get(self.path)
         if not handler:
@@ -914,6 +925,50 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
 
         self._json_response(200, {"uploaded": True, "path": dest})
 
+    def _handle_update_status(self):
+        self._json_response(200, _updater.status())
+
+    def _handle_update_settings(self):
+        body = self._read_json_body()
+        on = body.get("launch_check") if isinstance(body, dict) else None
+        if not isinstance(on, bool):
+            self._json_error(400, "'launch_check' must be true or false")
+            return
+        try:
+            _updater.set_launch_check(on)
+        except UpdateError as err:
+            self._json_error(500, str(err))
+            return
+        self._json_response(200, {"launch_check": _updater.launch_check()})
+
+    def _handle_update_check(self):
+        try:
+            version = _updater.check()
+        except UpdateError as err:
+            self._json_error(502, str(err))
+            return
+        if version is None:
+            self._json_response(200, {"available": False})
+        else:
+            self._json_response(200, {"available": True, "version": version})
+
+    def _handle_update_install(self):
+        body = self._read_json_body()
+        version = body.get("version") if isinstance(body, dict) else None
+        if not isinstance(version, str) or not version:
+            self._json_error(400, "Missing or invalid 'version' field")
+            return
+        try:
+            handoff = _updater.install(version)
+        except UpdateError as err:
+            self._json_error(500, str(err))
+            return
+        if handoff.exit_mode is None:
+            self._json_response(200, {"installed": True, "restart_error": handoff.restart_error})
+            return
+        self._json_response(200, {"restarting": True})
+        _exit_for_update(handoff.exit_mode)
+
     def _json_response(self, status, obj):
         # Previously, a NaN/Inf hidden inside externally-loaded JSON would
         # raise ValueError here and drop the TCP connection mid-response,
@@ -1012,6 +1067,22 @@ def _resolve_background_color(storage_key: str) -> str:
     return _BG_DARK if mode == "dark" else _BG_LIGHT
 
 
+def _exit_for_update(exit_mode: str) -> None:
+    """End the app once an update has been handed off.
+
+    "close" quits through the window, as a normal close does.  "immediate"
+    expects the bundle on disk to be the new version already: it removes the
+    temp directories atexit would have removed, imports nothing, and ends the
+    process with os._exit.
+    """
+    if exit_mode == "immediate":
+        for path in (_upload_dir, _cache_dir):
+            shutil.rmtree(path, ignore_errors=True)
+        os._exit(0)
+    else:
+        _window.destroy()
+
+
 class _HTTPServer(ThreadingHTTPServer):
     """Loopback server whose listen backlog holds the burst of connections a
     webview opens while loading the page and its scripts in parallel."""
@@ -1020,6 +1091,7 @@ class _HTTPServer(ThreadingHTTPServer):
 
 
 def main():
+    hold_instance_mutex(UPDATE_CONFIG.mutex_name)
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):
         bin_dir = str(Path(sys._MEIPASS) / "bin")

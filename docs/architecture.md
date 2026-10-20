@@ -41,6 +41,7 @@ graph TD
         DL["download.py<br>yt_dlp.YoutubeDL, is_url, resolve_source"]
         PCM["pcm.py<br>ffmpeg → PCM"]
         ANA["analysis.py<br>Welch PSD, 1/3 oct, metrics"]
+        UPD["update.py<br>UPDATE_CONFIG (release repo, public key)"]
     end
 
     subgraph "frontend/"
@@ -61,6 +62,7 @@ graph TD
     GUI --> DL
     GUI --> PCM
     GUI --> ANA
+    GUI --> UPD
     GUI -.->|"serves"| HTML
     HTML --> JS
     JS --> SP
@@ -360,6 +362,50 @@ CSS カスタムプロパティ (`--bg`, `--text`, `--accent` 等) で全色を�
 Canvas チャートは `getThemeColors()` で描画時にテーマカラーを取得。
 テーマ切替時はチャートを再描画。設定は `localStorage` に保存。
 
+### 4.8 Auto-Update
+
+インストールしたアプリは、起動時 (設定ダイアログの「起動時に確認」が ON のとき) と設定ダイアログの「今すぐ確認」で、最新リリースに新しい版があるかを確かめる。
+画面側 (設定ボタン・設定ダイアログ・確認ダイアログ) は py-analyze-common の `analyze_common/web/update.js`、取得・検証・適用は `analyze_common/update.py` が受け持ち、analyze-loudness と共通である。
+このアプリが持つのは `src/analyze_spectrum/update.py` の `UPDATE_CONFIG`、`gui.py` の 4 つのエンドポイントと終了処理 (`_exit_for_update()`)、`main.js` のダウンロード中の操作の停止 (`_setUpdateLock()`) である。
+署名の鍵と `release.yaml` の手順はプロジェクトの CLAUDE.md の「自動更新」節にある。
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant FE as Frontend (update.js)
+    participant SRV as HTTP Server (gui.py)
+    participant GH as GitHub Releases
+    participant OS as Installer / shell
+
+    FE->>SRV: POST /update/status
+    SRV-->>FE: {current, supported, launch_check}
+    FE->>SRV: POST /update/check
+    SRV->>GH: GET releases/latest/download/latest.json
+    GH-->>SRV: {version, platforms}
+    SRV-->>FE: {available: true, version}
+    FE->>U: confirm (Version X is available. Update now?)
+    U-->>FE: OK
+    FE->>FE: _setUpdateLock(true)
+    FE->>SRV: POST /update/install {version}
+    SRV->>GH: GET setup.exe or .dmg
+    SRV->>SRV: verify the Ed25519 signature with PUBLIC_KEY
+    alt Windows
+        SRV->>OS: start setup.exe with /SILENT and /UPDATE=1
+        SRV-->>FE: {restarting: true}
+        SRV->>SRV: window.destroy() and exit, which frees the mutex
+        OS->>OS: wait for the mutex, install, start the app
+    else macOS
+        SRV->>SRV: copy the .app out of the DMG, check bundle id, version and Team ID, swap it in
+        SRV-->>FE: {restarting: true}
+        SRV->>SRV: remove the temp dirs, os._exit(0)
+        OS->>OS: wait for the exit, open the new .app
+    end
+```
+
+キャンセルすると何もダウンロードしない。起動時の確認は、新しい版が無いときと確認に失敗したときは何も表示しない (「今すぐ確認」はダイアログ内に結果を出す)。分析中は確認ダイアログを出さずに断る。
+ダウンロード・検証・適用のどこかで失敗すると `_setUpdateLock(false)` で操作を戻し、ステータス欄に原因を出してアプリは動き続ける。
+Windows では UAC の確認をインストーラーが出し、そのときアプリはもう終わっている。UAC を拒否するとインストールされず、アプリは閉じたままになる (もう一度起動すると旧版が起動し、起動時の確認が ON なら同じ更新をもう一度勧める)。
+
 ## 5. Chart System
 
 ### 5.1 Chart Types
@@ -478,6 +524,7 @@ dist/analyze-spectrum/
 
 - ビルド時アセット (ffmpeg, ffprobe, deno, uPlot) は SHA256 チェックサム検証 (yt-dlp は Python 依存のため対象外)
 - Frozen build は `_MEIPASS/bin` に PATH を限定
+- 自動更新の取得物は Ed25519 の署名をアプリに組み込んだ公開鍵で検証してから適用する ([4.8](#48-auto-update)、`docs/security-audit.md` の SEC-24)
 
 ### 7.6 既知の制限
 
@@ -520,19 +567,19 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 
 ## 10. Test Architecture
 
-### 10.1 テスト構成 (104 tests)
+### 10.1 テスト構成
 
 | ファイル | 種別 | 主な対象 |
 |----------|------|----------|
-| `tests/conftest.py` | fixture | 共有 WAV バイト生成 (`_make_wav_bytes`, `wav_file`, `wav_file_b`) |
+| `tests/conftest.py` | fixture | 共有 WAV バイト生成 (`_make_wav_bytes`, `wav_file`, `wav_file_b`)、更新の設定ファイルを一時フォルダーへ向ける `_isolated_settings` |
 | `tests/test_analysis.py` | unit | 解析コア (Welch PSD, 1/3 oct, metrics) |
 | `tests/test_pcm.py` | unit | ffmpeg → PCM 変換 |
 | `tests/test_cli.py` | unit | argparse + CLI 統合 |
 | `tests/test_download.py` | unit | yt_dlp.YoutubeDL API, ffprobe duration |
-| `tests/test_gui.py` | unit | gui.py (モック使用) |
-| `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン (28 tests) |
-| `tests/test_frontend.py` | e2e | Playwright headless Chromium runner |
-| `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト (75 assertions) |
+| `tests/test_gui.py` | unit | gui.py (モック使用)。更新のエンドポイントと `UPDATE_CONFIG` を含む |
+| `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン |
+| `tests/test_frontend.py` | e2e | Playwright headless Chromium runner。実際の index.html で更新の確認・承認・失敗・設定の保存を通す |
+| `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト |
 
 ### 10.2 Integration テスト
 

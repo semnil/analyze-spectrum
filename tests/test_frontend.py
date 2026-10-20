@@ -4,6 +4,8 @@ Starts a local HTTP server to serve the test HTML, then uses Playwright
 to open the page and read test results from window._testResult.
 """
 
+import contextlib
+import sys
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -169,3 +171,326 @@ def test_interactive_states_follow_stylesheet_order(scheme):
     finally:
         server.shutdown()
         server.server_close()
+
+
+class _PageUpdater:
+    """Fake analyze_common.update.Updater: offers ``offer`` and fails the install
+    once ``release`` is set."""
+
+    def __init__(self, offer, launch_check=True, install_result=None):
+        self.offer = offer
+        self.launch_check_on = launch_check
+        self.install_result = install_result
+        self.checks = 0
+        self.installed = []
+        self.saved = []
+        self.release = threading.Event()
+        # Set to hold that answer until the test sets the event.
+        self.status_gate = None
+        self.check_gate = None
+        self.save_gate = None
+
+    def gates(self):
+        return [g for g in (self.release, self.status_gate, self.check_gate, self.save_gate) if g is not None]
+
+    def status(self):
+        if self.status_gate is not None:
+            self.status_gate.wait(10)
+        return {"current": "1.0.0", "supported": True, "launch_check": self.launch_check_on}
+
+    def launch_check(self):
+        return self.launch_check_on
+
+    def set_launch_check(self, on):
+        if self.save_gate is not None:
+            self.save_gate.wait(10)
+        self.saved.append(on)
+        self.launch_check_on = on
+
+    def check(self):
+        if self.check_gate is not None:
+            self.check_gate.wait(10)
+        self.checks += 1
+        return self.offer
+
+    def install(self, version):
+        from analyze_common.update import UpdateError
+        self.installed.append(version)
+        if self.install_result is not None:
+            return self.install_result
+        self.release.wait(10)
+        raise UpdateError("bad signature")
+
+
+_UPDATE_LOCKED = ("#url-input", "#browse-btn", "#submit-btn", "#add-btn", "#load-btn", "#settings-toggle")
+
+
+@contextlib.contextmanager
+def _update_page(updater, on_dialog):
+    """The real index.html, served with ``updater`` behind the update endpoints."""
+    server = _app_server("analyze_spectrum.gui")
+    gui = sys.modules["analyze_spectrum.gui"]
+    saved = gui._updater
+    gui._updater = updater
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            ctx = browser.new_context()
+            ctx.add_init_script("localStorage.setItem('spectrum-lang', 'en');")
+            page = ctx.new_page()
+            page.on("dialog", on_dialog)
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            yield page
+            browser.close()
+    finally:
+        for gate in updater.gates():
+            gate.set()
+        gui._updater = saved
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_accepted_update_locks_the_page_until_the_install_fails():
+    updater = _PageUpdater("9.9.9")
+    asked = []
+
+    def accept(dialog):
+        asked.append(dialog.message)
+        dialog.accept()
+
+    with _update_page(updater, accept) as page:
+        page.wait_for_function("document.getElementById('submit-btn').disabled", timeout=10000)
+        assert len(asked) == 1 and "9.9.9" in asked[0]
+        assert all(page.is_disabled(selector) for selector in _UPDATE_LOCKED)
+        assert "Downloading update" in page.inner_text("#status")
+        updater.release.set()
+        page.wait_for_selector("#status.error", timeout=10000)
+        assert "bad signature" in page.inner_text("#status")
+        assert all(page.is_enabled(selector) for selector in _UPDATE_LOCKED)
+    assert updater.installed == ["9.9.9"]
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_declined_update_installs_nothing():
+    updater = _PageUpdater("9.9.9")
+    asked = []
+
+    def dismiss(dialog):
+        asked.append(dialog.message)
+        dialog.dismiss()
+
+    with _update_page(updater, dismiss) as page:
+        page.wait_for_function("document.getElementById('settings-toggle') !== null", timeout=10000)
+        page.wait_for_load_state("networkidle")
+        assert len(asked) == 1
+        assert all(page.is_enabled(selector) for selector in _UPDATE_LOCKED)
+    assert updater.checks == 1
+    assert updater.installed == []
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_launch_check_off_does_not_ask_the_release_feed():
+    updater = _PageUpdater("9.9.9", launch_check=False)
+    with _update_page(updater, lambda d: d.dismiss()) as page:
+        page.wait_for_function("document.getElementById('settings-toggle') !== null", timeout=10000)
+        page.wait_for_load_state("networkidle")
+    assert updater.checks == 0
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_unchecking_launch_check_saves_it_in_the_app():
+    updater = _PageUpdater(None)
+    with _update_page(updater, lambda d: d.dismiss()) as page:
+        page.wait_for_load_state("networkidle")
+        page.click("#settings-toggle")
+        page.wait_for_selector("#settings-update-launch")
+        assert page.is_checked("#settings-update-launch")
+        page.uncheck("#settings-update-launch")
+        page.wait_for_function("!document.getElementById('settings-update-launch').checked")
+        page.wait_for_load_state("networkidle")
+    assert updater.saved == [False]
+    assert updater.launch_check_on is False
+
+
+_TRACK_JS = """{label: 'x', sample_rate: 48000, duration_sec: 1, rms_dbfs: -14, peak_dbfs: -3,
+  true_peak_dbtp: -2.8, spectrum: {freqs: [100, 200, 400, 800], psd_db: [-30, -35, -40, -45]},
+  bands: {centers: [100, 200, 400], energy_db: [-30, -35, -40]},
+  summary: {crest_factor_db: 11, low_intel_ratio_db: 3, spectral_centroid_hz: 600, spectral_tilt_db_oct: -3.5,
+    presence_mid_ratio_db: -2, brightness_db: -10, hpf_3db_hz: null, hf_rolloff_hz: 12000,
+    band_energy: {sub_20_80: -45, low_80_200: -20, low_mid_200_500: -22, mid_500_2k: -25,
+      presence_2k_5k: -27, air_5k_10k: -38}},
+  meta: {version: '1', analyzed_at: '2026-01-01T00:00:00Z', source: 'x'}}"""
+
+_RENDER_JS = {
+    "single": "renderSingle(" + _TRACK_JS + ")",
+    "compare": "renderCompare({tracks: [" + _TRACK_JS + ", " + _TRACK_JS + "], transfer_functions: [], "
+               "meta: {version: '1', analyzed_at: '2026-01-01T00:00:00Z', sources: ['x', 'y']}})",
+}
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("result", ["single", "compare"])
+def test_saving_is_locked_while_an_update_installs(result):
+    updater = _PageUpdater("9.9.9", launch_check=False)
+    saves = []
+    with _update_page(updater, lambda d: d.accept()) as page:
+        page.on("request", lambda r: saves.append(r.url) if "/save" in r.url else None)
+        page.wait_for_load_state("networkidle")
+        page.evaluate(_RENDER_JS[result])
+        page.click("#settings-toggle")
+        page.click("#settings-update-now")
+        page.wait_for_function("document.getElementById('submit-btn').disabled", timeout=10000)
+        assert page.eval_on_selector_all(".save-btn", "bs => bs.length > 0 && bs.every(b => b.disabled)")
+        page.evaluate("saveResult(lastData); saveImage(lastData);")
+        page.evaluate("window.i18n.setLang('ja')")
+        assert page.eval_on_selector_all(".save-btn", "bs => bs.length > 0 && bs.every(b => b.disabled)")
+        updater.release.set()
+        page.wait_for_selector("#status.error", timeout=10000)
+        assert page.eval_on_selector_all(".save-btn", "bs => bs.length > 0 && bs.every(b => !b.disabled)")
+    assert saves == []
+
+
+# An analysis in flight, as far as the page's Escape handler can tell, and a
+# record of whether that handler cancelled it.
+_RUNNING_ANALYSIS_JS = """activeAbort = new AbortController(); window.__aborted = false;
+activeAbort.signal.addEventListener('abort', () => { window.__aborted = true; });"""
+_DIALOG_OPEN_JS = "!document.querySelector('.settings-scrim').hidden"
+_FOCUS_IN_DIALOG_JS = "document.querySelector('.settings-box').contains(document.activeElement)"
+_FOCUS_ON_DIALOG_JS = "document.activeElement === document.querySelector('.settings-box')"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_escape_during_check_now_keeps_the_analysis_and_the_dialog():
+    updater = _PageUpdater(None, launch_check=False)
+    updater.check_gate = threading.Event()
+    with _update_page(updater, lambda d: d.dismiss()) as page:
+        page.wait_for_load_state("networkidle")
+        page.evaluate(_RUNNING_ANALYSIS_JS)
+        page.click("#settings-toggle")
+        page.click("#settings-update-now")
+        page.wait_for_function("document.getElementById('settings-update-now').disabled")
+        page.keyboard.press("Escape")
+        assert page.evaluate("window.__aborted") is False
+        assert page.evaluate(_FOCUS_IN_DIALOG_JS)
+        assert page.evaluate(_DIALOG_OPEN_JS)
+        updater.check_gate.set()
+        page.wait_for_function("!document.getElementById('settings-update-now').disabled")
+        assert page.evaluate("document.activeElement.id") == "settings-update-now"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_escape_during_a_save_closes_the_dialog_and_keeps_the_analysis():
+    updater = _PageUpdater(None, launch_check=True)
+    updater.save_gate = threading.Event()
+    with _update_page(updater, lambda d: d.dismiss()) as page:
+        page.wait_for_load_state("networkidle")
+        page.evaluate(_RUNNING_ANALYSIS_JS)
+        page.click("#settings-toggle")
+        page.click("#settings-update-launch")
+        page.wait_for_function("document.getElementById('settings-update-launch').disabled")
+        assert page.evaluate(_FOCUS_ON_DIALOG_JS)
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement.id") == "settings-update-now"
+        page.evaluate("document.querySelector('.settings-box').focus()")
+        page.keyboard.press("Shift+Tab")
+        assert page.evaluate("document.activeElement.id") == "settings-close"
+        page.evaluate("document.querySelector('.settings-box').focus()")
+        page.keyboard.press("Escape")
+        assert page.evaluate("window.__aborted") is False
+        assert not page.evaluate(_DIALOG_OPEN_JS)
+        updater.save_gate.set()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_escape_after_the_status_redraw_keeps_the_analysis_and_closes_the_dialog():
+    updater = _PageUpdater(None, launch_check=False)
+    updater.status_gate = threading.Event()
+    with _update_page(updater, lambda d: d.dismiss()) as page:
+        page.wait_for_function("document.getElementById('settings-toggle') !== null", timeout=10000)
+        page.evaluate(_RUNNING_ANALYSIS_JS)
+        page.click("#settings-toggle")
+        assert page.evaluate("document.activeElement.id") == "settings-close"
+        assert page.is_disabled("#settings-update-now")
+        updater.status_gate.set()
+        page.wait_for_function("!document.getElementById('settings-update-now').disabled")
+        assert page.evaluate("document.activeElement.id") == "settings-close"
+        page.keyboard.press("Escape")
+        assert page.evaluate("window.__aborted") is False
+        assert not page.evaluate(_DIALOG_OPEN_JS)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_settings_button_keeps_focus_and_refuses_while_an_update_downloads():
+    updater = _PageUpdater("9.9.9", launch_check=False)
+    with _update_page(updater, lambda d: d.accept()) as page:
+        page.wait_for_load_state("networkidle")
+        page.click("#settings-toggle")
+        page.click("#settings-update-now")
+        page.wait_for_function("document.getElementById('submit-btn').disabled", timeout=10000)
+        assert page.evaluate("document.activeElement.id") == "settings-toggle"
+        assert page.get_attribute("#settings-toggle", "aria-disabled") == "true"
+        page.evaluate("document.getElementById('settings-toggle').click()")
+        assert not page.evaluate(_DIALOG_OPEN_JS)
+        updater.release.set()
+        page.wait_for_selector("#status.error", timeout=10000)
+        assert page.get_attribute("#settings-toggle", "aria-disabled") is None
+        page.click("#settings-toggle")
+        assert page.evaluate(_DIALOG_OPEN_JS)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_tab_from_the_dialog_itself_goes_to_the_first_and_last_control():
+    updater = _PageUpdater(None, launch_check=False)
+    with _update_page(updater, lambda d: d.dismiss()) as page:
+        page.wait_for_load_state("networkidle")
+        page.click("#settings-toggle")
+        page.evaluate("document.querySelector('.settings-box').focus()")
+        assert page.evaluate(_FOCUS_ON_DIALOG_JS)
+        page.keyboard.press("Shift+Tab")
+        assert page.evaluate("document.activeElement.id") == "settings-close"
+        page.evaluate("document.querySelector('.settings-box').focus()")
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement.id") == "settings-update-launch"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_settings_stay_closed_after_an_installed_update_could_not_restart():
+    from analyze_common.update import Handoff
+    updater = _PageUpdater("9.9.9", launch_check=False, install_result=Handoff(None, restart_error="Resource busy"))
+    with _update_page(updater, lambda d: d.accept()) as page:
+        page.wait_for_load_state("networkidle")
+        page.click("#settings-toggle")
+        page.click("#settings-update-now")
+        page.wait_for_selector("#status.error", timeout=10000)
+        assert "could not restart (Resource busy)" in page.inner_text("#status")
+        assert page.is_enabled("#submit-btn")
+        assert page.get_attribute("#settings-toggle", "aria-disabled") == "true"
+        page.evaluate("document.getElementById('settings-toggle').click()")
+        assert not page.evaluate(_DIALOG_OPEN_JS)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_outside_press_keeps_escape_in_the_settings_dialog():
+    """A real press outside the settings dialog does not move focus: Escape
+    after it still reaches the dialog while a check holds the dialog open, and
+    focus returns to the settings button when the press closes the dialog."""
+    updater = _PageUpdater(None, launch_check=False)
+    updater.check_gate = threading.Event()
+    with _update_page(updater, lambda d: d.dismiss()) as page:
+        page.evaluate("window.analyzeUpdate.ready")
+        page.evaluate(_RUNNING_ANALYSIS_JS)
+        page.focus("#settings-toggle")
+        page.keyboard.press("Enter")
+        page.focus("#settings-update-now")
+        page.keyboard.press("Enter")
+        page.wait_for_function("document.getElementById('settings-update-now').disabled")
+        page.mouse.click(5, 5)
+        page.keyboard.press("Escape")
+        assert page.evaluate("window.__aborted") is False
+        assert page.is_visible(".settings-box")
+        updater.check_gate.set()
+        page.wait_for_function("!document.getElementById('settings-update-now').disabled")
+        page.mouse.click(5, 5)
+        assert not page.is_visible(".settings-box")
+        assert page.evaluate("document.activeElement.id") == "settings-toggle"

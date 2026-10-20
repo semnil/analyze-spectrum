@@ -5,6 +5,9 @@
   #define MyAppVersion "dev"
 #endif
 #define MyAppExeName "analyze-spectrum.exe"
+#ifndef MyAppMutex
+  #error MyAppMutex is passed by build.py (/DMyAppMutex=, the mutex_name in src/analyze_spectrum/update.py)
+#endif
 
 [Setup]
 AppId={{B8C4D5E6-F7A8-9012-3456-789ABCDEF012}
@@ -42,3 +45,5 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+#include "vendor\py-analyze-common\installer\auto_update.iss"

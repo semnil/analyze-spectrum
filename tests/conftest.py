@@ -46,3 +46,23 @@ def wav_file_b(tmp_path):
     path = tmp_path / "test_1khz.wav"
     path.write_bytes(_make_wav_bytes(1000.0, 0.5))
     return str(path)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_settings(tmp_path_factory, monkeypatch):
+    """Keep the update settings file in a temp folder, for the Updater gui.py has
+    already built and for any built during the test (test_gui reloads gui.py)."""
+    import sys
+
+    import analyze_spectrum  # noqa: F401  (puts vendor/py-analyze-common on sys.path)
+    from analyze_common import update as update_module
+    from analyze_common.settings import SETTINGS_NAME, SettingsStore
+
+    folder = tmp_path_factory.mktemp("settings")
+    monkeypatch.setattr(update_module, "settings_dir", lambda product: folder / product)
+    gui = sys.modules.get("analyze_spectrum.gui")
+    updater = getattr(gui, "_updater", None)
+    if updater is not None and hasattr(updater, "settings"):
+        monkeypatch.setattr(updater, "settings",
+                            SettingsStore(folder / updater.config.product / SETTINGS_NAME))
+    return folder

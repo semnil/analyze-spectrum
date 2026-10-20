@@ -389,3 +389,243 @@ class TestContentTypeGate:
         status, _ = self._post(_mock_webview, "/upload", b"x",
                                {"Content-Type": "text/plain", "X-Filename": quote("a.wav")})
         assert status == 415
+
+
+class _FakeUpdater:
+    """Stands in for analyze_common.update.Updater behind the update endpoints."""
+
+    def __init__(self, check=None, install=None, supported=True, launch_check=True, save_error=None):
+        self._check = check
+        self._install = install
+        self._supported = supported
+        self._launch_check = launch_check
+        self._save_error = save_error
+        self.installed = []
+        self.saved = []
+
+    def status(self):
+        return {"current": "1.0.0", "supported": self._supported, "launch_check": self._launch_check}
+
+    def launch_check(self):
+        return self._launch_check
+
+    def set_launch_check(self, on):
+        if self._save_error is not None:
+            raise self._save_error
+        self.saved.append(on)
+        self._launch_check = on
+
+    def check(self):
+        if isinstance(self._check, Exception):
+            raise self._check
+        return self._check
+
+    def install(self, version):
+        self.installed.append(version)
+        if isinstance(self._install, Exception):
+            raise self._install
+        return self._install
+
+
+class TestUpdateEndpoints:
+    def _request(self, gui, method, path, body=b"", headers=None):
+        import http.client
+        from http.server import HTTPServer
+        server = HTTPServer(("127.0.0.1", 0), gui.AnalyzeHandler)
+        thread = threading.Thread(target=server.handle_request)
+        thread.start()
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+        all_headers = {"Content-Type": "application/json", "Content-Length": str(len(body))}
+        all_headers.update(headers or {})
+        connection.request(method, path, body=body or None, headers=all_headers)
+        response = connection.getresponse()
+        data = response.read()
+        connection.close()
+        thread.join(timeout=5)
+        server.server_close()
+        return response, data
+
+    def _post(self, gui, path, obj=None, headers=None):
+        response, data = self._request(gui, "POST", path, json.dumps(obj or {}).encode(), headers)
+        return response.status, json.loads(data) if data.startswith(b"{") else data
+
+    def test_update_js_served_from_analyze_common(self, _mock_webview):
+        from analyze_common.web import UPDATE_JS
+        response, body = self._request(_mock_webview, "GET", "/common/update.js")
+        assert response.status == 200
+        assert response.getheader("Content-Type").startswith("text/javascript")
+        assert body == UPDATE_JS.read_bytes()
+
+    def test_index_loads_update_js_before_main_js(self, _mock_webview):
+        from pathlib import Path
+        html = (Path(_mock_webview.FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
+        assert 0 <= html.index('src="common/update.js"') < html.index('src="main.js"')
+
+    def test_status_reports_the_updater(self, _mock_webview, monkeypatch):
+        monkeypatch.setattr(_mock_webview, "_updater", _FakeUpdater(supported=False))
+        assert self._post(_mock_webview, "/update/status") == (
+            200, {"current": "1.0.0", "supported": False, "launch_check": True})
+
+    def test_settings_store_the_launch_check(self, _mock_webview, monkeypatch):
+        fake = _FakeUpdater()
+        monkeypatch.setattr(_mock_webview, "_updater", fake)
+        assert self._post(_mock_webview, "/update/settings", {"launch_check": False}) == (
+            200, {"launch_check": False})
+        assert fake.saved == [False]
+
+    @pytest.mark.parametrize("body", [{}, {"launch_check": "false"}, {"launch_check": 0}, {"launch_check": None}])
+    def test_settings_need_a_boolean(self, _mock_webview, monkeypatch, body):
+        fake = _FakeUpdater()
+        monkeypatch.setattr(_mock_webview, "_updater", fake)
+        status, _ = self._post(_mock_webview, "/update/settings", body)
+        assert status == 400
+        assert fake.saved == []
+
+    def test_settings_save_failure_is_500_with_the_cause(self, _mock_webview, monkeypatch):
+        from analyze_common.update import UpdateError
+        fake = _FakeUpdater(save_error=UpdateError("The setting could not be saved: read-only"))
+        monkeypatch.setattr(_mock_webview, "_updater", fake)
+        assert self._post(_mock_webview, "/update/settings", {"launch_check": False}) == (
+            500, {"error": "The setting could not be saved: read-only"})
+
+    def test_launch_check_survives_a_new_updater(self, _mock_webview, monkeypatch, tmp_path):
+        from analyze_common.settings import SettingsStore
+        from analyze_common.update import Updater
+        store = tmp_path / "settings.json"
+        monkeypatch.setattr(_mock_webview, "_updater", Updater(_mock_webview.UPDATE_CONFIG, SettingsStore(store)))
+        self._post(_mock_webview, "/update/settings", {"launch_check": False})
+        monkeypatch.setattr(_mock_webview, "_updater", Updater(_mock_webview.UPDATE_CONFIG, SettingsStore(store)))
+        assert self._post(_mock_webview, "/update/status")[1]["launch_check"] is False
+        assert json.loads(store.read_text())["update_check_at_launch"] is False
+
+    def test_tests_never_reach_the_real_settings_file(self, _mock_webview, _isolated_settings):
+        assert _isolated_settings in _mock_webview._updater.settings.path.parents
+
+    def test_check_up_to_date(self, _mock_webview, monkeypatch):
+        monkeypatch.setattr(_mock_webview, "_updater", _FakeUpdater(check=None))
+        assert self._post(_mock_webview, "/update/check") == (200, {"available": False})
+
+    def test_check_offers_the_newer_version(self, _mock_webview, monkeypatch):
+        monkeypatch.setattr(_mock_webview, "_updater", _FakeUpdater(check="9.9.9"))
+        assert self._post(_mock_webview, "/update/check") == (200, {"available": True, "version": "9.9.9"})
+
+    def test_check_failure_is_502_with_the_cause(self, _mock_webview, monkeypatch):
+        from analyze_common.update import UpdateError
+        monkeypatch.setattr(_mock_webview, "_updater", _FakeUpdater(check=UpdateError("offline")))
+        assert self._post(_mock_webview, "/update/check") == (502, {"error": "offline"})
+
+    @pytest.mark.parametrize("body", [{}, {"version": ""}, {"version": 1}])
+    def test_install_needs_a_version(self, _mock_webview, monkeypatch, body):
+        fake = _FakeUpdater()
+        monkeypatch.setattr(_mock_webview, "_updater", fake)
+        status, _ = self._post(_mock_webview, "/update/install", body)
+        assert status == 400
+        assert fake.installed == []
+
+    def test_install_failure_is_500_and_the_app_keeps_running(self, _mock_webview, monkeypatch):
+        from analyze_common.update import UpdateError
+        monkeypatch.setattr(_mock_webview, "_updater", _FakeUpdater(install=UpdateError("bad signature")))
+        exits = []
+        monkeypatch.setattr(_mock_webview, "_exit_for_update", exits.append)
+        assert self._post(_mock_webview, "/update/install", {"version": "9.9.9"}) == (500, {"error": "bad signature"})
+        assert exits == []
+
+    def test_install_hands_off_then_exits(self, _mock_webview, monkeypatch):
+        from analyze_common.update import Handoff
+        fake = _FakeUpdater(install=Handoff("close"))
+        monkeypatch.setattr(_mock_webview, "_updater", fake)
+        exits = []
+        monkeypatch.setattr(_mock_webview, "_exit_for_update", exits.append)
+        assert self._post(_mock_webview, "/update/install", {"version": "9.9.9"}) == (200, {"restarting": True})
+        assert fake.installed == ["9.9.9"]
+        assert exits == ["close"]
+
+    def test_install_without_restart_keeps_running(self, _mock_webview, monkeypatch):
+        from analyze_common.update import Handoff
+        monkeypatch.setattr(_mock_webview, "_updater", _FakeUpdater(install=Handoff(None, restart_error="no sh")))
+        exits = []
+        monkeypatch.setattr(_mock_webview, "_exit_for_update", exits.append)
+        status, body = self._post(_mock_webview, "/update/install", {"version": "9.9.9"})
+        assert (status, body) == (200, {"installed": True, "restart_error": "no sh"})
+        assert exits == []
+
+    def test_install_refuses_simple_content_types(self, _mock_webview, monkeypatch):
+        fake = _FakeUpdater()
+        monkeypatch.setattr(_mock_webview, "_updater", fake)
+        status, _ = self._post(_mock_webview, "/update/install", {"version": "9.9.9"},
+                               headers={"Content-Type": "text/plain"})
+        assert status == 415
+        assert fake.installed == []
+
+    def test_install_refuses_a_foreign_host(self, _mock_webview, monkeypatch):
+        fake = _FakeUpdater()
+        monkeypatch.setattr(_mock_webview, "_updater", fake)
+        status, _ = self._post(_mock_webview, "/update/install", {"version": "9.9.9"},
+                               headers={"Host": "attacker.example"})
+        assert status == 403
+        assert fake.installed == []
+
+    def test_close_exit_closes_the_window(self, _mock_webview, monkeypatch):
+        window = MagicMock()
+        monkeypatch.setattr(_mock_webview, "_window", window)
+        monkeypatch.setattr(_mock_webview.os, "_exit", lambda code: pytest.fail("os._exit called"))
+        _mock_webview._exit_for_update("close")
+        window.destroy.assert_called_once_with()
+
+    def test_immediate_exit_removes_temp_dirs_then_exits(self, _mock_webview, monkeypatch, tmp_path):
+        upload, cache = tmp_path / "up", tmp_path / "cache"
+        upload.mkdir()
+        cache.mkdir()
+        (cache / "cache_0001.json").write_text("{}")
+        monkeypatch.setattr(_mock_webview, "_upload_dir", str(upload))
+        monkeypatch.setattr(_mock_webview, "_cache_dir", str(cache))
+        window = MagicMock()
+        monkeypatch.setattr(_mock_webview, "_window", window)
+        codes = []
+        monkeypatch.setattr(_mock_webview.os, "_exit", codes.append)
+        _mock_webview._exit_for_update("immediate")
+        assert codes == [0]
+        assert not upload.exists() and not cache.exists()
+        window.destroy.assert_not_called()
+
+    def test_main_holds_the_instance_mutex(self, _mock_webview, monkeypatch):
+        held = []
+        monkeypatch.setattr(_mock_webview, "hold_instance_mutex", held.append)
+        _mock_webview.main()
+        assert held == [_mock_webview.UPDATE_CONFIG.mutex_name]
+
+
+class TestUpdateConfig:
+    def test_public_key_is_a_raw_ed25519_key(self):
+        import base64
+        from analyze_spectrum.update import PUBLIC_KEY
+        assert len(base64.b64decode(PUBLIC_KEY, validate=True)) == 32
+
+    def test_config_names_this_app(self):
+        from analyze_spectrum import __version__
+        from analyze_spectrum.update import UPDATE_CONFIG
+        assert UPDATE_CONFIG.product == "analyze-spectrum"
+        assert UPDATE_CONFIG.repo == "semnil/analyze-spectrum"
+        assert UPDATE_CONFIG.current_version == __version__
+
+    @staticmethod
+    def _load_build():
+        import importlib.util
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        spec = importlib.util.spec_from_file_location("_build", root / "build.py")
+        build = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build)
+        return build
+
+    def test_build_py_passes_the_config_mutex_to_the_installer(self):
+        from analyze_spectrum.update import UPDATE_CONFIG
+        assert self._load_build()._read_mutex_name() == UPDATE_CONFIG.mutex_name
+
+    def test_build_refuses_without_certifi(self, monkeypatch, capsys):
+        import sys
+        build = self._load_build()
+        monkeypatch.setitem(sys.modules, "certifi", None)
+        with pytest.raises(SystemExit):
+            build.check_prerequisites()
+        assert "certifi not installed" in capsys.readouterr().out

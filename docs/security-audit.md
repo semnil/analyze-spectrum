@@ -1,9 +1,10 @@
 # Security Audit Report
 
-**Date**: 2026-04-18 (SEC-22 と Summary の件数は 2026-04-26 に追補、CI/CD 節は 2026-09-30 に確認、SEC-23 は 2026-10-17 に追補)
+**Date**: 2026-04-18 (SEC-22 と Summary の件数は 2026-04-26 に追補、CI/CD 節は 2026-09-30 に確認、SEC-23 は 2026-10-17 に追補、SEC-24 は 2026-10-20 に追補)
 **Scope**:
 - 2026-04-18 の監査 (2026-04-26 に SEC-22 を追補): CLI (`src/analyze_spectrum/`), GUI (`src/analyze_spectrum/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-spectrum.spec`, `installer.iss`)
 - 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
+- 2026-10-20 の追補 (SEC-24): 自動更新 (`src/analyze_spectrum/update.py`、`gui.py` の `/update/*`、`release.yaml` の署名、vendor の `analyze_common.update` / `analyze_common/web/update.js` / `installer/auto_update.iss`)
 
 ## Summary
 
@@ -19,11 +20,12 @@
 | Subprocess Management | 2 | 0 | 1 | 1 |
 | Bundled Binaries | 2 | 0 | 2 | 0 |
 | Resource Management | 2 | 0 | 0 | 2 |
-| **Total** | **23** | **0** | **13** | **10** |
+| Software Update | 1 | 0 | 0 | 1 |
+| **Total** | **24** | **0** | **13** | **11** |
 
-**Open: 0** / Resolved: 13 / Accepted (risk acknowledged): 10
+**Open: 0** / Resolved: 13 / Accepted (risk acknowledged): 11
 
-Summary の件数は 2026-10-17 に SEC-23 を追加した時点のもの (2026-04-18 の監査の初版は SEC-01〜SEC-21 の 21 件、Resolved 11。2026-04-26 の SEC-22 追補で 22 件、Resolved 12)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
+Summary の件数は 2026-10-20 に SEC-24 を追加した時点のもの (2026-04-18 の監査の初版は SEC-01〜SEC-21 の 21 件、Resolved 11。2026-04-26 の SEC-22 追補で 22 件、Resolved 12。2026-10-17 の SEC-23 追補で 23 件、Resolved 13)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
 
 ---
 
@@ -217,6 +219,22 @@ Summary の件数は 2026-10-17 に SEC-23 を追加した時点のもの (2026-
   - 異常終了 (SIGKILL 等) では残存するが、`spectrum_cache_` prefix で `tempfile` 領域に作成されるため OS 側の clean-up 対象
   - 単一ユーザーのローカルアプリでは実害なし
 
+### SEC-24: 自動更新で取得したインストーラーの実行 -- ACCEPTED
+
+- **Added**: 2026-10-20 (自動更新の追加と同時に追補。Summary の件数もこの時点で更新)
+- **Risk**: LOW
+- **Location**: [update.py](../src/analyze_spectrum/update.py) `PUBLIC_KEY` / `UPDATE_CONFIG`; [gui.py](../src/analyze_spectrum/gui.py) `_handle_update_settings`, `_handle_update_check`, `_handle_update_install`, `_exit_for_update`; [release.yaml](../.github/workflows/release.yaml) Sign Update Manifest; vendor の `analyze_common/update.py`
+- **Analysis**: アプリはネットワークから取得したインストーラーを実行する (Windows) か、取得した `.app` で自分を置き換える (macOS)。取得物が本物であることを次の順に確かめる:
+  - 取得元: `https://github.com/semnil/analyze-spectrum/releases/latest/download/latest.json`。マニフェストが指すダウンロード先は `https://github.com/semnil/analyze-spectrum/releases/download/<tag>/<name>` の形のものだけを受け付け、https から http へのリダイレクトは辿らない
+  - 署名: Ed25519。署名の対象は成果物の SHA-256 だけでなく product (`analyze-spectrum`)・版・platform を含む文で、公開鍵はアプリに組み込んだ `PUBLIC_KEY`。別の版に付け替えた正規の成果物・別 OS 向けの成果物・analyze-loudness の成果物は検証で落ちる (`latest.json` の版を書き換える・他 platform の署名に差し替える・成果物の 1 バイトを反転する、の 3 通りがいずれも拒否されることを、`release.yaml` と同じ署名コマンドで作ったマニフェストとローカルのリリースサーバーで確認した)。検証に通らないファイルは削除してから失敗を返す
+  - 版: 今の版より新しい版だけを更新として扱う (古い正規のリリースへの差し戻しは起きない)
+  - macOS では加えて、取得した `.app` の bundle identifier と版が一致し、今のアプリが Team ID 付きで署名されているときは同じ Team ID で `codesign --verify --deep --strict` に通ることを確かめる
+  - 同意: 取得はユーザーが確認ダイアログで OK を選んだ後だけ行う。ただし `/update/install` 自体は SEC-12 と同じく同一ホストの他プロセスから直接呼べる。別オリジンのページからは Content-Type の検査 (SEC-23) で届かない。直接呼ばれた場合に起きるのは、直前の確認が見つけた正規の新しい版のインストールだけ
+- **Accepted**:
+  - 署名の秘密鍵 (GitHub の secret `UPDATE_SIGNING_KEY`) が漏れると、その鍵で署名した任意の成果物をインストール済みのアプリが受け入れる。secret の値は GitHub の画面・API からは読み出せないが、リポジトリへの書き込み権限があればワークフローから使える。リポジトリの権限の保護に委ねる
+  - Windows の検証済みインストーラーは `%TEMP%` の下で実行する。同じユーザーの権限で動く他のプロセスは、検証から実行までの間に差し替えうる (そのプロセスは差し替えなしでも同じ権限で任意のコードを実行できる)
+  - 更新の確認は起動のたびに github.com へ接続する (設定で止められる)。新しい版が無いときと確認に失敗したときは何も表示しない
+
 ---
 
 ## CI/CD (GitHub Actions)
@@ -233,6 +251,7 @@ Summary の件数は 2026-10-17 に SEC-23 を追加した時点のもの (2026-
 | 必須チェック | master のルールセットで `action-pins` を必須とし、ベースブランチへの追随を求める (`strict_required_status_checks_policy: true`)。バイパスは設定していない |
 | 検査の回帰テスト | `.github/tests/workflow-checks-test.sh` を `workflow-checks-test.yml` が実行する (検査ファイル・テストを変更する PR と master への push)。偽の `gh` がフィクスチャの git tree を返し、拒否すべき参照と通すべき参照の判定と失敗理由を検査する |
 | 版上げからのタグ作成 (`tag-release.yml`、2026-10-17 追加) | `workflow_run` で CI の完了後に走り、master への `push` で成功した run だけを処理する。checkout するのは CI が検査した `head_sha`。権限は `contents: write` (タグの push) と `actions: write` (`release.yaml` の dispatch)。既存のタグは動かさない |
+| 更新用マニフェストの署名 (`release.yaml`、2026-10-20 追加) | Create Release ジョブが secret `UPDATE_SIGNING_KEY` を `$RUNNER_TEMP` のファイル (umask 077、ステップの終了時に削除) に書き、`python -m analyze_common.update_manifest sign` で `latest.json` を作る。各署名を `src/analyze_spectrum/update.py` の `PUBLIC_KEY` で検証してから書き出す。secret が無いとき・鍵が `PUBLIC_KEY` と合わないとき・タグがアプリの版と違うときはステップが失敗し、Release は作られない (SEC-24) |
 | `pull_request_target` の許可 | public リポジトリの `pull_request_target` は 2026-11-02 から明示的な許可が必要なため、`workflow-checks.yml` を対象とした Actions の許可ポリシーを設定している |
 
 ---
@@ -251,6 +270,8 @@ Summary の件数は 2026-10-17 に SEC-23 を追加した時点のもの (2026-
 | GUI HTTP (`/load`, `/browse`) | 127.0.0.1 only | N/A (localhost) | Native file dialog + schema validation |
 | Frontend SPA | pywebview (WebView2/WKWebView) | N/A | Static files, no SSR |
 | File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG, `_dialog_lock` non-blocking try-lock (409 on concurrent) |
+| GUI HTTP (`/update/status`, `/update/settings`, `/update/check`, `/update/install`) | 127.0.0.1 only | N/A (localhost) | Content-Type gate; `/update/install` accepts only the version the last check offered |
+| Update feed (`latest.json` + installers) | HTTPS (outbound to GitHub Releases) | Ed25519 signature (`PUBLIC_KEY`) | Asset URL prefix, newer-version-only, size / deadline limits; macOS bundle id + Team ID (SEC-24) |
 
 ### Abuse Scenarios
 
@@ -270,6 +291,9 @@ Summary の件数は 2026-10-17 に SEC-23 を追加した時点のもの (2026-
 | Non-finite duration (NaN/Inf) | Server crash / infinite loop | `math.isfinite` check | Resolved (SEC-04) |
 | Cancel during subprocess | Orphaned process (~十数s) | `_ClientDisconnected` + `TemporaryDirectory` cleanup | Accepted (low) |
 | Cache directory growth | Disk usage | `atexit` cleanup + tempfile location | Very low risk |
+| Tampered or substituted update installer | Code execution | Ed25519 signature over product / version / platform / SHA-256, public key in the app | Mitigated (SEC-24) |
+| Rollback to an older signed release | Reintroduced bugs | Only versions newer than the running one are offered | Not vulnerable |
+| Leaked update signing key | Code execution on update | Key held only as a GitHub secret | Accepted (SEC-24) |
 
 ```mermaid
 graph TD
@@ -295,6 +319,7 @@ graph TD
 - No authentication tokens or cookies
 - No PII processing
 - No network listeners on external interfaces
+- Outbound: the installed app checks GitHub Releases for a newer version at launch (can be turned off in Settings) and downloads an update only after the user accepts it (SEC-24)
 - Audio content analyzed locally, deleted after display / app exit
 - ffmpeg bundled under GPL-2.0+ (source availability required for redistribution)
 - yt-dlp bundled under Unlicense (Python dependency, not binary)

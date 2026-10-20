@@ -274,11 +274,56 @@ jobs:
       run:
         shell: bash
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+
+      - name: Set Up Python 🐍
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      # The manifest tool imports the app's UpdateConfig, which imports the package.
+      - name: Install Dependencies 📦
+        timeout-minutes: 10
+        run: pip install -e .
+
       - name: Download Build Artifacts 📥
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
           merge-multiple: true
+
+      # latest.json is what the in-app update reads from the latest release.  Each
+      # installer's signature is checked against PUBLIC_KEY in
+      # src/analyze_spectrum/update.py before the file is written, so a release
+      # signed with a key the installed apps do not hold fails here instead.
+      - name: Sign Update Manifest 🔏
+        timeout-minutes: 5
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          TAG: ${{ needs.check-event.outputs.version }}
+          PYTHONPATH: vendor/py-analyze-common/src
+        run: |
+          if [[ -z "${UPDATE_SIGNING_KEY}" ]]; then
+            echo "::error::UPDATE_SIGNING_KEY is not set; without latest.json no installed app can update to this release"
+            exit 1
+          fi
+          key="${RUNNER_TEMP}/update-signing-key.pem"
+          trap 'rm -f "${key}"' EXIT
+          (umask 077 && printf '%s\n' "${UPDATE_SIGNING_KEY}" > "${key}")
+          exes=(artifacts/SpectrumAnalyzer-*-setup.exe)
+          if (( ${#exes[@]} != 1 )) || [[ ! -f "${exes[0]}" ]]; then
+            echo "::error::expected one Windows installer in artifacts/, found: ${exes[*]}"
+            exit 1
+          fi
+          python -m analyze_common.update_manifest sign \
+            --config analyze_spectrum.update:UPDATE_CONFIG \
+            --tag "${TAG}" --key "${key}" --out artifacts/latest.json \
+            "windows-x86_64=${exes[0]}" \
+            darwin-aarch64=artifacts/Spectrum-Analyzer.dmg
+          cat artifacts/latest.json
 
       - name: Create Release 🛫
         uses: softprops/action-gh-release@9d7c94cfd0a1f3ed45544c887983e9fa900f0564 # v2.0.4
@@ -291,3 +336,4 @@ jobs:
           files: |
             artifacts/*.exe
             artifacts/*.dmg
+            artifacts/latest.json
