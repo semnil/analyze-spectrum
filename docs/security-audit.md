@@ -5,6 +5,7 @@
 - 2026-04-18 の監査 (2026-04-26 に SEC-22 を追補): CLI (`src/analyze_spectrum/`), GUI (`src/analyze_spectrum/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-spectrum.spec`, `installer.iss`)
 - 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
 - 2026-10-20 の追補 (SEC-24): 自動更新 (`src/analyze_spectrum/update.py`、`gui.py` の `/update/*`、`release.yaml` の署名、vendor の `analyze_common.update` / `analyze_common/web/update.js` / `installer/auto_update.iss`)
+- 2026-10-20 の追補 (入口の表のみ): テーマと言語の保存 (`gui.py` の `/settings` と `/common/settings.js`、vendor の `analyze_common.ui_settings` / `analyze_common/web/settings.js`)。指摘の追加は無し (受け付ける値と、ページへ渡す値は、どちらも検証済みの `theme` / `lang` だけ)
 
 ## Summary
 
@@ -272,6 +273,7 @@ Summary の件数は 2026-10-20 に SEC-24 を追加した時点のもの (2026-
 | Frontend SPA | pywebview (WebView2/WKWebView) | N/A | Static files, no SSR |
 | File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG, `_dialog_lock` non-blocking try-lock (409 on concurrent) |
 | GUI HTTP (`/update/status`, `/update/settings`, `/update/check`, `/update/install`) | 127.0.0.1 only | N/A (localhost) | Content-Type gate; `/update/install` accepts only the version the last check offered |
+| GUI HTTP (`/settings`, GET `/common/settings.js`) | 127.0.0.1 only | N/A (localhost) | Content-Type gate (POST); one of `theme` (light / dark / auto) or `lang` (en / ja) per request; the script carries only those validated values, which hold nothing sensitive |
 | Update feed (`latest.json` + installers) | HTTPS (outbound to GitHub Releases) | Ed25519 signature (`PUBLIC_KEY`) | Asset URL prefix, newer-version-only, size / deadline limits; macOS bundle id + Team ID (SEC-24) |
 
 ### Abuse Scenarios
