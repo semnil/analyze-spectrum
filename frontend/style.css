@@ -407,6 +407,7 @@ body.drag-over::after {
 }
 
 .modal-buttons button {
+  min-height: 44px;
   padding: 8px 18px;
   border: 1px solid var(--border);
   border-radius: 6px;

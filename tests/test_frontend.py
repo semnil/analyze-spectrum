@@ -96,6 +96,28 @@ def _app_server(gui_module_name):
     return server
 
 
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_confirm_modal_buttons_are_44px_targets():
+    """The confirm modal's OK / Cancel meet the 44 px touch-target height."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate("void _confirmModal('Proceed?', 'source.wav')")
+            page.wait_for_selector(".modal-ok")
+            for selector in (".modal-ok", ".modal-cancel"):
+                height = page.evaluate(
+                    f"document.querySelector('{selector}').getBoundingClientRect().height")
+                assert height >= 44, f"{selector} is {height} px tall"
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 _RESOLVE_VAR_JS = """(name) => {
   const probe = document.createElement("div");
   probe.style.background = "var(" + name + ")";
