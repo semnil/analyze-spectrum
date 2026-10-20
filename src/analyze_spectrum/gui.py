@@ -26,6 +26,8 @@ from analyze_spectrum.analysis import _json_safe, analyze_track, estimate_parame
 from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
 from analyze_spectrum.update import UPDATE_CONFIG
+from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
+from analyze_common.ui_settings import UiSettings
 from analyze_common.update import UpdateError, Updater, hold_instance_mutex
 from analyze_common.web import COMMON_CSS, UPDATE_JS
 
@@ -236,7 +238,10 @@ FRONTEND_DIR = _get_base_dir() / "frontend"
 _ICON_PATH = _get_base_dir() / "build_assets" / "icon.ico"
 
 _window = None
-_updater = Updater(UPDATE_CONFIG)
+# One store, so the update settings and the theme / language share its lock.
+_settings = SettingsStore(settings_dir(UPDATE_CONFIG.product) / SETTINGS_NAME)
+_updater = Updater(UPDATE_CONFIG, _settings)
+_ui_settings = UiSettings(_settings)
 
 
 class _ClientDisconnected(Exception):
@@ -300,7 +305,11 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if not self._check_host():
             return
-        asset = self._SHARED_ASSETS.get(self.path.split("?", 1)[0])
+        path = self.path.split("?", 1)[0]
+        if path == "/common/settings.js":
+            self._send_settings_script()
+            return
+        asset = self._SHARED_ASSETS.get(path)
         if asset:
             self._send_shared_asset(*asset)
             return
@@ -315,6 +324,21 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_settings_script(self):
+        """The shared settings.js with the stored theme and language, read anew
+        for every page load."""
+        try:
+            body = _ui_settings.script()
+        except OSError:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/javascript; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -343,6 +367,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             "/load": self._handle_load,
             "/browse": self._handle_browse,
             "/upload": self._handle_upload,
+            "/settings": self._handle_settings,
             "/update/status": self._handle_update_status,
             "/update/settings": self._handle_update_settings,
             "/update/check": self._handle_update_check,
@@ -925,6 +950,18 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
 
         self._json_response(200, {"uploaded": True, "path": dest})
 
+    def _handle_settings(self):
+        body = self._read_json_body()
+        try:
+            values = _ui_settings.update(body)
+        except ValueError as err:
+            self._json_error(400, str(err))
+            return
+        except OSError as err:
+            self._json_error(500, str(err))
+            return
+        self._json_response(200, values)
+
     def _handle_update_status(self):
         self._json_response(200, _updater.status())
 
@@ -1006,67 +1043,6 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         pass
 
 
-_BG_LIGHT = "#fafafa"
-_BG_DARK = "#1a1a2e"
-
-
-def _read_theme_from_leveldb(storage_key: str, ls_dir: Path) -> str | None:
-    """Scan a Chromium/WebKit LevelDB dir for a persisted theme value.
-
-    Returns 'light' / 'dark' / None.  Tolerates corrupted log files.
-    """
-    try:
-        candidates = list(ls_dir.glob("*.log")) + list(ls_dir.glob("*.ldb"))
-        for ldb in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
-            raw = ldb.read_bytes()
-            idx = raw.find(storage_key.encode())
-            if idx == -1:
-                continue
-            tail = raw[idx + len(storage_key):idx + len(storage_key) + 40]
-            if b"dark" in tail:
-                return "dark"
-            if b"light" in tail:
-                return "light"
-    except Exception:
-        pass
-    return None
-
-
-def _resolve_background_color(storage_key: str) -> str:
-    """Resolve the pywebview initial background color from the theme setting.
-
-    Reads the WebView localStorage from the platform-specific profile path.
-    Falls back to OS preference for 'auto' or when the profile is unreadable.
-    """
-    from analyze_common.platform import IS_MAC, IS_WINDOWS
-    from analyze_common.theme import is_dark_mode
-
-    mode: str | None = None
-    if IS_WINDOWS:
-        profile = Path(os.environ.get("LOCALAPPDATA", "")) / "pywebview" / "Default"
-        ls_dir = profile / "Local Storage" / "leveldb"
-        if ls_dir.is_dir():
-            mode = _read_theme_from_leveldb(storage_key, ls_dir)
-    elif IS_MAC:
-        # pywebview on macOS uses WKWebView; WebKit stores localStorage under
-        # ~/Library/WebKit/<bundle-id>/WebsiteData/LocalStorage.  Paths vary
-        # across OS versions, so try a few candidates.
-        home = Path.home()
-        candidates = [
-            home / "Library/WebKit/pywebview/WebsiteData/LocalStorage",
-            home / "Library/Application Support/pywebview/WebsiteData/LocalStorage",
-        ]
-        for root in candidates:
-            if root.is_dir():
-                mode = _read_theme_from_leveldb(storage_key, root)
-                if mode:
-                    break
-
-    if mode is None:
-        return _BG_DARK if is_dark_mode() else _BG_LIGHT
-    return _BG_DARK if mode == "dark" else _BG_LIGHT
-
-
 def _exit_for_update(exit_mode: str) -> None:
     """End the app once an update has been handed off.
 
@@ -1103,7 +1079,7 @@ def main():
     thread.start()
 
     global _window
-    bg = _resolve_background_color("spectrum-theme")
+    bg = _ui_settings.background_color()
     icon = str(_ICON_PATH) if _ICON_PATH.exists() else None
     _window = webview.create_window(
         "Spectrum Analyzer",

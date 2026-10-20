@@ -4,24 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>analyze-spectrum</title>
+  <script src="common/settings.js"></script>
   <script src="i18n.js"></script>
   <script>
     // Resolve theme + lang before CSS paints to prevent flash and to avoid
     // screen readers briefly announcing the wrong language on boot.
     (function() {
-      var s = localStorage.getItem("spectrum-theme");
+      var s = (window.analyzeSettings || {}).theme;
       var mode = (s === "light" || s === "dark") ? s : "auto";
       var resolved = mode === "auto"
         ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
         : mode;
       document.documentElement.setAttribute("data-theme", resolved);
-      try {
-        var lang = localStorage.getItem("spectrum-lang");
-        if (lang !== "ja" && lang !== "en") {
-          lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
-        }
-        document.documentElement.setAttribute("lang", lang);
-      } catch (e) {}
+      document.documentElement.setAttribute("lang", window.i18n.lang());
     })();
   </script>
   <link rel="stylesheet" href="common/common.css">

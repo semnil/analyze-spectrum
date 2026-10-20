@@ -108,10 +108,18 @@ function _applyTheme() {
 
 function setThemeMode(mode) {
   _themeMode = mode;
-  localStorage.setItem("spectrum-theme", mode);
   var wasDark = isDark();
   _applyTheme();
   if (isDark() !== wasDark) _reRenderCharts();
+  _saveSetting("theme", mode);
+}
+
+// Keeps the theme or the language in the app's settings file.  When the save
+// fails, the choice stays in effect until the app quits and the cause is shown.
+function _saveSetting(name, value) {
+  window.analyzeSettings.save(name, value).catch(function (err) {
+    showError(window.i18n.t("err.setting_save_failed") + err.message);
+  });
 }
 
 function _reRenderCharts() {
@@ -143,7 +151,7 @@ window.addEventListener("resize", function() {
 
 // Init theme
 (function() {
-  var saved = localStorage.getItem("spectrum-theme");
+  var saved = (window.analyzeSettings || {}).theme;
   _themeMode = (saved === "light" || saved === "dark") ? saved : "auto";
   _applyTheme();
 })();
@@ -178,6 +186,7 @@ function _attachLangToggle() {
   btn.addEventListener("click", function () {
     var next = window.i18n.lang() === "ja" ? "en" : "ja";
     window.i18n.setLang(next);
+    _saveSetting("lang", next);
   });
   _applyLangButton();
 }
