@@ -8,6 +8,11 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+# Imported before _mock_webview patches sys.modules: numpy / scipy modules first
+# imported inside the patch are dropped from sys.modules when it ends, and numpy
+# refuses to load its C extensions a second time in one process.
+import analyze_spectrum.analysis  # noqa: F401
+
 
 @pytest.fixture(autouse=True)
 def _mock_webview():
