@@ -689,6 +689,10 @@ function makeNdjsonResponse(type, data) {
     var _hit = _decodeJsEscapes(_text).match(_PICTO);
     assert(_hit === null, _src + " has no emoji" + (_hit ? " (found U+" + _hit[0].codePointAt(0).toString(16).toUpperCase() + ")" : ""));
   }
+  var _updateResp = await _origFetch.call(window, "../../vendor/py-analyze-common/src/analyze_common/web/update.js");
+  var _updateText = await _updateResp.text();
+  assert(_updateResp.ok && _updateText.length > 100, "update.js fetched for the emoji scan");
+  assert(!_PICTO.test(_decodeJsEscapes(_updateText)), "update.js has no emoji");
   resetState();
   showError("boom");
   assert(statusEl.querySelector(".error-icon svg") !== null, "Error icon is an SVG");

@@ -65,6 +65,16 @@ def _read_version():
     return match.group(1)
 
 
+def _read_mutex_name():
+    """The ``mutex_name`` of UPDATE_CONFIG in src/analyze_spectrum/update.py."""
+    import ast
+    tree = ast.parse((ROOT / "src" / "analyze_spectrum" / "update.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.keyword) and node.arg == "mutex_name" and isinstance(node.value, ast.Constant):
+            return node.value.value
+    raise SystemExit("mutex_name not found in src/analyze_spectrum/update.py")
+
+
 def _sha256(path: Path) -> str:
     """Compute SHA256 hex digest for a file."""
     h = hashlib.sha256()
@@ -302,6 +312,11 @@ def check_prerequisites():
     except ImportError:
         errors.append("PyInstaller not installed: pip install pyinstaller")
 
+    try:
+        import certifi  # noqa: F401
+    except ImportError:
+        errors.append('certifi not installed (the update check\'s CA bundle): pip install -e ".[gui]"')
+
     for name in REQUIRED_BINS:
         if not (BIN_DIR / name).exists():
             errors.append(f"Missing binary: build_assets/bin/{name}")
@@ -418,7 +433,8 @@ def _build_inno():
     print("  Building installer with Inno Setup...")
     print("=" * 60)
     version = _read_version()
-    subprocess.run([iscc, f"/DMyAppVersion={version}", str(ISS)], check=True)
+    subprocess.run([iscc, f"/DMyAppVersion={version}", f"/DMyAppMutex={_read_mutex_name()}", str(ISS)],
+                   check=True)
     output_dir = ROOT / "installer_output"
     print(f"\nInstaller output: {output_dir}")
 

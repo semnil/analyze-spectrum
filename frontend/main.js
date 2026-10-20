@@ -576,6 +576,7 @@ function _setStatusNormal() {
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (_updateLocked) return;
   if (isBusy) { cancelActive(); return; }
 
   // Unify sources: compareSources + pending urlInput value
@@ -949,6 +950,7 @@ function renderCompare(data) {
   const saveImgBtn = document.createElement("button");
   saveImgBtn.className = "save-btn";
   saveImgBtn.textContent = window.i18n.t("btn.save_image");
+  saveImgBtn.disabled = _updateLocked;
   saveImgBtn.addEventListener("click", () => saveImage(data));
   titleRow.appendChild(saveImgBtn);
 
@@ -1252,12 +1254,14 @@ function appendSaveButtons(container, data) {
   const saveBtn = document.createElement("button");
   saveBtn.className = "save-btn";
   saveBtn.textContent = window.i18n.t("btn.save_json");
+  saveBtn.disabled = _updateLocked;
   saveBtn.addEventListener("click", () => saveResult(data));
   container.appendChild(saveBtn);
 
   const saveImgBtn = document.createElement("button");
   saveImgBtn.className = "save-btn";
   saveImgBtn.textContent = window.i18n.t("btn.save_image");
+  saveImgBtn.disabled = _updateLocked;
   saveImgBtn.addEventListener("click", () => saveImage(data));
   container.appendChild(saveImgBtn);
 }
@@ -1274,6 +1278,7 @@ function fmtSign(val, decimals) {
 }
 
 async function saveResult(data) {
+  if (_updateLocked) return;
   const label = data.label || "spectrum";
   const filename = `spectrum_${safeName(label)}.json`;
   try {
@@ -1559,6 +1564,7 @@ function captureImage(data) {
 }
 
 async function saveImage(data) {
+  if (_updateLocked) return;
   const label = data.label || data.tracks?.[0]?.label || "eq";
   const filename = `spectrum_${safeName(label)}.png`;
   try {
@@ -1614,7 +1620,7 @@ window.addEventListener("drop", async (e) => {
   e.preventDefault();
   e.stopImmediatePropagation();
   document.body.classList.remove("drag-over");
-  if (isBusy) return;
+  if (isBusy || _updateLocked) return;
 
   const files = Array.from(e.dataTransfer.files);
   if (!files.length) return;
@@ -1705,4 +1711,35 @@ function showError(message) {
     });
     statusEl.appendChild(btn);
   }
+}
+
+// In-app update: the settings button, the launch check, the confirm and the
+// install come from analyze_common (served at /common/update.js).
+var _updateLocked = false;
+
+// Held while an accepted update downloads and installs: nothing that starts an
+// analysis, edits the queue or saves a result stays usable, and the status keeps
+// its spinner.
+function _setUpdateLock(locked) {
+  _updateLocked = locked;
+  [urlInput, browseBtn, submitBtn, addBtn, loadBtn, clearBtn].forEach(function (control) { control.disabled = locked; });
+  document.querySelectorAll(".remove-track, .reorder-track, .save-btn").forEach(function (button) {
+    if (!button.classList.contains("reorder-placeholder")) button.disabled = locked;
+  });
+  statusEl.classList.toggle("loading", locked);
+  if (locked) statusEl.setAttribute("aria-busy", "true");
+  else statusEl.removeAttribute("aria-busy");
+}
+
+if (window.analyzeUpdate) {
+  window.analyzeUpdate.init({
+    appName: "Spectrum Analyzer",
+    isBusy: function () { return isBusy; },
+    setBusy: _setUpdateLock,
+    setStatus: function (text) {
+      _setStatusNormal();
+      statusEl.textContent = text;
+    },
+    showError: showError,
+  });
 }
