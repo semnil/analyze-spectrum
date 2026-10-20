@@ -51,6 +51,19 @@ GUI では URL 入力、Browse ボタン、またはドラッグ & ドロップ�
 Analyze ボタンで単体分析、"+ Add Track" で複数トラックを登録して Compare で比較分析を実行できる。
 ダークモード対応 (Light / Dark / Auto の 3 段階切替、デフォルトは OS 設定に追従)。
 
+### 自動更新
+
+インストールしたアプリ (Windows のインストーラー版、macOS の DMG 版) は、起動時に GitHub の最新リリースに新しい版があるかを確かめる。
+新しい版があると「今すぐ更新しますか?」と確認し、OK を選んだときだけダウンロードする。
+ダウンロードしたインストーラーは、アプリに組み込んだ公開鍵で署名を確かめてから適用し、そのあとアプリを起動し直す。キャンセルすると何もしない。
+
+ツールバーの設定ボタンから開く設定ダイアログで、起動時の確認を止められる。同じダイアログの「今すぐ確認」で、手動でも確かめられる。
+起動時の確認は、新しい版が無いときと確認に失敗したときは何も表示しない。
+
+- Windows: インストーラーが動くときに、ユーザーアカウント制御 (UAC) の確認が出る。そのときアプリはもう閉じているので、「いいえ」を選ぶと更新はされず、アプリは閉じたままになる。もう一度起動すると、更新の確認がまた出る
+
+更新の確認とダウンロードの接続先は github.com のリリースと、GitHub がリリースのファイルの取得をリダイレクトする配信先 (release-assets.githubusercontent.com)。リクエストの User-Agent はアプリ名と版 (例: `analyze-spectrum/1.3.1`)。
+
 ## Architecture
 
 ```
@@ -121,7 +134,8 @@ analyze-spectrum/
 │   ├── cli.py             # CLI entry point
 │   ├── gui.py             # pywebview + HTTP server
 │   ├── download.py        # yt_dlp.YoutubeDL API, source resolution
-│   └── pcm.py             # ffmpeg → PCM (mono + stereo)
+│   ├── pcm.py             # ffmpeg → PCM (mono + stereo)
+│   └── update.py          # auto-update config (release repo, public key)
 ├── frontend/
 │   ├── index.html
 │   ├── main.js
@@ -143,6 +157,7 @@ analyze-spectrum/
 - scipy >= 1.12
 - yt-dlp
 - pywebview >= 5.0 (GUI only)
+- certifi (GUI only, CA bundle for the update check)
 
 ### External Tools
 

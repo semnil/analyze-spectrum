@@ -74,6 +74,7 @@ graph LR
     src --> src_gui["gui.py<br>pywebview とローカル HTTP サーバー"]
     src --> src_dl["download.py<br>yt_dlp.YoutubeDL API、ffprobe による長さの取得"]
     src --> src_pcm["pcm.py<br>ffmpeg による PCM 変換 (mono + stereo)"]
+    src --> src_upd["update.py<br>自動更新でこのアプリを表す UPDATE_CONFIG (公開鍵・mutex 名)"]
     root --> fe["frontend/"]
     fe --> fe_idx["index.html"]
     fe --> fe_main["main.js<br>fetch、NDJSON の進捗、DOM 描画、テーマ切替"]
@@ -88,7 +89,7 @@ graph LR
     fe --> fe_vendor["vendor/<br>uPlot (同梱)"]
     root --> t["tests/"]
     t --> t_init["__init__.py"]
-    t --> t_conf["conftest.py<br>共有 WAV フィクスチャ (_make_wav_bytes, wav_file, wav_file_b)"]
+    t --> t_conf["conftest.py<br>共有 WAV フィクスチャ (_make_wav_bytes, wav_file, wav_file_b)、<br>設定ファイルを一時フォルダーへ向ける _isolated_settings"]
     t --> t_ana["test_analysis.py"]
     t --> t_pcm["test_pcm.py"]
     t --> t_cli["test_cli.py"]
@@ -170,8 +171,9 @@ analyze-spectrum-gui
 - `pywebview` — 任意の依存 (`gui` extra)
 - `numpy`, `scipy` — スペクトル解析
 - `yt-dlp` — Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
+- `certifi` — 自動更新の HTTPS 接続が使う CA 証明書 (`gui` extra。macOS の frozen のアプリは、同梱の OpenSSL が指す CA のパスが利用者の Mac に無い)。PyInstaller は certifi が無くても警告だけで先へ進むため、`build.py` の `check_prerequisites()` が certifi を import できないときはビルドを止める
 - ffmpeg, ffprobe, deno — `build_assets/bin/` に同梱
-- `py-analyze-common` — git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化を提供。pyproject.toml には記載せず `sys.path` 注入で利用
+- `py-analyze-common` — git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化・自動更新を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## テスト
 
@@ -191,6 +193,10 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
 | `/load` | POST | 単体解析 JSON 読み込み (compare JSON は拒否)。複数ファイル選択対応 (`allow_multiple=True`)。描画に要る項目 (`missing_result_fields()`) が欠けた単一ファイルは `schema_outdated` フラグを返却。項目が揃ったものだけキャッシュ登録。`meta.schema_version` が整数でなければ 400 |
 | `/browse` | POST | ネイティブダイアログでローカル音声ファイル選択 |
 | `/upload` | POST | ドラッグ & ドロップしたファイルを一時保存 (octet-stream、最大 500MB) |
+| `/update/status` | POST | 今の版と、このビルドが自分を更新できるかと、起動時の確認の設定 (`{"current", "supported", "launch_check"}`) |
+| `/update/settings` | POST | 起動時の確認の設定を保存する (`{"launch_check": true \| false}`、真偽値以外は 400、保存の失敗は 500) |
+| `/update/check` | POST | 最新リリースの `latest.json` を読み、新しい版があれば `{"available": true, "version"}`、無ければ `{"available": false}`。取得・解析の失敗は 502 |
+| `/update/install` | POST | `{"version"}` (直前の確認が見つけた版だけを受け付ける) をダウンロード・検証して適用する。成功は `{"restarting": true}` を返してからアプリを終える。インストール後に再起動だけができなかったときは `{"installed": true, "restart_error"}` を返して動き続ける。失敗は 500 |
 
 POST は Host 検証の後に Content-Type を確かめ、`/upload` は `application/octet-stream`、それ以外は `application/json` (`;` より後の charset 等は無視) でなければ 415 を返す (`docs/security-audit.md` の SEC-23)。
 
@@ -404,12 +410,36 @@ pywebview 6.x の `parse_file_type()` は `file_types` の description 部分を
 JavaScript 側は window capture フェーズで `stopImmediatePropagation` により
 WebView2 ネイティブハンドラへの伝播を遮断。
 
+### 自動更新
+
+インストールしたアプリは、起動時に最新リリースの `latest.json` を読み、今の版より新しい版があれば確認ダイアログ (`window.confirm`) を出す。OK のときだけインストーラーをダウンロードし、署名を確かめてから適用し、アプリを起動し直す。キャンセルでは何もダウンロードしない。起動時の確認は、新しい版が無いときと確認に失敗したときは何も表示しない。分析中は確認ダイアログを出さずに断る。
+
+- 仕組みの本体は py-analyze-common にあり、analyze-loudness と共通: 取得・検証・適用は `analyze_common/update.py`、設定ボタン・設定ダイアログ・起動時の確認は `analyze_common/web/update.js` (`gui.py` が `/common/update.js` として配信し、spec が同梱する)、Windows インストーラーの更新時の動作は `installer/auto_update.iss`。マニフェストの形式・署名の対象・各 OS での適用の手順は `analyze_common/update.py` の docstring が正
+- このアプリ固有の値は `src/analyze_spectrum/update.py` の `UPDATE_CONFIG` (product・repo・公開鍵 `PUBLIC_KEY`・一時ディレクトリの接頭辞・mutex 名)
+- 設定: ツールバーの設定ボタンが開くダイアログに「起動時に確認」と「今すぐ確認」と版を出す。起動時の確認の ON/OFF は、アプリの設定ファイル (macOS は `~/Library/Application Support/analyze-spectrum/settings.json`、Windows は `%APPDATA%\analyze-spectrum\settings.json`) の `update_check_at_launch` に `/update/settings` が保存する (既定は ON)。webview の localStorage は起動し直すと消えるので使わない (pywebview は private モードで起動し、ローカルサーバーのポート = ページの origin も起動ごとに変わる)。テストは `tests/conftest.py` の `_isolated_settings` で設定ファイルを一時フォルダーへ向ける。「今すぐ確認」は、起動時の確認が表示しない結果 (最新・失敗) もダイアログ内に出す
+- `/update/install` が成功すると、応答を返してからアプリを終える (`_exit_for_update()`)。Windows はインストーラーが起動済みなので `window.destroy()` で普通に終わる。macOS は `.app` を入れ替え済みなので、atexit が消す一時ディレクトリを先に消して `os._exit(0)` で終わる (入れ替えた後に import が走ると新しい版のファイルを読むため)
+- ダウンロード中は main.js の `_setUpdateLock()` が入力欄・各ボタン・トラック操作・ドロップ・結果の保存 (Save JSON / Save Image。ロック中に描き直した結果のボタンも無効で作る) を止める
+- Windows: 起動中は `hold_instance_mutex(UPDATE_CONFIG.mutex_name)` で名前付き mutex を持ち、更新のインストーラーはそれが消えるのを待ってからファイルを置き換える。UAC の確認はアプリが終わった後にインストーラーが出す (理由は `vendor/py-analyze-common/CLAUDE.md` の「自動更新」節の Windows の行) ので、UAC を拒否するとインストールされず、アプリは閉じたままになる (もう一度起動すると旧版が起動し、起動時の確認が ON なら同じ更新をもう一度勧める)。`installer.iss` は同じ名前を `build.py` から `/DMyAppMutex=` で受け取る (`mutex_name` が唯一の定義元。`build.py` の `_read_mutex_name()` が読む)
+- frozen でない起動 (`analyze-spectrum-gui`) は更新できない。設定ダイアログはボタンを無効にして「インストールしたアプリでのみ使えます」と出す
+
+#### 署名の鍵 (初回のみ)
+
+更新の署名は Ed25519 で、macOS のコード署名とは別の鍵を使う。秘密鍵は git に入れず、GitHub の secret `UPDATE_SIGNING_KEY` に登録する。`release.yaml` の Create Release ジョブが `python -m analyze_common.update_manifest sign` で `latest.json` を作る。このとき各インストーラーの署名を `PUBLIC_KEY` で検証してから書き出すので、secret が無いときと、鍵が `PUBLIC_KEY` と合わないときはジョブが失敗し、Release は作られない。
+
+```bash
+openssl genpkey -algorithm ed25519 -out ~/.analyze-update/analyze-spectrum-update.pem
+PYTHONPATH=vendor/py-analyze-common/src .venv/bin/python -m analyze_common.update_manifest public-key ~/.analyze-update/analyze-spectrum-update.pem
+gh secret set UPDATE_SIGNING_KEY --repo semnil/analyze-spectrum < ~/.analyze-update/analyze-spectrum-update.pem
+```
+
+2 行目が出力する公開鍵を `src/analyze_spectrum/update.py` の `PUBLIC_KEY` に書く。鍵を作り直すと、`PUBLIC_KEY` を書き換える前の版のアプリは新しい鍵で署名した更新を受け付けない (その版の利用者は新しいインストーラーを手で入れ直す)。
+
 ## リリース手順
 
 1. `src/analyze_spectrum/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
 2. マージ後、master への push で走った CI が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する
-3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、Release を作成する (`draft: true`)
-4. Release の publish は人が行う
+3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、署名した更新用マニフェスト (`latest.json`、[自動更新](#自動更新)) と合わせて Release を作成する (`draft: true`)
+4. Release の publish は人が行う。publish した Release が `releases/latest` になり、インストール済みのアプリの更新確認に出る (プレリリースは `latest` にならないので出ない)
 
 版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
 
