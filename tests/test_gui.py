@@ -674,6 +674,13 @@ class TestUiSettingsEndpoints:
         _mock_webview.main()
         assert _mock_webview.webview.create_window.call_args.kwargs["background_color"] == color
 
+    def test_window_keeps_its_color_until_the_page_paints(self, _mock_webview, monkeypatch):
+        shown = []
+        monkeypatch.setattr(_mock_webview, "hold_instance_mutex", lambda name: None)
+        monkeypatch.setattr(_mock_webview, "show_window_color_until_paint", shown.append)
+        _mock_webview.main()
+        assert shown == [_mock_webview.webview.create_window.return_value]
+
 
 class TestUpdateConfig:
     def test_public_key_is_a_raw_ed25519_key(self):
