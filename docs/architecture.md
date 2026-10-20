@@ -1,12 +1,14 @@
 # Architecture Document
 
+> 日本語版は [architecture.ja.md](architecture.ja.md) を参照してください.
+
 ## 1. System Overview
 
-analyze-spectrum は YouTube 動画またはローカル音声ファイルの周波数スペクトルを分析し、
-EQ 処理の妥当性を検証するデスクトップツールである。
+analyze-spectrum is a desktop tool that analyzes the frequency spectrum of a YouTube video or a local audio file
+and verifies whether EQ processing is appropriate.
 
-pywebview (WebView2) + ローカル HTTP サーバーの構成で、
-姉妹ツール analyze-loudness と同一アーキテクチャを採用する。
+It is built from pywebview (WebView2) + a local HTTP server,
+the same architecture as its sister tool analyze-loudness.
 
 ```mermaid
 graph LR
@@ -202,8 +204,8 @@ sequenceDiagram
 
 ### 4.3 Result Cache
 
-セッション内キャッシュにより同一ソースの再解析を回避する。
-キャッシュは `tempfile.mkdtemp()` に作成し、プロセス終了時に削除 (session-only)。
+A session-scoped cache avoids re-analyzing the same source.
+The cache is created with `tempfile.mkdtemp()` and deleted when the process exits (session-only).
 
 ```mermaid
 flowchart TD
@@ -223,7 +225,7 @@ flowchart TD
     CACHED --> RESULT
 ```
 
-比較モードでは各トラックを個別にキャッシュ参照する:
+In comparison mode, each track is looked up in the cache individually:
 
 ```mermaid
 sequenceDiagram
@@ -245,8 +247,8 @@ sequenceDiagram
     SRV-->>FE: NDJSON: {type: "compare_result", data: {...}}
 ```
 
-Save 最適化: `/save` に `source` + `duration` パラメータが含まれる場合、
-キャッシュファイルを直接コピーし再シリアライズを回避する。
+Save optimization: when `/save` includes the `source` + `duration` parameters,
+it copies the cache file directly and avoids re-serializing.
 
 ### 4.4 File Input Methods
 
@@ -266,8 +268,8 @@ flowchart LR
     INPUT --> ADD["+ Add Track (compare)"]
 ```
 
-- **Browse**: `/browse` POST → pywebview `OPEN_DIALOG` → ファイルパスを返却
-- **Drag & Drop**: `/upload` POST (octet-stream, X-Filename header) → 一時ディレクトリに保存 → パスを返却
+- **Browse**: `/browse` POST → pywebview `OPEN_DIALOG` → returns the file path
+- **Drag & Drop**: `/upload` POST (octet-stream, X-Filename header) → saved in a temporary directory → returns the path
 
 ### 4.5 Frontend State Machine
 
@@ -299,18 +301,18 @@ stateDiagram-v2
         HasResults --> NoResults : Clear All
     }
 
-    note right of Idle : Submit 時に urlInput pending を compareSources に統合してモード判定
+    note right of Idle : On Submit, merge the pending urlInput into compareSources and decide the mode
     note right of Analyzing : Analyze button → Cancel (red)
     note right of Comparing : Compare button → Cancel (red)
 ```
 
 ### 4.6 Cancel (Abort) Mechanism
 
-処理中にユーザーが Cancel ボタンをクリックすると:
+When the user clicks the Cancel button during processing:
 
-1. **Frontend**: `AbortController.abort()` → fetch の `signal` 経由でストリーム読み取り中断
-2. **Backend**: 次の `_send_event()` 呼び出し時に `BrokenPipeError` を検知 → `_ClientDisconnected` 例外で処理ループを終了
-3. **UI**: ステータスに "Cancelled." を表示、ボタンを Analyze / Compare に復帰
+1. **Frontend**: `AbortController.abort()` → the stream read is aborted through fetch's `signal`
+2. **Backend**: detects `BrokenPipeError` on the next `_send_event()` call → ends the processing loop with the `_ClientDisconnected` exception
+3. **UI**: shows "Cancelled." in the status and puts the button back to Analyze / Compare
 
 ```mermaid
 sequenceDiagram
@@ -331,43 +333,43 @@ sequenceDiagram
     FE->>U: "Cancelled."
 ```
 
-**キャンセル時の既知挙動** (既知の制限):
+**Known behavior on cancel** (a known limitation):
 
-キャンセルは次の NDJSON イベント送信タイミングでのみ検知される。
-すなわち以下のような長時間ブロックする同期処理は、キャンセル後も
-**そのステージが完了するまで継続**する:
+A cancel is detected only when the next NDJSON event is sent.
+That is, long-blocking synchronous work like the following
+**keeps running until that stage finishes** even after a cancel:
 
-- `ffmpeg` / `ffprobe` の子プロセス (`subprocess.run`) — プロセスに
-  シグナルを送らないため、PCM 抽出・ラウドネス測定が最後まで走る
-- `scipy.signal.welch` / `resample_poly` — NumPy/SciPy の C ループは
-  Python シグナルを受け取らない
-- `yt_dlp.YoutubeDL.extract_info(download=True)` — 現在ダウンロード中の
-  チャンクまで継続
+- `ffmpeg` / `ffprobe` child processes (`subprocess.run`) — no signal is
+  sent to the process, so PCM extraction and loudness measurement run to the end
+- `scipy.signal.welch` / `resample_poly` — NumPy/SciPy's C loops do not
+  receive Python signals
+- `yt_dlp.YoutubeDL.extract_info(download=True)` — continues up to the
+  chunk currently being downloaded
 
-キャンセル直後のユーザー体感は即座に "Cancelled." だが、バックグラウンドの
-CPU / ネットワーク使用率はステージ完了まで残る。この挙動を改善するには
-子プロセスに `Popen` + `terminate()` を介したキャンセル伝播を実装する
-必要があり、複雑度とメモリ解放タイミングのトレードオフから現在は
-採用していない。
+Right after a cancel the user immediately sees "Cancelled.", but background
+CPU / network usage remains until the stage finishes. Improving this behavior would
+require implementing cancel propagation to the child processes through `Popen` + `terminate()`,
+and it is currently not adopted because of the trade-off between complexity and
+when memory is released.
 
 ### 4.7 Theme System
 
-3 段階テーマ切替 (Light → Dark → Auto → Light):
+A 3-way theme switch (Light → Dark → Auto → Light):
 
-- **Light**: 常にライトテーマ
-- **Dark**: 常にダークテーマ
-- **Auto**: OS の `prefers-color-scheme` に追従 (デフォルト)
+- **Light**: always the light theme
+- **Dark**: always the dark theme
+- **Auto**: follows the OS's `prefers-color-scheme` (default)
 
-CSS カスタムプロパティ (`--bg`, `--text`, `--accent` 等) で全色を管理。
-Canvas チャートは `getThemeColors()` で描画時にテーマカラーを取得。
-テーマ切替時はチャートを再描画。選択は言語の選択と一緒にアプリの設定ファイル (`settings.json`) に保存し、次の起動でも使う (読み込みは 10.4 の図、保存は `POST /settings`)。
+All colors are managed with CSS custom properties (`--bg`, `--text`, `--accent`, etc.).
+The Canvas charts get the theme colors with `getThemeColors()` when drawing.
+The charts are redrawn when the theme is switched. The choice is saved together with the language choice in the app's settings file (`settings.json`) and is used on the next launch too (reading is in the 10.4 diagram, saving is `POST /settings`).
 
 ### 4.8 Auto-Update
 
-インストールしたアプリは、起動時 (設定ダイアログの「起動時に確認」が ON のとき) と設定ダイアログの「今すぐ確認」で、最新リリースに新しい版があるかを確かめる。
-画面側 (設定ボタン・設定ダイアログ・確認ダイアログ) は py-analyze-common の `analyze_common/web/update.js`、取得・検証・適用は `analyze_common/update.py` が受け持ち、analyze-loudness と共通である。
-このアプリが持つのは `src/analyze_spectrum/update.py` の `UPDATE_CONFIG`、`gui.py` の 4 つのエンドポイントと終了処理 (`_exit_for_update()`)、`main.js` のダウンロード中の操作の停止 (`_setUpdateLock()`) である。
-署名の鍵と `release.yaml` の手順はプロジェクトの CLAUDE.md の「自動更新」節にある。
+The installed app checks whether the latest release has a newer version at launch (when "Check at launch" in the settings dialog is ON) and from "Check now" in the settings dialog.
+The screen side (the settings button, the settings dialog, the confirmation dialog) is handled by py-analyze-common's `analyze_common/web/update.js`, and fetching, verifying and applying by `analyze_common/update.py`; both are shared with analyze-loudness.
+What this app owns is `UPDATE_CONFIG` in `src/analyze_spectrum/update.py`, the 4 endpoints and the exit handling (`_exit_for_update()`) in `gui.py`, and stopping operations during the download (`_setUpdateLock()`) in `main.js`.
+The signing key and the `release.yaml` procedure are in the "Auto-update" section of the project's CLAUDE.md.
 
 ```mermaid
 sequenceDiagram
@@ -402,9 +404,9 @@ sequenceDiagram
     end
 ```
 
-キャンセルすると何もダウンロードしない。起動時の確認は、新しい版が無いときと確認に失敗したときは何も表示しない (「今すぐ確認」はダイアログ内に結果を出す)。分析中は確認ダイアログを出さずに断る。
-ダウンロード・検証・適用のどこかで失敗すると `_setUpdateLock(false)` で操作を戻し、ステータス欄に原因を出してアプリは動き続ける。
-Windows では UAC の確認をインストーラーが出し、そのときアプリはもう終わっている。UAC を拒否するとインストールされず、アプリは閉じたままになる (もう一度起動すると旧版が起動し、起動時の確認が ON なら同じ更新をもう一度勧める)。
+Cancel downloads nothing. The check at launch shows nothing when there is no newer version or when the check fails ("Check now" shows the result inside the dialog). During an analysis it declines without showing the confirmation dialog.
+When any of the download, verification or apply fails, `_setUpdateLock(false)` gives the operations back, the status area shows the cause, and the app keeps running.
+On Windows the installer shows the UAC prompt, and by then the app has already exited. If UAC is declined, nothing is installed and the app stays closed (launching it again starts the old version, and if the check at launch is ON it offers the same update again).
 
 ## 5. Chart System
 
@@ -415,7 +417,7 @@ Windows では UAC の確認をインストーラーが出し、そのときア�
 | PSD Spectrum | uPlot | log(freq) Hz | Power dB | Single / Multi-track overlay |
 | 1/3 Octave | Canvas | Band center Hz | Energy dB | Single / Grouped bars |
 | Transfer Function | Canvas | log(freq) Hz | Delta dB | Multi-track only |
-| Estimated EQ | HTML table | - | - | Multi-track only (transfer function ごとに 1 表) |
+| Estimated EQ | HTML table | - | - | Multi-track only (1 table per transfer function) |
 | Low-End Detail | Canvas | Linear freq 20-500Hz | Power dB | Single / Multi-track overlay |
 | Mid-High Detail | Canvas | log(freq) 500Hz-20kHz | Power dB | Single / Multi-track overlay |
 
@@ -492,44 +494,44 @@ dist/analyze-spectrum/
 
 ## 7. Security Model
 
-### 7.1 ネットワーク
+### 7.1 Network
 
-- HTTP サーバーは `127.0.0.1` にバインド (外部アクセス不可)
-- ポートはランダム割り当て (OS 指定)
-- pywebview WebView2 の `AllowExternalDrop = False` で外部ドロップ無効化
+- The HTTP server binds to `127.0.0.1` (no external access)
+- The port is assigned at random (chosen by the OS)
+- External drops are disabled with pywebview WebView2's `AllowExternalDrop = False`
 
-### 7.2 入力検証
+### 7.2 Input Validation
 
-- subprocess は list 形式で実行 (shell injection 防止)
-- yt-dlp は Python API (`yt_dlp.YoutubeDL`) 経由のため subprocess stdout のデコード不要。タイトルは `extract_info()` の戻り値 dict から取得 (DOM は `textContent` 経由で表示)
-- POST body は 10MB 上限 (JSON)、50MB (base64 画像)、500MB (ファイルアップロード)
-- アップロードファイル名は `sanitize_filename()` で無害化 (`\/:*?"<>|` → `_`、先頭末尾の `.` 除去)
-- アップロード拡張子はホワイトリスト (`.wav`, `.mp3`, `.m4a` 等 13 種)
-- duration パラメータは正の数値のみ許可
-- `/compare` の `sources` 配列は長さのみ検証 (要素の型チェックなし。非文字列は `resolve_source()` で実行時エラー)
+- subprocess is run in list form (prevents shell injection)
+- yt-dlp goes through the Python API (`yt_dlp.YoutubeDL`), so no subprocess stdout decoding is needed. The title is taken from the dict returned by `extract_info()` (the DOM shows it through `textContent`)
+- POST bodies are limited to 10MB (JSON), 50MB (base64 image), 500MB (file upload)
+- Upload file names are made harmless with `sanitize_filename()` (`\/:*?"<>|` → `_`, leading and trailing `.` removed)
+- Upload extensions are on an allowlist (13 kinds such as `.wav`, `.mp3`, `.m4a`)
+- The duration parameter accepts only positive numbers
+- The `sources` array of `/compare` is validated only for its length (no type check of the elements; a non-string is a runtime error in `resolve_source()`)
 
-### 7.3 XSS 防止
+### 7.3 XSS Prevention
 
-- フロントエンドの DOM 操作は `textContent` ベース (ユーザー入力の HTML 解釈なし)
-- `showError()` は `innerHTML = ""` でクリア後、`textContent` で再設定
-- `confirm()` に表示するメッセージはユーザー選択 JSON 由来のプレーンテキスト (ネイティブ OS ダイアログ、HTML 解釈なし)
+- The frontend's DOM operations are based on `textContent` (no HTML interpretation of user input)
+- `showError()` clears with `innerHTML = ""` and then sets it again with `textContent`
+- The message shown in `confirm()` is plain text from the JSON the user chose (a native OS dialog, no HTML interpretation)
 
-### 7.4 ファイルシステム
+### 7.4 File System
 
-- アップロード一時ファイルは `tempfile.mkdtemp` + `atexit` で自動削除
-- キャッシュファイルは `tempfile.mkdtemp` + `atexit` で自動削除
-- `/save` のキャッシュコピーは `shutil.copy2` (ネイティブダイアログで選択されたパスのみ)
+- Temporary upload files are deleted automatically with `tempfile.mkdtemp` + `atexit`
+- Cache files are deleted automatically with `tempfile.mkdtemp` + `atexit`
+- The cache copy of `/save` uses `shutil.copy2` (only to a path chosen in the native dialog)
 
-### 7.5 ビルド・配布
+### 7.5 Build and Distribution
 
-- ビルド時アセット (ffmpeg, ffprobe, deno, uPlot) は SHA256 チェックサム検証 (yt-dlp は Python 依存のため対象外)
-- Frozen build は `_MEIPASS/bin` に PATH を限定
-- 自動更新の取得物は Ed25519 の署名をアプリに組み込んだ公開鍵で検証してから適用する ([4.8](#48-auto-update)、`docs/security-audit.md` の SEC-24)
+- Build-time assets (ffmpeg, ffprobe, deno, uPlot) are verified with SHA256 checksums (yt-dlp is excluded because it is a Python dependency)
+- The frozen build limits PATH to `_MEIPASS/bin`
+- What auto-update fetches is applied only after its Ed25519 signature is verified with the public key built into the app ([4.8](#48-auto-update), SEC-24 in `docs/security-audit.md`)
 
-### 7.6 既知の制限
+### 7.6 Known Limitations
 
-- キャッシュ操作 (`_result_cache`, `_cache_seq`) はスレッドロック未保護 (CPython GIL に依存、SV-06)
-- `/upload` のファイル名衝突回避は TOCTOU パターン (単一ユーザーアプリとして許容、SV-09)
+- Cache operations (`_result_cache`, `_cache_seq`) are not protected by a thread lock (relies on the CPython GIL, SV-06)
+- Avoiding upload file name collisions in `/upload` is a TOCTOU pattern (accepted for a single-user app, SV-09)
 
 ## 8. Reference Standards
 
@@ -543,8 +545,8 @@ dist/analyze-spectrum/
 
 ### 9.1 Low-Frequency 1/3 Octave Band Interpolation
 
-Welch PSD (nperseg=4096, 48kHz) の周波数分解能は 11.72 Hz。
-低周波の 1/3 オクターブバンドはバンド幅がこれより狭い:
+The frequency resolution of the Welch PSD (nperseg=4096, 48kHz) is 11.72 Hz.
+The low-frequency 1/3-octave bands are narrower than that:
 
 | Band Center | Band Width | FFT bins |
 |-------------|-----------|----------|
@@ -553,38 +555,38 @@ Welch PSD (nperseg=4096, 48kHz) の周波数分解能は 11.72 Hz。
 | 40 Hz | 9.3 Hz | 0-1 |
 | 50 Hz | 11.6 Hz | 1 |
 
-バンド内に FFT ビンが存在しない場合、`np.interp` でバンド中心周波数の
-PSD を補間し、帯域幅を掛けてエネルギーを推定する。
+When a band contains no FFT bin, `np.interp` interpolates the PSD at the band's center
+frequency, and the energy is estimated by multiplying it by the bandwidth.
 
 ### 9.2 Chunked Welch PSD for Long Signals
 
-scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配列を確保する。
-長尺ファイル (例: 4 時間 → 350,058 セグメント × 2,049 ビン ≈ 5.3 GiB) では
-メモリ不足となる。
+scipy.signal.welch internally allocates an intermediate array of segments × frequency bins.
+For a long file (for example 4 hours → 350,058 segments × 2,049 bins ≈ 5.3 GiB)
+it runs out of memory.
 
-10 分 (28,800,000 サンプル) 単位でチャンクに分割し、各チャンクの PSD を
-平均して最終結果とする。周波数分解能は変わらない。
+The signal is split into chunks of 10 minutes (28,800,000 samples), and the PSDs of the chunks
+are averaged into the final result. The frequency resolution does not change.
 
 ## 10. Test Architecture
 
-### 10.1 テスト構成
+### 10.1 Test Layout
 
-| ファイル | 種別 | 主な対象 |
+| File | Kind | Main target |
 |----------|------|----------|
-| `tests/conftest.py` | fixture | 共有 WAV バイト生成 (`_make_wav_bytes`, `wav_file`, `wav_file_b`)、設定ファイルを一時フォルダーへ向ける `_isolated_settings` |
-| `tests/test_analysis.py` | unit | 解析コア (Welch PSD, 1/3 oct, metrics) |
-| `tests/test_pcm.py` | unit | ffmpeg → PCM 変換 |
-| `tests/test_cli.py` | unit | argparse + CLI 統合 |
+| `tests/conftest.py` | fixture | Shared WAV byte generation (`_make_wav_bytes`, `wav_file`, `wav_file_b`), and `_isolated_settings`, which points the settings file at a temporary folder |
+| `tests/test_analysis.py` | unit | The analysis core (Welch PSD, 1/3 oct, metrics) |
+| `tests/test_pcm.py` | unit | ffmpeg → PCM conversion |
+| `tests/test_cli.py` | unit | argparse + CLI integration |
 | `tests/test_download.py` | unit | yt_dlp.YoutubeDL API, ffprobe duration |
-| `tests/test_gui.py` | unit | gui.py (モック使用)。更新のエンドポイント・`UPDATE_CONFIG`・テーマと言語の保存 (`/settings`、`/common/settings.js`、ウィンドウの背景色) を含む |
-| `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン |
-| `tests/test_frontend.py` | e2e | Playwright headless Chromium runner。実際の index.html で更新の確認・承認・失敗・設定の保存と、テーマと言語の保存・次の起動での復元を通す |
-| `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト |
+| `tests/test_gui.py` | unit | gui.py (with mocks). Includes the update endpoints, `UPDATE_CONFIG`, and saving the theme and language (`/settings`, `/common/settings.js`, the window's background color) |
+| `tests/test_integration.py` | integration | HTTPServer + the analysis pipeline |
+| `tests/test_frontend.py` | e2e | Playwright headless Chromium runner. Runs the update check, approval, failure and settings save, and saving the theme and language and restoring them on the next launch, on the actual index.html |
+| `tests/frontend/test_ui.js` | browser | Frontend UI state tests |
 
-### 10.2 Integration テスト
+### 10.2 Integration Tests
 
-`test_integration.py` は pywebview を使わず `HTTPServer` を直接起動し、
-実解析パイプラインを通して各エンドポイントを検証する。
+`test_integration.py` starts `HTTPServer` directly without pywebview
+and verifies each endpoint through the real analysis pipeline.
 
 ```mermaid
 flowchart TD
@@ -604,30 +606,30 @@ flowchart TD
     IT --> E["/upload — octet-stream, 500MB limit, error cases"]
 ```
 
-### 10.3 Frontend UI テスト
+### 10.3 Frontend UI Tests
 
-`test_frontend.py` は Playwright で headless Chromium を起動し、
-`tests/frontend/test_ui.html` をローカル HTTP サーバー経由で開いて
-`window._testResult` から合否を読み取る。
+`test_frontend.py` starts headless Chromium with Playwright,
+opens `tests/frontend/test_ui.html` through a local HTTP server,
+and reads the result from `window._testResult`.
 
-`test_ui.js` は fetch をモックして DOM 状態を直接検証する:
+`test_ui.js` mocks fetch and verifies the DOM state directly:
 
-- トラック追加 / 削除
-- 重複トラック拒否
-- 6 トラック上限
-- Load JSON (単一 / 複数 / 旧スキーマ承認・拒否) + 保留ソース保持
-- テーマトグル (Light → Dark → Auto)
+- Adding / removing tracks
+- Rejecting duplicate tracks
+- The 6-track limit
+- Load JSON (single / multiple / accepting and rejecting an old schema) + keeping the pending source
+- The theme toggle (Light → Dark → Auto)
 - Clear All
-- setBusy ボタン状態
-- Submit ラベル (urlInput 入力による動的更新含む)
-- Submit 時の pending urlInput 統合 (NDJSON ストリームモック)
-- Submit 時の 6 トラック上限拒否
-- 1 トラック + urlInput 空での単体解析
-- Remove Track 時の urlInput 値保持
+- The setBusy button state
+- The Submit label (including the dynamic update from urlInput input)
+- Merging the pending urlInput on Submit (NDJSON stream mock)
+- Rejecting the 6-track limit on Submit
+- Single analysis with 1 track + an empty urlInput
+- Keeping the urlInput value on Remove Track
 
-`playwright>=1.40` が dev dependency として追加されている。
+`playwright>=1.40` is added as a dev dependency.
 
-### 10.4 ホワイトフラッシュ防止
+### 10.4 White-Flash Prevention
 
 ```mermaid
 sequenceDiagram
@@ -638,27 +640,27 @@ sequenceDiagram
     participant CSS as style.css
 
     Note over SF: macOS: ~/Library/Application Support/analyze-spectrum<br>Windows: %APPDATA%/analyze-spectrum
-    PY->>SF: UiSettings.background_color() が theme を読む
-    SF-->>PY: "light" / "dark" / "auto" (保存が無いときも "auto")
-    PY->>OS: is_dark_mode() ("auto" のときだけ)
+    PY->>SF: UiSettings.background_color() reads theme
+    SF-->>PY: "light" / "dark" / "auto" ("auto" also when nothing is saved)
+    PY->>OS: is_dark_mode() (only for "auto")
     Note over OS: Windows: AppsUseLightTheme<br>macOS: AppleInterfaceStyle
     OS-->>PY: dark or light
     PY->>PY: background_color() returns "#1a1a2e" or "#fafafa"
     PY->>PY: webview.create_window(background_color=bg)
     PY->>PY: show_window_color_until_paint(window)
-    Note over PY: macOS: before_show で WKWebView の drawsBackground を切る<br>ページが描かれるまでウィンドウの色が見える
+    Note over PY: macOS: before_show turns off the WKWebView's drawsBackground<br>the window's color shows until the page is drawn
 
     Note over HTML: head
     HTML->>PY: GET /common/settings.js
-    PY->>SF: theme と lang を読む
+    PY->>SF: read theme and lang
     PY-->>HTML: window.analyzeSettingsStored + settings.js
-    HTML->>HTML: inline script で html に data-theme と lang を付与
-    HTML->>CSS: CSS カスタムプロパティ解決
+    HTML->>HTML: an inline script sets data-theme and lang on html
+    HTML->>CSS: resolve the CSS custom properties
 ```
 
 ## 11. Known Limitations
 
-- 比較は最大 6 トラック (チャートの可読性)
-- リアルタイム入力 (マイク) は対象外
-- 48kHz mono float32 = 192 KB/s → 10 分で約 115 MB (メモリ制約)
-- 長尺は `--duration` で中盤抽出で対処
+- Comparison is limited to 6 tracks (chart readability)
+- Real-time input (microphone) is out of scope
+- 48kHz mono float32 = 192 KB/s → about 115 MB for 10 minutes (memory constraint)
+- Long files are handled by extracting the middle with `--duration`
