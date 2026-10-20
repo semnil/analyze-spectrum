@@ -645,6 +645,8 @@ sequenceDiagram
     OS-->>PY: dark or light
     PY->>PY: background_color() returns "#1a1a2e" or "#fafafa"
     PY->>PY: webview.create_window(background_color=bg)
+    PY->>PY: show_window_color_until_paint(window)
+    Note over PY: macOS: before_show で WKWebView の drawsBackground を切る<br>ページが描かれるまでウィンドウの色が見える
 
     Note over HTML: head
     HTML->>PY: GET /common/settings.js
