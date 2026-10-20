@@ -50,6 +50,7 @@ analyze-spectrum-gui
 GUI では URL 入力、Browse ボタン、またはドラッグ & ドロップでローカルファイルを読み込み、
 Analyze ボタンで単体分析、"+ Add Track" で複数トラックを登録して Compare で比較分析を実行できる。
 ダークモード対応 (Light / Dark / Auto の 3 段階切替、デフォルトは OS 設定に追従)。
+選んだテーマと表示言語 (EN / JA) は、アプリを起動し直しても残る。
 
 ### 自動更新
 
