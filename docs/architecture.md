@@ -360,7 +360,7 @@ CPU / ネットワーク使用率はステージ完了まで残る。この挙�
 
 CSS カスタムプロパティ (`--bg`, `--text`, `--accent` 等) で全色を管理。
 Canvas チャートは `getThemeColors()` で描画時にテーマカラーを取得。
-テーマ切替時はチャートを再描画。設定は `localStorage` に保存。
+テーマ切替時はチャートを再描画。選択は言語の選択と一緒にアプリの設定ファイル (`settings.json`) に保存し、次の起動でも使う (読み込みは 10.4 の図、保存は `POST /settings`)。
 
 ### 4.8 Auto-Update
 
@@ -571,14 +571,14 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 
 | ファイル | 種別 | 主な対象 |
 |----------|------|----------|
-| `tests/conftest.py` | fixture | 共有 WAV バイト生成 (`_make_wav_bytes`, `wav_file`, `wav_file_b`)、更新の設定ファイルを一時フォルダーへ向ける `_isolated_settings` |
+| `tests/conftest.py` | fixture | 共有 WAV バイト生成 (`_make_wav_bytes`, `wav_file`, `wav_file_b`)、設定ファイルを一時フォルダーへ向ける `_isolated_settings` |
 | `tests/test_analysis.py` | unit | 解析コア (Welch PSD, 1/3 oct, metrics) |
 | `tests/test_pcm.py` | unit | ffmpeg → PCM 変換 |
 | `tests/test_cli.py` | unit | argparse + CLI 統合 |
 | `tests/test_download.py` | unit | yt_dlp.YoutubeDL API, ffprobe duration |
-| `tests/test_gui.py` | unit | gui.py (モック使用)。更新のエンドポイントと `UPDATE_CONFIG` を含む |
+| `tests/test_gui.py` | unit | gui.py (モック使用)。更新のエンドポイント・`UPDATE_CONFIG`・テーマと言語の保存 (`/settings`、`/common/settings.js`、ウィンドウの背景色) を含む |
 | `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン |
-| `tests/test_frontend.py` | e2e | Playwright headless Chromium runner。実際の index.html で更新の確認・承認・失敗・設定の保存を通す |
+| `tests/test_frontend.py` | e2e | Playwright headless Chromium runner。実際の index.html で更新の確認・承認・失敗・設定の保存と、テーマと言語の保存・次の起動での復元を通す |
 | `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト |
 
 ### 10.2 Integration テスト
@@ -632,23 +632,25 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant OS as OS dark mode setting
-    participant LS as localStorage profile
+    participant SF as settings.json
     participant PY as gui.py
     participant HTML as index.html
     participant CSS as style.css
 
-    Note over LS: Windows: WebView2 LevelDB<br>macOS: WebKit WebsiteData/LocalStorage
-    PY->>LS: localStorage["spectrum-theme"] 読み取り
-    LS-->>PY: "light" / "dark" / (not found)
-    PY->>OS: is_dark_mode() (フォールバック)
+    Note over SF: macOS: ~/Library/Application Support/analyze-spectrum<br>Windows: %APPDATA%/analyze-spectrum
+    PY->>SF: UiSettings.background_color() が theme を読む
+    SF-->>PY: "light" / "dark" / "auto" (保存が無いときも "auto")
+    PY->>OS: is_dark_mode() ("auto" のときだけ)
     Note over OS: Windows: AppsUseLightTheme<br>macOS: AppleInterfaceStyle
     OS-->>PY: dark or light
-    PY->>PY: _resolve_background_color() returns "#1a1a2e" or "#fafafa"
+    PY->>PY: background_color() returns "#1a1a2e" or "#fafafa"
     PY->>PY: webview.create_window(background_color=bg)
 
-    Note over HTML: <head> inline script
-    HTML->>HTML: localStorage["spectrum-theme"] 読み取り
-    HTML->>HTML: <html data-theme="..."> 付与
+    Note over HTML: head
+    HTML->>PY: GET /common/settings.js
+    PY->>SF: theme と lang を読む
+    PY-->>HTML: window.analyzeSettingsStored + settings.js
+    HTML->>HTML: inline script で html に data-theme と lang を付与
     HTML->>CSS: CSS カスタムプロパティ解決
 ```
 
