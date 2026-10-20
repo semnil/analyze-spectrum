@@ -264,9 +264,9 @@ jobs:
             diff=$(git diff -- "${pin_file}")
             fence=$(printf '\140\140\140')
             body=$(printf '%s\n\n%sdiff\n%s\n%s\n\n%s\n' \
-              "同梱する ffmpeg / ffprobe を osxexperts.net の Apple Silicon 版と BtbN/FFmpeg-Builds の ${SERIES} 系列に更新する。macOS の 2 ファイルはページの SHA256 と照合し、両 OS で取得したものに tests/test_ffmpeg_binary.py を通した。" \
+              "Update the bundled ffmpeg / ffprobe to the Apple Silicon build on osxexperts.net and the ${SERIES} series of BtbN/FFmpeg-Builds. The two macOS files were checked against the SHA256 on the page, and the files fetched on both OSes passed tests/test_ffmpeg_binary.py." \
               "${fence}" "${diff}" "${fence}" "${run_url}")
-            land "${branch}" "build: 同梱する ffmpeg を ${SERIES} に更新する" "${body}" "${pin_file}"
+            land "${branch}" "build: update the bundled ffmpeg to ${SERIES}" "${body}" "${pin_file}"
           fi
 
           if [[ "${BUMP}" == true ]]; then
@@ -283,8 +283,8 @@ jobs:
               echo "::error::could not write __version__ = \"${NEXT_VERSION}\" to ${version_file}"
               exit 1
             fi
-            body=$(printf '%s\n\n%s\n' "ffmpeg ${SERIES} を同梱する patch リリース。版上げだけを含む。" "${run_url}")
-            land "${branch}" "chore: バージョンを v${NEXT_VERSION} に更新" "${body}" "${version_file}"
+            body=$(printf '%s\n\n%s\n' "Patch release that bundles ffmpeg ${SERIES}. It contains only the version bump." "${run_url}")
+            land "${branch}" "chore: update the version to v${NEXT_VERSION}" "${body}" "${version_file}"
             merged=$(gh pr view "${landed_pr}" --json mergeCommit --jq .mergeCommit.oid)
             if ! [[ "${merged}" =~ ^[0-9a-f]{40}$ ]]; then
               echo "::error::could not read the merge commit of #${landed_pr} (got '${merged}')"
