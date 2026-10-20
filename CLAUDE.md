@@ -58,14 +58,15 @@ graph LR
     root --> wf[".github/workflows/"]
     wf --> wf_ci["ci.yaml<br>PR / push"]
     wf --> wf_rel["release.yaml<br>v* タグ / タグ上の workflow_dispatch"]
-    wf --> wf_tag["tag-release.yml<br>master の CI (push か workflow_dispatch) の成功後、版上げならタグを打ち release.yaml を起動"]
+    wf --> wf_tag["tag-release.yml<br>master の push の CI の成功後か、コミットを渡す workflow_dispatch で、版上げならそのコミットにタグを打ち release.yaml を起動"]
     wf --> wf_ffw["ffmpeg-watch.yml<br>毎日 osxexperts.net の新しい ffmpeg を検出し、固定値の更新と版上げの PR を<br>GITHUB_TOKEN で作ってレビューなしでマージする"]
     wf --> wf_chk["workflow-checks.yml<br>全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査。<br>PR 番号を渡す workflow_dispatch でも同じ検査を行い、<br>結果を PR の head commit に action-pins の check run として載せる"]
-    wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストと、dependabot-auto-merge.yml の<br>workflow_dispatch の入口のテストを実行"]
+    wf --> wf_chkt["workflow-checks-test.yml<br>検査のフィクスチャテストと、dependabot-auto-merge.yml の<br>workflow_dispatch の入口と tag-release.yml のタグの段のテストを実行"]
     wf --> wf_dam["dependabot-auto-merge.yml<br>Dependabot の PR で更新が semver の patch なら自動マージを予約。必須チェック auto-merge。<br>workflow_dispatch では起動したブランチの head commit に auto-merge を報告する (dependabot/ のブランチと、dependabot[bot] が作った PR に含まれるコミットでは失敗する)"]
     root --> ght[".github/tests/"]
     ght --> ght_sh["workflow-checks-test.sh<br>workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト"]
     ght --> ght_am["dependabot-auto-merge-test.sh<br>dependabot-auto-merge.yml の両トリガーと、Dependabot のコミットへの dispatch を断る段のテスト"]
+    ght --> ght_tag["tag-release-test.sh<br>tag-release.yml の検査とタグの段を偽の gh とフィクスチャのリポジトリで実行するテスト"]
     root --> r_claude["CLAUDE.md"]
     root --> r_readme["README.md"]
     root --> r_pyproj["pyproject.toml"]
@@ -470,11 +471,11 @@ gh secret set UPDATE_SIGNING_KEY --repo semnil/analyze-spectrum < ~/.analyze-upd
 版上げ PR を出す前に、yt-dlp のピンの版を全長ダウンロードで確かめる ([yt-dlp のバージョン固定](#yt-dlp-のバージョン固定))。
 
 1. `src/analyze_spectrum/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
-2. マージ後、master への push で走った CI (ffmpeg-watch.yml のマージでは、同じワークフローが master で `workflow_dispatch` した CI) が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する
+2. マージ後、master への push で走った CI が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する (ffmpeg-watch.yml のマージでは、ffmpeg-watch.yml がマージコミットを渡して `tag-release.yml` を起動する。[ffmpeg の更新による patch リリース](#ffmpeg-の更新による-patch-リリース)の 3)
 3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、署名した更新用マニフェスト (`latest.json`、[自動更新](#自動更新)) と合わせて Release を作成する (`draft: true`)。ビルドは成果物をアップロードする前に、配布物に入った ffmpeg / ffprobe を `tests/test_ffmpeg_binary.py` に通す ([同梱する ffmpeg の固定](#同梱する-ffmpeg-の固定)の「確認」)
 4. Release の publish は人が行う。publish した Release が `releases/latest` になり、インストール済みのアプリの更新確認に出る (プレリリースは `latest` にならないので出ない)
 
-版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
+版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`tag-release.yml` の `workflow_dispatch` は入力 `sha` のコミットを扱い、master 上にあり、そのコミットか tree が同じ親コミット (master の先端を含んだ状態でマージした PR の先端) で CI が成功しているときだけタグを打つ。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
 
 ### ffmpeg の更新による patch リリース
 
@@ -482,11 +483,11 @@ gh secret set UPDATE_SIGNING_KEY --repo semnil/analyze-spectrum < ~/.analyze-upd
 
 1. detect: `build_assets/ffmpeg.json` と osxexperts.net のページを比べる ([同梱する ffmpeg の固定](#同梱する-ffmpeg-の固定))。ページに別のビルドがあれば、BtbN に同じ系列があることと両ファイルの SHA256 を確かめて新しい固定値を作る。`__version__` が最新の `vX.Y.Z` タグと同じで、固定値が今回変わるか、今の固定値がそのタグの出した固定値 (タグにある固定値のファイル、タグに無ければタグの後で最初にそのファイルを足したときの固定値) と違うときは patch リリースを行う
 2. smoke: macOS と Windows のランナーで、`build.py --ffmpeg-only` で取得した固定値のバイナリに `tests/test_ffmpeg_binary.py` を通す
-3. land: GITHUB_TOKEN で、固定値の PR (`ffmpeg-watch/pin-<series>-<run id>-<attempt>`) と、版上げだけの PR (`ffmpeg-watch/bump-v<version>-<run id>-<attempt>`、`chore: バージョンを vX.Y.Z に更新`) を順に作る。GITHUB_TOKEN が作った PR では `pull_request_target` が走らず、`pull_request` の run は承認待ちになるので、各 PR の必須チェックを自分で `workflow_dispatch` する: CI (`Test 🧪`) と `dependabot-auto-merge.yml` (`auto-merge`) をそのブランチで、`workflow-checks.yml` (`action-pins`) を master で PR 番号を渡して。3 つの成功と `gh pr checks --required` を待ってからマージする。GITHUB_TOKEN のマージでは master の push の CI も走らないので、版上げのマージ後に master で CI を `workflow_dispatch` し、`tag-release.yml` がその run の成功でタグを打つ
+3. land: GITHUB_TOKEN で、固定値の PR (`ffmpeg-watch/pin-<series>-<run id>-<attempt>`) と、版上げだけの PR (`ffmpeg-watch/bump-v<version>-<run id>-<attempt>`、`chore: バージョンを vX.Y.Z に更新`) を順に作る。GITHUB_TOKEN が作った PR では `pull_request_target` が走らず、`pull_request` の run は承認待ちになるので、各 PR の必須チェックを自分で `workflow_dispatch` する: CI (`Test 🧪`) と `dependabot-auto-merge.yml` (`auto-merge`) をそのブランチで、`workflow-checks.yml` (`action-pins`) を master で PR 番号を渡して。3 つの成功と `gh pr checks --required` を待ってからマージする。GITHUB_TOKEN のマージでは master の push の CI も走らないので、版上げのマージ後に、そのマージコミットを渡して `tag-release.yml` を `workflow_dispatch` で起動する。マージコミットの tree は CI が通った PR の先端と同じで、`tag-release.yml` はそれを確かめてからタグを打つ。版上げの後に別のマージが入っても、タグを打つコミットは変わらない
 4. Release の publish は人が行う ([リリース手順](#リリース手順)の 4)
 
 - 前提: リポジトリの設定「Allow GitHub Actions to create and approve pull requests」(Settings → Actions → General) が on であること。off だと land の `gh pr create` が失敗する
-- 前回の実行の PR (head が `ffmpeg-watch/` の open な PR) が残っていると、land は何も変えずに失敗する。その PR を閉じるかマージしてから再実行する。ブランチ名は実行 (run id と attempt) ごとに違うので、PR を作る前に失敗した実行が push したブランチは、次の実行の push と衝突しない (そのブランチは PR の無いまま残る)。固定値の PR だけがマージされて版上げが残ったときは、次の実行の detect が「今の固定値が最新のタグの出した固定値と違う」として版上げから再開する
+- 前回の実行の PR (head が `ffmpeg-watch/` の open な PR) が残っていると、land は何も変えずに失敗する。その PR を閉じるかマージしてから再実行する。ブランチ名は実行 (run id と attempt) ごとに違うので、PR を作る前に失敗した実行が push したブランチは、次の実行の push と衝突しない (そのブランチは PR の無いまま残る)。固定値の PR だけがマージされて版上げが残ったときは、次の実行の detect が「今の固定値が最新のタグの出した固定値と違う」として版上げから再開する。版上げがマージされたのにタグが無いとき (版上げのマージの後で止まった実行) は、次の実行の detect が `__version__` をその値にした master のコミット (`release_sha`) を報告し、land がそのコミットを渡して `tag-release.yml` を起動する。タグが既にあれば何もしない
 - smoke か、各 PR で dispatch した必須チェック (CI・auto-merge・action-pins) のどれかが失敗すると、その時点で止まり、マージしない
 
 ## バージョン管理

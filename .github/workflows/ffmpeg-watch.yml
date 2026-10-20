@@ -16,9 +16,11 @@ run-name: ffmpeg watch 🔭
 # own. A pull request GITHUB_TOKEN opens starts no pull_request_target run and its pull_request runs wait for an
 # approval, so land dispatches the required checks itself: CI (Test) and dependabot-auto-merge.yml (auto-merge) on the
 # pull request's branch, and workflow-checks.yml on master, which posts action-pins on the pull request's head commit.
-# It waits for all three and merges. A merge with GITHUB_TOKEN starts no CI
-# on master either, so after the bump merges land dispatches CI on master; tag-release.yml takes that run like a push
-# run, tags the bump and starts release.yaml. The draft Release is published by hand.
+# It waits for all three and merges. A merge with GITHUB_TOKEN starts no CI on master either, so after the bump merges
+# land dispatches tag-release.yml with the merge commit, which has the tree of the pull request's head where CI passed;
+# tag-release.yml tags it and starts release.yaml, and a merge that lands after the bump does not change the commit that
+# gets tagged. When __version__ has no tag yet (a run stopped after its bump merged), detect reports the commit that set
+# it (release_sha) and land dispatches tag-release.yml with that. The draft Release is published by hand.
 #
 # An open pull request from an earlier run (head branch ffmpeg-watch/...) stops land before it changes anything. The
 # branch names carry the run id and attempt, so a branch an earlier run pushed without opening its pull request does
@@ -50,6 +52,7 @@ jobs:
       series: ${{ steps.detect.outputs.series }}
       version: ${{ steps.detect.outputs.version }}
       next_version: ${{ steps.detect.outputs.next_version }}
+      release_sha: ${{ steps.detect.outputs.release_sha }}
     steps:
       - name: Check Ref ☑️
         run: |
@@ -100,7 +103,7 @@ jobs:
   smoke:
     name: Test the Binaries on ${{ matrix.os }} 🧪
     needs: detect
-    if: needs.detect.outputs.pin_update == 'true' || needs.detect.outputs.bump == 'true'
+    if: needs.detect.outputs.pin_update == 'true' || needs.detect.outputs.bump == 'true' || needs.detect.outputs.release_sha != ''
     strategy:
       fail-fast: false
       matrix:
@@ -149,7 +152,7 @@ jobs:
   land:
     name: Land the Pin and the Bump 🛬
     needs: [detect, smoke]
-    if: needs.detect.outputs.pin_update == 'true' || needs.detect.outputs.bump == 'true'
+    if: needs.detect.outputs.pin_update == 'true' || needs.detect.outputs.bump == 'true' || needs.detect.outputs.release_sha != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -177,6 +180,7 @@ jobs:
           SERIES: ${{ needs.detect.outputs.series }}
           VERSION: ${{ needs.detect.outputs.version }}
           NEXT_VERSION: ${{ needs.detect.outputs.next_version }}
+          RELEASE_SHA: ${{ needs.detect.outputs.release_sha }}
           CANDIDATE: ${{ runner.temp }}/pin/ffmpeg.json
         run: |
           : Land the Pin and the Bump
@@ -243,6 +247,14 @@ jobs:
             gh pr checks "${pr}" --required
             gh pr merge "${pr}" --merge --match-head-commit "${sha}"
             echo "merged #${pr}"
+            landed_pr="${pr}"
+          }
+
+          # tag_release <commit> <version>: dispatch tag-release.yml with <commit>, which tags it v<version> and starts
+          # release.yaml.
+          tag_release() {
+            gh workflow run tag-release.yml --ref master -f sha="$1"
+            echo "dispatched tag-release.yml with $1 for v$2"
           }
 
           if [[ "${PIN_UPDATE}" == true ]]; then
@@ -273,6 +285,12 @@ jobs:
             fi
             body=$(printf '%s\n\n%s\n' "ffmpeg ${SERIES} を同梱する patch リリース。版上げだけを含む。" "${run_url}")
             land "${branch}" "chore: バージョンを v${NEXT_VERSION} に更新" "${body}" "${version_file}"
-            gh workflow run ci.yaml --ref master
-            echo "dispatched CI on master; tag-release.yml tags v${NEXT_VERSION} once it passes"
+            merged=$(gh pr view "${landed_pr}" --json mergeCommit --jq .mergeCommit.oid)
+            if ! [[ "${merged}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::could not read the merge commit of #${landed_pr} (got '${merged}')"
+              exit 1
+            fi
+            tag_release "${merged}" "${NEXT_VERSION}"
+          elif [[ -n "${RELEASE_SHA}" ]]; then
+            tag_release "${RELEASE_SHA}" "${VERSION}"
           fi
