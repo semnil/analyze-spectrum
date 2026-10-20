@@ -188,6 +188,7 @@ h1 {
 }
 
 .compare-bar button {
+  min-height: 36px;
   padding: 8px 20px;
   border: none;
   border-radius: 6px;
@@ -407,6 +408,7 @@ body.drag-over::after {
 }
 
 .modal-buttons button {
+  min-height: 44px;
   padding: 8px 18px;
   border: 1px solid var(--border);
   border-radius: 6px;

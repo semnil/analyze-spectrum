@@ -648,6 +648,30 @@ function makeNdjsonResponse(type, data) {
   clearResults();
 
   // ================================================
+  suite("Confirm modal closes on every answer");
+  // ================================================
+
+  // window.confirm is left as is, so this is the modal the desktop app shows.
+  var _answers = [
+    ["OK", function() { document.querySelector(".modal-ok").click(); }, true],
+    ["Cancel", function() { document.querySelector(".modal-cancel").click(); }, false],
+    ["Escape", function() { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); }, false],
+    ["Backdrop", function() { document.querySelector(".modal-backdrop").click(); }, false],
+  ];
+  for (var _answer of _answers) {
+    var _pending = _confirmModal("Proceed?", "source.wav");
+    assertEqual(document.querySelectorAll(".modal-backdrop").length, 1, _answer[0] + ": the modal is shown");
+    _answer[1]();
+    var _settled = await Promise.race([
+      _pending,
+      new Promise(function(r) { setTimeout(function() { r("unsettled"); }, 100); }),
+    ]);
+    assertEqual(_settled, _answer[2], _answer[0] + " answers " + _answer[2]);
+    assertEqual(document.querySelectorAll(".modal-backdrop").length, 0, _answer[0] + " removes the modal");
+    document.querySelectorAll(".modal-backdrop").forEach(function(b) { b.remove(); });
+  }
+
+  // ================================================
   suite("UI sources and status icons contain no emoji");
   // ================================================
 
