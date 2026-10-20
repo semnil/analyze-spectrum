@@ -875,6 +875,8 @@ async function readNdjsonStream(resp, resultType, signal) {
   // final line.  Surface this as "Connection interrupted" rather than the
   // older generic "No result" message which misled users into thinking the
   // analysis simply returned nothing.
+  // A cancel can also end the read as done; the abort is still reported as one.
+  if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
   if (!result) throw new Error(window.i18n.t("err.stream_interrupted"));
   return result;
 }

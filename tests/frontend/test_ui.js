@@ -489,6 +489,23 @@ function makeNdjsonResponse(type, data) {
   assertEqual(readError.name, "AbortError", "An aborted stream ends in AbortError");
   assertEqual(unhandledReasons.length, 0, "Cancelling the aborted stream leaves no unhandled rejection");
 
+  var closedRead = null;
+  var closingStream = {
+    body: {
+      getReader: function() {
+        return {
+          read: function() { return new Promise(function(resolve) { closedRead = resolve; }); },
+          cancel: function() { closedRead({ done: true, value: undefined }); return Promise.resolve(); },
+        };
+      },
+    },
+  };
+  var closingAbort = new AbortController();
+  var closing = readNdjsonStream(closingStream, "result", closingAbort.signal).catch(function(e) { return e; });
+  closingAbort.abort();
+  var closingError = await closing;
+  assertEqual(closingError.name, "AbortError", "A stream that the cancel ends as done still ends in AbortError");
+
   // ================================================
   suite("Submit label reflects mode");
   // ================================================
