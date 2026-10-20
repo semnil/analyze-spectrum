@@ -4,8 +4,8 @@ The input is a 48 kHz 16-bit stereo WAV written with numpy, with a different
 sine in each channel. At the analysis sample rate there is no resampling, so
 the float32 PCM ffmpeg returns equals each 16-bit sample divided by 32768.
 
-With ``EXPECT_FFMPEG_DIR`` set (the ffmpeg update workflow), the binaries in
-that directory go first on PATH, must be the ones found, and a missing one
+With ``EXPECT_FFMPEG_DIR`` set (the ffmpeg update workflow and the release
+build), the binaries in that directory go first on PATH, must be the ones found, and a missing one
 fails the module instead of skipping it.
 """
 

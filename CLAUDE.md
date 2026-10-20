@@ -100,6 +100,7 @@ graph LR
     t --> t_int["test_integration.py<br>HTTP 統合テスト (実 HTTPServer、pywebview なし)"]
     t --> t_dlg["test_dialog_busy.py<br>ネイティブダイアログの排他 (_dialog_lock)"]
     t --> t_ffb["test_ffmpeg_binary.py<br>PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる<br>(EXPECT_FFMPEG_DIR で同梱バイナリを指定)"]
+    t --> t_rwf["test_release_workflow.py<br>release.yaml が配布物に入った ffmpeg / ffprobe に<br>test_ffmpeg_binary.py を通すこと"]
     t --> t_fe["test_frontend.py<br>Playwright headless Chromium の実行役"]
     t --> tf["frontend/"]
     tf --> tf_html["test_ui.html<br>テストハーネスのページ"]
@@ -344,7 +345,7 @@ ffmpeg / ffprobe は osxexperts.net の arm64 ネイティブビルドを取得�
     --pin build_assets/ffmpeg.json --version-file src/analyze_spectrum/__init__.py --candidate <tmpdir>/ffmpeg.json
   ```
 
-- 確認: `tests/test_ffmpeg_binary.py` が、numpy で書いた 48 kHz の 16-bit ステレオ WAV (左右で別の正弦波) を PATH の ffmpeg / ffprobe とアプリの `extract_audio()` / `probe_info()` で読み、返る float32 の PCM が書いたサンプルの 1/32768 倍と一致すること (中盤の切り出しを含む) と、チャンネル数・長さを確かめる。`EXPECT_FFMPEG_DIR` に同梱バイナリのディレクトリを渡すと、そこの ffmpeg / ffprobe が先に見つかることを確かめ、見つからなければ skip せずに失敗する ([テスト](#テスト)の最後の行)
+- 確認: `tests/test_ffmpeg_binary.py` が、numpy で書いた 48 kHz の 16-bit ステレオ WAV (左右で別の正弦波) を PATH の ffmpeg / ffprobe とアプリの `extract_audio()` / `probe_info()` で読み、返る float32 の PCM が書いたサンプルの 1/32768 倍と一致すること (中盤の切り出しを含む) と、チャンネル数・長さを確かめる。`EXPECT_FFMPEG_DIR` に同梱バイナリのディレクトリを渡すと、そこの ffmpeg / ffprobe が先に見つかることを確かめ、見つからなければ skip せずに失敗する ([テスト](#テスト)の最後の行)。リリースのビルド (`.github/workflows/release.yaml`) は、配布物に入ったコピー (Windows は PyInstaller が集めた `dist/analyze-spectrum/_internal/bin`、macOS は署名した後の `.app` の `Contents/Frameworks/bin`) をこのテストに通し、失敗すると成果物のアップロードと Draft Release の作成へ進まない (`tests/test_release_workflow.py` が、その段の位置と渡すディレクトリを spec・`installer.iss` と照らして確かめる)
 
 ### PCM 変換方式
 
@@ -470,7 +471,7 @@ gh secret set UPDATE_SIGNING_KEY --repo semnil/analyze-spectrum < ~/.analyze-upd
 
 1. `src/analyze_spectrum/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
 2. マージ後、master への push で走った CI (ffmpeg-watch.yml のマージでは、同じワークフローが master で `workflow_dispatch` した CI) が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する
-3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、署名した更新用マニフェスト (`latest.json`、[自動更新](#自動更新)) と合わせて Release を作成する (`draft: true`)
+3. `release.yaml` が Windows インストーラー (`SpectrumAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Spectrum-Analyzer.dmg`) をビルドし、署名した更新用マニフェスト (`latest.json`、[自動更新](#自動更新)) と合わせて Release を作成する (`draft: true`)。ビルドは成果物をアップロードする前に、配布物に入った ffmpeg / ffprobe を `tests/test_ffmpeg_binary.py` に通す ([同梱する ffmpeg の固定](#同梱する-ffmpeg-の固定)の「確認」)
 4. Release の publish は人が行う。publish した Release が `releases/latest` になり、インストール済みのアプリの更新確認に出る (プレリリースは `latest` にならないので出ない)
 
 版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。

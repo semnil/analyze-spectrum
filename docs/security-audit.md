@@ -40,6 +40,7 @@ Summary の件数は 2026-10-20 に SEC-24 を追加した時点のもの (2026-
   - uPlot (jsDelivr CDN、版を固定): `build_assets/checksums.json` の SHA256 と照合し、不一致でビルドを止める。`python build.py --update-checksums` がダウンロードして値を書き直す
   - macOS の ffmpeg / ffprobe (osxexperts.net): `build_assets/ffmpeg.json` の SHA256 と、zip の中のバイナリを照合し、不一致でビルドを止める (`analyze_common.ffmpeg_release.fetch_macos_binary()`)。値は osxexperts.net のページが載せるもの
   - Windows の ffmpeg / ffprobe (BtbN/FFmpeg-Builds の系列の latest) と deno (GitHub Releases の latest): 取得するたびに中身が変わりうるので SHA256 を固定せず、HTTPS の取得元を信頼する
+  - 配布物の ffmpeg / ffprobe: リリースのビルド (`release.yaml`) が、インストーラー・DMG に入るコピーを `tests/test_ffmpeg_binary.py` に通し、失敗すると成果物のアップロードと Draft Release の作成へ進まない。Windows のビルドは SHA256 を固定しないので、配布するファイル自身はこの検査で確かめる
   - JSON 構造は analyze-loudness と統一
 
 ### SEC-02: ローカル HTTP サーバーがループバック以外からアクセス可能 -- RESOLVED
