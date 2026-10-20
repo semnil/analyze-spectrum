@@ -36,7 +36,7 @@ graph LR
 ```mermaid
 graph TD
     subgraph "src/analyze_spectrum/"
-        INIT["__init__.py<br>_subprocess_kwargs()"]
+        INIT["__init__.py<br>vendor への sys.path 注入, SCHEMA_VERSION, make_meta()"]
         MAIN["__main__.py"]
         CLI["cli.py<br>argparse + 処理の流れ"]
         GUI["gui.py<br>pywebview + HTTPServer"]
@@ -340,7 +340,7 @@ sequenceDiagram
 **そのステージが完了するまで継続**する:
 
 - `ffmpeg` / `ffprobe` の子プロセス (`subprocess.run`) — プロセスに
-  シグナルを送らないため、PCM 抽出・ラウドネス測定が最後まで走る
+  シグナルを送らないため、PCM 抽出・長さの取得が最後まで走る
 - `scipy.signal.welch` / `resample_poly` — NumPy/SciPy の C ループは
   Python シグナルを受け取らない
 - `yt_dlp.YoutubeDL.extract_info(download=True)` — 現在ダウンロード中の
@@ -530,8 +530,8 @@ dist/analyze-spectrum/
 
 ### 7.6 既知の制限
 
-- キャッシュ操作 (`_result_cache`, `_cache_seq`) はスレッドロック未保護 (CPython GIL に依存、SV-06)
-- `/upload` のファイル名衝突回避は TOCTOU パターン (単一ユーザーアプリとして許容、SV-09)
+- キャッシュ操作 (`_result_cache`, `_cache_seq`) はスレッドロック未保護 (CPython GIL に依存)
+- `/upload` のファイル名衝突回避は TOCTOU パターン (単一ユーザーアプリとして許容)
 
 ## 8. 参照規格
 
@@ -577,9 +577,12 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 | `tests/test_analysis.py` | unit | 解析コア (Welch PSD, 1/3 oct, metrics) |
 | `tests/test_pcm.py` | unit | ffmpeg → PCM 変換 |
 | `tests/test_cli.py` | unit | argparse + CLI 統合 |
-| `tests/test_download.py` | unit | yt_dlp.YoutubeDL API, ffprobe duration |
 | `tests/test_gui.py` | unit | gui.py (モック使用)。更新のエンドポイント・`UPDATE_CONFIG`・テーマと言語の保存 (`/settings`、`/common/settings.js`、ウィンドウの背景色) を含む |
 | `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン |
+| `tests/test_dialog_busy.py` | unit | ネイティブダイアログの排他 (`_dialog_lock`) |
+| `tests/test_ffmpeg_binary.py` | integration | PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる (`EXPECT_FFMPEG_DIR` で同梱バイナリを指定) |
+| `tests/test_release_workflow.py` | unit | `release.yaml` が配布物に入った ffmpeg / ffprobe に `test_ffmpeg_binary.py` を通すこと |
+| `tests/test_third_party_licenses.py` | unit | `THIRD_PARTY_LICENSES.txt` が指す GPL の全文と、それを同梱する spec / `installer.iss` |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner。実際の index.html で更新の確認・承認・失敗・設定の保存と、テーマと言語の保存・次の起動での復元を通す |
 | `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト |
 

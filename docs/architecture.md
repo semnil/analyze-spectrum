@@ -36,7 +36,7 @@ graph LR
 ```mermaid
 graph TD
     subgraph "src/analyze_spectrum/"
-        INIT["__init__.py<br>_subprocess_kwargs()"]
+        INIT["__init__.py<br>sys.path injection into vendor, SCHEMA_VERSION, make_meta()"]
         MAIN["__main__.py"]
         CLI["cli.py<br>argparse + orchestration"]
         GUI["gui.py<br>pywebview + HTTPServer"]
@@ -340,7 +340,7 @@ That is, long-blocking synchronous work like the following
 **keeps running until that stage finishes** even after a cancel:
 
 - `ffmpeg` / `ffprobe` child processes (`subprocess.run`) — no signal is
-  sent to the process, so PCM extraction and loudness measurement run to the end
+  sent to the process, so PCM extraction and getting the duration run to the end
 - `scipy.signal.welch` / `resample_poly` — NumPy/SciPy's C loops do not
   receive Python signals
 - `yt_dlp.YoutubeDL.extract_info(download=True)` — continues up to the
@@ -530,8 +530,8 @@ dist/analyze-spectrum/
 
 ### 7.6 Known Limitations
 
-- Cache operations (`_result_cache`, `_cache_seq`) are not protected by a thread lock (relies on the CPython GIL, SV-06)
-- Avoiding upload file name collisions in `/upload` is a TOCTOU pattern (accepted for a single-user app, SV-09)
+- Cache operations (`_result_cache`, `_cache_seq`) are not protected by a thread lock (relies on the CPython GIL)
+- Avoiding upload file name collisions in `/upload` is a TOCTOU pattern (accepted for a single-user app)
 
 ## 8. Reference Standards
 
@@ -577,9 +577,12 @@ are averaged into the final result. The frequency resolution does not change.
 | `tests/test_analysis.py` | unit | The analysis core (Welch PSD, 1/3 oct, metrics) |
 | `tests/test_pcm.py` | unit | ffmpeg → PCM conversion |
 | `tests/test_cli.py` | unit | argparse + CLI integration |
-| `tests/test_download.py` | unit | yt_dlp.YoutubeDL API, ffprobe duration |
 | `tests/test_gui.py` | unit | gui.py (with mocks). Includes the update endpoints, `UPDATE_CONFIG`, and saving the theme and language (`/settings`, `/common/settings.js`, the window's background color) |
 | `tests/test_integration.py` | integration | HTTPServer + the analysis pipeline |
+| `tests/test_dialog_busy.py` | unit | Mutual exclusion of native dialogs (`_dialog_lock`) |
+| `tests/test_ffmpeg_binary.py` | integration | Checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading (`EXPECT_FFMPEG_DIR` selects the bundled binaries) |
+| `tests/test_release_workflow.py` | unit | That `release.yaml` runs `test_ffmpeg_binary.py` on the ffmpeg / ffprobe in the distributed files |
+| `tests/test_third_party_licenses.py` | unit | The full GPL texts that `THIRD_PARTY_LICENSES.txt` points at, and the spec / `installer.iss` that bundle them |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner. Runs the update check, approval, failure and settings save, and saving the theme and language and restoring them on the next launch, on the actual index.html |
 | `tests/frontend/test_ui.js` | browser | Frontend UI state tests |
 
