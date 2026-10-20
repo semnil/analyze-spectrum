@@ -117,7 +117,7 @@ python build.py --installer
 
 `build.py` が以下を自動ダウンロード:
 
-- ffmpeg / ffprobe (BtbN/FFmpeg-Builds)
+- ffmpeg / ffprobe (Windows: BtbN/FFmpeg-Builds、macOS: osxexperts.net。系列と macOS の SHA256 は `build_assets/ffmpeg.json`)
 - deno (GitHub Releases, yt-dlp の YouTube JS 抽出に必要)
 - uPlot (jsDelivr CDN)
 
