@@ -5,6 +5,7 @@ Usage:
     python build.py --installer         # + platform installer (Inno Setup / DMG)
     python build.py --skip-download     # Skip asset download (use existing)
     python build.py --update-checksums  # Download assets + update checksums.json
+    python build.py --ffmpeg-only       # Download ffmpeg/ffprobe into build_assets/bin only
 
 Prerequisites:
     pip install pyinstaller
@@ -37,24 +38,21 @@ BIN_DIR = ROOT / "build_assets" / "bin"
 VENDOR_DIR = ROOT / "frontend" / "vendor"
 CHECKSUMS_FILE = ROOT / "build_assets" / "checksums.json"
 
+sys.path.insert(0, str(ROOT / "vendor" / "py-analyze-common" / "src"))
+from analyze_common import ffmpeg_release  # noqa: E402
+
 UPLOT_VERSION = "1.6.31"
 
 _EXE = ".exe" if IS_WINDOWS else ""
 REQUIRED_BINS = [f"ffmpeg{_EXE}", f"ffprobe{_EXE}", f"deno{_EXE}"]
 
+# ffmpeg/ffprobe の系列と macOS のビルドは build_assets/ffmpeg.json が固定する
+# (analyze_common.ffmpeg_release)。
 # macOS 26 で「Intel プロセッサ用アプリの対応は終了します」警告を出さないため、
-# arm64 ネイティブの ffmpeg/ffprobe を osxexperts.net から取得する (evermeet.cx は
+# macOS は osxexperts.net の arm64 ネイティブビルドを取得する (evermeet.cx は
 # x86_64 専用ビルドのみ提供)。Intel Mac 向けの x86_64 サポートは行わない。
-_OSXEXPERTS_ARM64 = {
-    "ffmpeg": (
-        "https://www.osxexperts.net/ffmpeg81arm.zip",
-        "9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028",
-    ),
-    "ffprobe": (
-        "https://www.osxexperts.net/ffprobe81arm.zip",
-        "aab17ac7379c1178aaf400c3ef36cdb67db0b75b1a23eeef2cb9f658be8844e6",
-    ),
-}
+# Windows は BtbN/FFmpeg-Builds の latest にある同じ系列のビルドを取得する。
+FFMPEG_PIN = ROOT / "build_assets" / "ffmpeg.json"
 
 
 def _read_version():
@@ -100,8 +98,8 @@ def _save_checksums(checksums: dict):
 
 def _verify_checksums():
     """Verify uPlot CDN assets against checksums.json. ffmpeg/ffprobe arm64 は
-    `_download_ffmpeg_macos()` 内で個別 SHA 検証する。deno と Windows ffmpeg は
-    動的ソース (latest tag / master build) のため事前固定対象外。"""
+    `_download_ffmpeg_macos()` が build_assets/ffmpeg.json の SHA256 で検証する。
+    deno と Windows ffmpeg は動的ソース (latest tag / 系列の latest build) のため事前固定対象外。"""
     all_checksums = _load_checksums()
     uplot = all_checksums.get("uplot") if all_checksums else None
     if not uplot:
@@ -201,24 +199,13 @@ def _download_deno():
 
 
 def _get_ffmpeg_win_url() -> str:
-    """Get the download URL for the latest ffmpeg win64 build."""
-    print("Fetching latest ffmpeg release info (BtbN/FFmpeg-Builds)...")
-    with _github_api_open(
-        "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases"
-    ) as r:
-        releases = json.loads(r.read())
-
-    # Prefer LGPL essentials build (smaller, no GPL-only codecs)
-    for prefer in ("lgpl", "gpl"):
-        for release in releases:
-            for asset in release.get("assets", []):
-                name = asset["name"]
-                if ("win64" in name and prefer in name
-                        and name.endswith(".zip") and "shared" not in name):
-                    print(f"  Found: {name}")
-                    return asset["browser_download_url"]
-
-    raise RuntimeError("Could not find a suitable ffmpeg build")
+    """Get the download URL for the win64 build of the pinned ffmpeg series."""
+    series = ffmpeg_release.load_pin(FFMPEG_PIN)["series"]
+    print(f"Fetching the ffmpeg {series} build (BtbN/FFmpeg-Builds latest)...")
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    asset = ffmpeg_release.btbn_asset(ffmpeg_release.fetch_btbn_latest(token), series)
+    print(f"  Found: {asset['name']}")
+    return asset["url"]
 
 
 def _download_ffmpeg():
@@ -247,27 +234,13 @@ def _download_ffmpeg_windows():
                 print(f"  -> {dest} ({dest.stat().st_size // 1024 // 1024} MB)")
 
 
-def _extract_zip_to(data: bytes, member_basename: str, dest: Path):
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        member = next(m for m in zf.namelist() if Path(m).name == member_basename)
-        with zf.open(member) as src, open(dest, "wb") as dst:
-            shutil.copyfileobj(src, dst)
-
-
 def _download_ffmpeg_macos():
     """Download arm64-native ffmpeg/ffprobe (osxexperts.net) with SHA256 verification."""
-    for name in ("ffmpeg", "ffprobe"):
-        arm_url, arm_sha = _OSXEXPERTS_ARM64[name]
-        print(f"Downloading {name} arm64 (osxexperts.net)...")
-        with urllib.request.urlopen(arm_url) as r:
-            arm_data = r.read()
+    pin = ffmpeg_release.load_pin(FFMPEG_PIN)
+    for name in ffmpeg_release.TOOLS:
+        print(f"Downloading {name} {pin['series']} arm64 (osxexperts.net)...")
         dest = BIN_DIR / name
-        _extract_zip_to(arm_data, name, dest)
-        actual = _sha256(dest)
-        if actual != arm_sha:
-            raise RuntimeError(
-                f"{name} arm64 SHA256 mismatch: expected {arm_sha}, got {actual}"
-            )
+        dest.write_bytes(ffmpeg_release.fetch_macos_binary(pin["macos_arm64"][name], name))
         _make_executable(dest)
         size_mb = dest.stat().st_size // 1024 // 1024
         print(f"  -> {dest} ({size_mb} MB, arm64)")
@@ -286,9 +259,9 @@ def _download_uplot():
 def update_checksums():
     """Download assets and compute checksums.json for static CDN-hosted uPlot.
 
-    deno (latest), ffmpeg/ffprobe (BtbN master / osxexperts version-pinned)
+    deno (latest), ffmpeg/ffprobe (BtbN の系列の latest / osxexperts version-pinned)
     は更新ペースが速くプラットフォーム間でも内容が異なるため事前 SHA 固定の
-    対象外。osxexperts arm64 は build.py 内 `_OSXEXPERTS_ARM64` で個別検証する。
+    対象外。osxexperts arm64 は build_assets/ffmpeg.json の SHA256 で個別検証する。
     """
     download_assets()
 
@@ -448,10 +421,17 @@ def main():
                         help="Skip PyInstaller build (assumes dist/ already exists)")
     parser.add_argument("--update-checksums", action="store_true",
                         help="Download assets and update checksums.json")
+    parser.add_argument("--ffmpeg-only", action="store_true",
+                        help="Download ffmpeg/ffprobe into build_assets/bin and exit")
     args = parser.parse_args()
 
     if args.update_checksums:
         update_checksums()
+        return
+
+    if args.ffmpeg_only:
+        BIN_DIR.mkdir(parents=True, exist_ok=True)
+        _download_ffmpeg()
         return
 
     if not args.skip_download:

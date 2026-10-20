@@ -1,0 +1,13 @@
+{
+  "series": "8.1",
+  "macos_arm64": {
+    "ffmpeg": {
+      "url": "https://www.osxexperts.net/ffmpeg81arm.zip",
+      "sha256": "9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028"
+    },
+    "ffprobe": {
+      "url": "https://www.osxexperts.net/ffprobe81arm.zip",
+      "sha256": "aab17ac7379c1178aaf400c3ef36cdb67db0b75b1a23eeef2cb9f658be8844e6"
+    }
+  }
+}
