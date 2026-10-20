@@ -333,7 +333,7 @@ sequenceDiagram
     FE->>U: "Cancelled."
 ```
 
-**Known behavior on cancel** (a known limitation):
+**Known behavior on cancel** (a known limitation; the cancel is detected in `_send_event()`, [src/analyze_spectrum/gui.py:1034](https://github.com/semnil/analyze-spectrum/blob/b40e893132c4003ec4c86eff404c5d051c245267/src/analyze_spectrum/gui.py#L1034)):
 
 A cancel is detected only when the next NDJSON event is sent.
 That is, long-blocking synchronous work like the following
@@ -505,7 +505,7 @@ dist/analyze-spectrum/
 - subprocess is run in list form (prevents shell injection)
 - yt-dlp goes through the Python API (`yt_dlp.YoutubeDL`), so no subprocess stdout decoding is needed. The title is taken from the dict returned by `extract_info()` (the DOM shows it through `textContent`)
 - POST bodies are limited to 10MB (JSON), 50MB (base64 image), 500MB (file upload)
-- Upload file names are made harmless with `sanitize_filename()` (`\/:*?"<>|` → `_`, leading and trailing `.` removed)
+- Upload file names are made harmless with `sanitize_filename()` (defined in py-analyze-common's [analyze_common/download.py:22](https://github.com/semnil/py-analyze-common/blob/fab7f1f9845b90a1744a217cd8839b72b95109a7/src/analyze_common/download.py#L22)) (`\/:*?"<>|` → `_`, leading and trailing `.` removed)
 - Upload extensions are on an allowlist (13 kinds such as `.wav`, `.mp3`, `.m4a`)
 - The duration parameter accepts only positive numbers
 - The `sources` array of `/compare` is validated only for its length (no type check of the elements; a non-string is a runtime error in `resolve_source()`)

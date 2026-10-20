@@ -83,7 +83,7 @@ The Summary counts are as of adding SEC-24 on 2026-10-20 (the first edition of t
 
 - **Risk**: MEDIUM -> RESOLVED
 - **Location**: [download.py](../src/analyze_spectrum/download.py) `sanitize_filename`, [gui.py](../src/analyze_spectrum/gui.py) `_handle_upload`
-- **Resolution**: `sanitize_filename` replaces `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|` with `_`, and strips leading and trailing `.` and whitespace. Because of this, a path traversal attack such as `../../../etc/passwd.wav` is made harmless, as in `_.._.._etc_passwd.wav`. In addition, the extensions are limited to an allowlist (`.wav, .mp3, .m4a, .flac, .ogg, .opus, .wma, .aac, .aiff, .aif, .webm, .mkv, .mp4`).
+- **Resolution**: `sanitize_filename` (defined in py-analyze-common's [analyze_common/download.py:22](https://github.com/semnil/py-analyze-common/blob/fab7f1f9845b90a1744a217cd8839b72b95109a7/src/analyze_common/download.py#L22)) replaces `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|` with `_`, and strips leading and trailing `.` and whitespace. Because of this, a path traversal attack such as `../../../etc/passwd.wav` is made harmless, as in `_.._.._etc_passwd.wav`. In addition, the extensions are limited to an allowlist (`.wav, .mp3, .m4a, .flac, .ogg, .opus, .wma, .aac, .aiff, .aif, .webm, .mkv, .mp4`).
   - A collision with a file of the same name is avoided with a timestamp suffix
   - The write destination is fixed to `_upload_dir` (`tempfile.mkdtemp`), which is deleted with `atexit`
 

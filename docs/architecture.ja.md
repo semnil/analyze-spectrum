@@ -333,7 +333,7 @@ sequenceDiagram
     FE->>U: "Cancelled."
 ```
 
-**キャンセル時の既知挙動** (既知の制限):
+**キャンセル時の既知挙動** (既知の制限。キャンセルは `_send_event()` で検知する、[src/analyze_spectrum/gui.py:1034](https://github.com/semnil/analyze-spectrum/blob/b40e893132c4003ec4c86eff404c5d051c245267/src/analyze_spectrum/gui.py#L1034)):
 
 キャンセルは次の NDJSON イベント送信タイミングでのみ検知される。
 すなわち以下のような長時間ブロックする同期処理は、キャンセル後も
@@ -505,7 +505,7 @@ dist/analyze-spectrum/
 - subprocess は list 形式で実行 (shell injection 防止)
 - yt-dlp は Python API (`yt_dlp.YoutubeDL`) 経由のため subprocess stdout のデコード不要。タイトルは `extract_info()` の戻り値 dict から取得 (DOM は `textContent` 経由で表示)
 - POST body は 10MB 上限 (JSON)、50MB (base64 画像)、500MB (ファイルアップロード)
-- アップロードファイル名は `sanitize_filename()` で無害化 (`\/:*?"<>|` → `_`、先頭末尾の `.` 除去)
+- アップロードファイル名は `sanitize_filename()` (定義は py-analyze-common の [analyze_common/download.py:22](https://github.com/semnil/py-analyze-common/blob/fab7f1f9845b90a1744a217cd8839b72b95109a7/src/analyze_common/download.py#L22)) で無害化 (`\/:*?"<>|` → `_`、先頭末尾の `.` 除去)
 - アップロード拡張子はホワイトリスト (`.wav`, `.mp3`, `.m4a` 等 13 種)
 - duration パラメータは正の数値のみ許可
 - `/compare` の `sources` 配列は長さのみ検証 (要素の型チェックなし。非文字列は `resolve_source()` で実行時エラー)
