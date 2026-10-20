@@ -46,12 +46,12 @@ UPLOT_VERSION = "1.6.31"
 _EXE = ".exe" if IS_WINDOWS else ""
 REQUIRED_BINS = [f"ffmpeg{_EXE}", f"ffprobe{_EXE}", f"deno{_EXE}"]
 
-# ffmpeg/ffprobe の系列と macOS のビルドは build_assets/ffmpeg.json が固定する
-# (analyze_common.ffmpeg_release)。
-# macOS 26 で「Intel プロセッサ用アプリの対応は終了します」警告を出さないため、
-# macOS は osxexperts.net の arm64 ネイティブビルドを取得する (evermeet.cx は
-# x86_64 専用ビルドのみ提供)。Intel Mac 向けの x86_64 サポートは行わない。
-# Windows は BtbN/FFmpeg-Builds の latest にある同じ系列のビルドを取得する。
+# The ffmpeg/ffprobe series and the macOS builds are pinned by
+# build_assets/ffmpeg.json (analyze_common.ffmpeg_release).
+# To avoid the macOS 26 warning that support for apps for Intel processors is
+# ending, macOS fetches the arm64 native build from osxexperts.net (evermeet.cx
+# provides only x86_64 builds). There is no x86_64 support for Intel Macs.
+# Windows fetches the build of the same series in BtbN/FFmpeg-Builds' latest.
 FFMPEG_PIN = ROOT / "build_assets" / "ffmpeg.json"
 
 
@@ -97,9 +97,10 @@ def _save_checksums(checksums: dict):
 
 
 def _verify_checksums():
-    """Verify uPlot CDN assets against checksums.json. ffmpeg/ffprobe arm64 は
-    `_download_ffmpeg_macos()` が build_assets/ffmpeg.json の SHA256 で検証する。
-    deno と Windows ffmpeg は動的ソース (latest tag / 系列の latest build) のため事前固定対象外。"""
+    """Verify uPlot CDN assets against checksums.json. The arm64 ffmpeg/ffprobe
+    are verified by `_download_ffmpeg_macos()` with the SHA256 in build_assets/ffmpeg.json.
+    deno and the Windows ffmpeg come from dynamic sources (latest tag / the
+    series' latest build), so they are not pinned in advance."""
     all_checksums = _load_checksums()
     uplot = all_checksums.get("uplot") if all_checksums else None
     if not uplot:
@@ -259,9 +260,10 @@ def _download_uplot():
 def update_checksums():
     """Download assets and compute checksums.json for static CDN-hosted uPlot.
 
-    deno (latest), ffmpeg/ffprobe (BtbN の系列の latest / osxexperts version-pinned)
-    は更新ペースが速くプラットフォーム間でも内容が異なるため事前 SHA 固定の
-    対象外。osxexperts arm64 は build_assets/ffmpeg.json の SHA256 で個別検証する。
+    deno (latest) and ffmpeg/ffprobe (the series' latest from BtbN / osxexperts version-pinned)
+    update quickly and differ between platforms, so they are not SHA-pinned in
+    advance. The osxexperts arm64 build is verified on its own with the SHA256
+    in build_assets/ffmpeg.json.
     """
     download_assets()
 
