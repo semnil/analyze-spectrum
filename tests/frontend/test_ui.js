@@ -460,6 +460,53 @@ function makeNdjsonResponse(type, data) {
   assertEqual(document.getElementById("submit-btn").textContent, "Analyze", "Submit shows Analyze");
 
   // ================================================
+  suite("NDJSON stream: abort");
+  // ================================================
+
+  var unhandledReasons = [];
+  function onUnhandled(e) { unhandledReasons.push(e.reason); e.preventDefault(); }
+  window.addEventListener("unhandledrejection", onUnhandled);
+  var rejectRead = null;
+  var abortedStream = {
+    body: {
+      getReader: function() {
+        return {
+          read: function() { return new Promise(function(resolve, reject) { rejectRead = reject; }); },
+          cancel: function() {
+            rejectRead(new DOMException("Fetch is aborted", "AbortError"));
+            return Promise.reject(new DOMException("Fetch is aborted", "AbortError"));
+          },
+        };
+      },
+    },
+  };
+  var streamAbort = new AbortController();
+  var reading = readNdjsonStream(abortedStream, "result", streamAbort.signal).catch(function(e) { return e; });
+  streamAbort.abort();
+  var readError = await reading;
+  await new Promise(function(r) { setTimeout(r, 50); });
+  window.removeEventListener("unhandledrejection", onUnhandled);
+  assertEqual(readError.name, "AbortError", "An aborted stream ends in AbortError");
+  assertEqual(unhandledReasons.length, 0, "Cancelling the aborted stream leaves no unhandled rejection");
+
+  var closedRead = null;
+  var closingStream = {
+    body: {
+      getReader: function() {
+        return {
+          read: function() { return new Promise(function(resolve) { closedRead = resolve; }); },
+          cancel: function() { closedRead({ done: true, value: undefined }); return Promise.resolve(); },
+        };
+      },
+    },
+  };
+  var closingAbort = new AbortController();
+  var closing = readNdjsonStream(closingStream, "result", closingAbort.signal).catch(function(e) { return e; });
+  closingAbort.abort();
+  var closingError = await closing;
+  assertEqual(closingError.name, "AbortError", "A stream that the cancel ends as done still ends in AbortError");
+
+  // ================================================
   suite("Submit label reflects mode");
   // ================================================
 
