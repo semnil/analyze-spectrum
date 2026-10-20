@@ -6,20 +6,22 @@ This application bundles the following third-party software.
 ----------------------------------------------------------------------
 FFmpeg / FFprobe
 ----------------------------------------------------------------------
-License: Windows: GNU Lesser General Public License v3.0 or later
-                  (LGPL-3.0-or-later)
+License: Windows: GNU General Public License v3.0 or later
+                  (GPL-3.0-or-later)
          macOS:   GNU General Public License v2.0 or later
                   (GPL-2.0-or-later)
 Website: https://ffmpeg.org/
 Source:  https://github.com/FFmpeg/FFmpeg
-Builds:  Windows: https://github.com/BtbN/FFmpeg-Builds (lgpl variant)
+Builds:  Windows: https://github.com/BtbN/FFmpeg-Builds (gpl variant)
          macOS:   https://www.osxexperts.net/
 
-FFmpeg is free software. The Windows build contains no GPL components
-and is licensed under the LGPL. The full text of the LGPL is available
-at: https://www.gnu.org/licenses/lgpl-3.0.html
+FFmpeg is free software. The Windows build contains GPL components
+(libx264, libx265) and is licensed under the GPL version 3 or later.
+The full text of the GPL version 3 is in licenses/GPL-3.0.txt next to
+this file, and at https://www.gnu.org/licenses/gpl-3.0.html
 The macOS build contains GPL components (libx264, libx265) and is
-licensed under the GPL. The full text of the GPL is available at:
+licensed under the GPL version 2 or later. The full text of the GPL
+version 2 is in licenses/GPL-2.0.txt next to this file, and at
 https://www.gnu.org/licenses/gpl-2.0.html
 
 The source code for the version of FFmpeg included in this distribution

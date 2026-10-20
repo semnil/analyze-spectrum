@@ -102,6 +102,7 @@ graph LR
     t --> t_dlg["test_dialog_busy.py<br>ネイティブダイアログの排他 (_dialog_lock)"]
     t --> t_ffb["test_ffmpeg_binary.py<br>PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる<br>(EXPECT_FFMPEG_DIR で同梱バイナリを指定)"]
     t --> t_rwf["test_release_workflow.py<br>release.yaml が配布物に入った ffmpeg / ffprobe に<br>test_ffmpeg_binary.py を通すこと"]
+    t --> t_tpl["test_third_party_licenses.py<br>THIRD_PARTY_LICENSES.txt が指す GPL の全文と、<br>それを同梱する spec / installer.iss"]
     t --> t_fe["test_frontend.py<br>Playwright headless Chromium の実行役"]
     t --> tf["frontend/"]
     tf --> tf_html["test_ui.html<br>テストハーネスのページ"]
@@ -115,6 +116,7 @@ graph LR
     root --> r_spec["analyze-spectrum.spec"]
     root --> r_iss["installer.iss"]
     root --> r_lic["THIRD_PARTY_LICENSES.txt"]
+    root --> r_gpl["licenses/<br>GPL v2 / v3 の全文 (THIRD_PARTY_LICENSES.txt の FFmpeg の節が指す。<br>spec が同じ階層に同梱する)"]
     root --> ba_pin["build_assets/ffmpeg.json<br>同梱する ffmpeg / ffprobe の系列と、macOS のビルドの URL・SHA256"]
     root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (git 管理外)"]
 ```
@@ -338,7 +340,7 @@ ffmpeg / ffprobe は osxexperts.net の arm64 ネイティブビルドを取得�
 `build_assets/ffmpeg.json` が、両 OS で同梱する ffmpeg / ffprobe の系列 (`series`、例 `8.1`) と、macOS のビルドの URL と SHA256 を持つ。読み書きと検証は py-analyze-common の `analyze_common/ffmpeg_release.py` が行い、`build.py` はそれを呼ぶ。
 
 - macOS: `build.py` が osxexperts.net の zip を取得し、中のバイナリを固定値の SHA256 と照合する (不一致でビルドを止める)。この SHA256 は osxexperts.net のページがダウンロードの横に載せる値と同じもの
-- Windows: BtbN/FFmpeg-Builds の `latest` にある同じ系列のビルド (`ffmpeg-n{series}-latest-win64-lgpl-{series}.zip`、無ければ `gpl`)。中身は日ごとに入れ替わるので SHA256 は固定しない。系列が `latest` から無くなるとビルドが止まる
+- Windows: BtbN/FFmpeg-Builds の `latest` にある同じ系列のビルド (`ffmpeg-n{series}-latest-win64-gpl-{series}.zip`。lgpl のビルドは使わない)。中身は日ごとに入れ替わるので SHA256 は固定しない。系列が `latest` から無くなるとビルドが止まる
 - 更新: `.github/workflows/ffmpeg-watch.yml` が毎日行い、patch リリースまで進める ([リリース手順](#リリース手順)の「ffmpeg の更新による patch リリース」)。osxexperts.net の URL は版から決まらない (`ffmpeg81arm.zip` / `ffmpeg9arm.zip`) ので、固定値はページのリンクから取る。手で行うときは、次のコマンドが、ページに別のビルドがあるときだけ、BtbN に同じ系列があることと、両ファイルがページの SHA256 と一致することを確かめてから、新しい固定値を `--candidate` に書く。`pin_update=true` なら、その中身を `build_assets/ffmpeg.json` に写す
 
   ```bash
