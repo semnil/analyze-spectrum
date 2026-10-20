@@ -359,10 +359,11 @@ uPlot (対数周波数の PSD 重ね描き) + Canvas 自前描画 (1/3 オクタ
 
 ### ホワイトフラッシュ防止
 
-ページロード時のちらつきを防ぐ 2 段構成:
+ページロード時のちらつきを防ぐ 3 段構成:
 
 - **フロントエンド** (`frontend/index.html`): `<head>` で `common/settings.js` と `i18n.js` を読み、続くインライン `<script>` が CSS ペイント前に `window.analyzeSettings.theme` からテーマを解決して `<html>` に `data-theme` 属性を、`i18n.js` が決めた言語を `lang` 属性を付与
 - **バックエンド** (`gui.py`): `analyze_common.ui_settings.UiSettings.background_color()` が設定ファイルのテーマから pywebview の `background_color` を決める。auto (保存が無いときを含む) は OS のダークモード設定 (`analyze_common.theme.is_dark_mode()`: Windows はレジストリの `AppsUseLightTheme`、macOS は `AppleInterfaceStyle`) に従う
+- **macOS の webview** (`gui.py` が `create_window()` の直後に `analyze_common.ui_settings.show_window_color_until_paint()` を呼ぶ): pywebview は最初の読み込みが終わってから WKWebView をウィンドウに付け、WKWebView は最初の描画まで白を描く。WKWebView の背景を切り、ページが描かれるまでウィンドウの `background_color` を見せる (仕組みは `vendor/py-analyze-common/CLAUDE.md` の「テーマと言語の設定」節)
 
 ### Load JSON 保留ソース保持
 
