@@ -47,9 +47,18 @@
     window.renderMidHigh = function(){};
   </script>
 
-  <!-- Ensure deterministic language for assertions -->
+  <!-- Stub the app's /common/settings.js: deterministic language for
+       assertions, and saves recorded instead of posted -->
   <script>
-    try { localStorage.setItem("spectrum-lang", "en"); } catch (_) {}
+    window.analyzeSettings = {
+      theme: "auto",
+      lang: "en",
+      saved: [],
+      save: function (name, value) {
+        this.saved.push([name, value]);
+        return Promise.resolve({});
+      },
+    };
   </script>
 
   <!-- Load the actual frontend code -->

@@ -5,8 +5,10 @@ to open the page and read test results from window._testResult.
 """
 
 import contextlib
+import json
 import sys
 import threading
+import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
@@ -74,21 +76,25 @@ def test_frontend_ui(_test_server):
     print(f"\nFrontend tests: {result['passed']}/{total} passed")
 
 
-def _app_server(gui_module_name):
-    """Serve the real index.html, style.css and common.css through the app's handler."""
+def _gui_module(gui_module_name="analyze_spectrum.gui"):
+    """The app's gui module, imported with pywebview mocked out."""
     import importlib
-    import sys
-    from http.server import ThreadingHTTPServer
     from unittest.mock import MagicMock
     saved = sys.modules.get("webview")
     sys.modules["webview"] = MagicMock()
     try:
-        gui_mod = importlib.import_module(gui_module_name)
+        return importlib.import_module(gui_module_name)
     finally:
         if saved is None:
             del sys.modules["webview"]
         else:
             sys.modules["webview"] = saved
+
+
+def _app_server(gui_module_name):
+    """Serve the real index.html, style.css and common.css through the app's handler."""
+    from http.server import ThreadingHTTPServer
+    gui_mod = _gui_module(gui_module_name)
 
     class _Server(ThreadingHTTPServer):
         request_queue_size = 64
@@ -135,6 +141,61 @@ def test_clear_all_button_is_at_least_36px_tall():
                 page.click("#add-btn")
             height = page.evaluate("document.getElementById('clear-btn').getBoundingClientRect().height")
             assert height >= 36, f"#clear-btn is {height} px tall"
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_theme_and_submit_labels_follow_the_state_after_load_and_language_switch():
+    """main.js alone writes the theme button's accessible name and the submit
+    button's text, so the translation pass of i18n.js at DOMContentLoaded and on
+    a language switch does not replace them."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(locale="ja-JP")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            theme_state = "window.i18n.t('theme.aria_state.' + _themeMode)"
+            assert page.evaluate("window.i18n.lang()") == "ja"
+            assert page.get_attribute("#theme-toggle", "aria-label") == page.evaluate(theme_state)
+            assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.analyze')")
+            page.click("#lang-toggle")
+            assert page.evaluate("window.i18n.lang()") == "en"
+            assert page.get_attribute("#theme-toggle", "aria-label") == page.evaluate(theme_state)
+            assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.analyze')")
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_running_analysis_keeps_its_cancel_button_across_a_language_switch():
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(locale="en-US")
+            held = []
+            page.route("**/analyze", lambda route: held.append(route))
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            try:
+                page.fill("#url-input", "x.wav")
+                page.click("#submit-btn")
+                page.wait_for_function("isBusy")
+                page.click("#lang-toggle")
+                assert page.evaluate("window.i18n.lang()") == "ja"
+                assert page.evaluate("isBusy") is True
+                assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.cancel')")
+                assert page.get_attribute("#submit-btn", "aria-label") == page.evaluate("window.i18n.t('btn.cancel.aria')")
+            finally:
+                for route in held:
+                    route.abort()
             browser.close()
     finally:
         server.shutdown()
@@ -226,19 +287,23 @@ _UPDATE_LOCKED = ("#url-input", "#browse-btn", "#submit-btn", "#add-btn", "#load
 
 
 @contextlib.contextmanager
-def _update_page(updater, on_dialog):
-    """The real index.html, served with ``updater`` behind the update endpoints."""
+def _update_page(updater, on_dialog, lang="en", prepare=None):
+    """The real index.html, served with ``updater`` behind the update endpoints.
+    ``lang`` is stored in the settings file first; ``prepare(page)`` runs
+    before the page loads."""
     server = _app_server("analyze_spectrum.gui")
     gui = sys.modules["analyze_spectrum.gui"]
     saved = gui._updater
     gui._updater = updater
+    if lang is not None:
+        gui._ui_settings.update({"lang": lang})
     try:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
-            ctx = browser.new_context()
-            ctx.add_init_script("localStorage.setItem('spectrum-lang', 'en');")
-            page = ctx.new_page()
+            page = browser.new_context().new_page()
             page.on("dialog", on_dialog)
+            if prepare is not None:
+                prepare(page)
             page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
             yield page
             browser.close()
@@ -494,3 +559,107 @@ def test_outside_press_keeps_escape_in_the_settings_dialog():
         page.mouse.click(5, 5)
         assert not page.is_visible(".settings-box")
         assert page.evaluate("document.activeElement.id") == "settings-toggle"
+
+
+def _settings_file():
+    gui = sys.modules["analyze_spectrum.gui"]
+    try:
+        return json.loads(gui._settings.path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+
+
+def _wait_for(condition, timeout=10):
+    deadline = time.monotonic() + timeout
+    while not condition():
+        if time.monotonic() > deadline:
+            pytest.fail("condition not met in time")
+        time.sleep(0.02)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_stored_theme_and_language_apply_before_main_js_runs():
+    gui = _gui_module()
+    gui._ui_settings.update({"theme": "dark"})
+    blocked = []
+
+    def block_main_js(page):
+        page.route("**/main.js", lambda route: (blocked.append(route.request.url), route.abort()))
+
+    with _update_page(_PageUpdater(None, launch_check=False), lambda d: d.dismiss(),
+                      lang="ja", prepare=block_main_js) as page:
+        page.wait_for_load_state("domcontentloaded")
+        assert blocked
+        assert page.evaluate("document.documentElement.getAttribute('data-theme')") == "dark"
+        assert page.evaluate("document.documentElement.getAttribute('lang')") == "ja"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_theme_and_language_picked_are_there_at_the_next_launch():
+    with _update_page(_PageUpdater(None, launch_check=False), lambda d: d.dismiss()) as page:
+        page.wait_for_load_state("networkidle")
+        page.click("#theme-toggle")
+        page.click("#lang-toggle")
+        _wait_for(lambda: _settings_file().get("theme") == "light" and _settings_file().get("lang") == "ja")
+        relaunched = page.context.browser.new_context().new_page()
+        relaunched.goto(page.url)
+        relaunched.wait_for_load_state("networkidle")
+        assert relaunched.evaluate("document.documentElement.getAttribute('data-theme')") == "light"
+        assert relaunched.evaluate("document.documentElement.getAttribute('lang')") == "ja"
+        assert relaunched.get_attribute("#theme-toggle", "title") == \
+            relaunched.evaluate("window.i18n.t('theme.title.light')")
+        assert relaunched.inner_text("#lang-toggle") == "JA"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_quick_theme_picks_are_saved_one_after_another(monkeypatch):
+    gui = _gui_module()
+    real_update = gui._ui_settings.update
+    arrived, calls = [], []
+
+    def slow_first(changes):
+        start = time.monotonic()
+        arrived.append(changes)
+        if len(arrived) == 1:
+            time.sleep(0.3)
+        result = real_update(changes)
+        calls.append((changes, start, time.monotonic()))
+        return result
+
+    monkeypatch.setattr(gui._ui_settings, "update", slow_first)
+    with _update_page(_PageUpdater(None, launch_check=False), lambda d: d.dismiss()) as page:
+        page.wait_for_load_state("networkidle")
+        arrived.clear()
+        calls.clear()
+        page.evaluate("""() => {
+          const button = document.getElementById("theme-toggle");
+          button.click(); button.click(); button.click();
+        }""")
+        _wait_for(lambda: len(calls) == 3)
+        shown = page.evaluate("_themeMode")
+    assert [c[0] for c in calls] == [{"theme": "light"}, {"theme": "dark"}, {"theme": "auto"}]
+    assert all(later[1] >= earlier[2] for earlier, later in zip(calls, calls[1:]))
+    assert shown == "auto"
+    assert _settings_file()["theme"] == "auto"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_failed_theme_save_shows_the_cause_and_keeps_the_theme(monkeypatch):
+    gui = _gui_module()
+    with _update_page(_PageUpdater(None, launch_check=False), lambda d: d.dismiss()) as page:
+        page.wait_for_load_state("networkidle")
+
+        def fail(key, value):
+            raise OSError("read-only")
+
+        monkeypatch.setattr(gui._settings, "set", fail)
+        page.click("#theme-toggle")
+        page.wait_for_selector("#status.error")
+        text = page.inner_text("#status .error-text")
+        theme = page.evaluate("document.documentElement.getAttribute('data-theme')")
+    assert text == "Error: The setting could not be saved: read-only"
+    assert theme == "light"
+
+
+def test_settings_file_is_in_this_tests_temp_folder(_isolated_settings):
+    assert _isolated_settings in _gui_module()._settings.path.parents

@@ -595,6 +595,86 @@ class TestUpdateEndpoints:
         assert held == [_mock_webview.UPDATE_CONFIG.mutex_name]
 
 
+class TestUiSettingsEndpoints:
+    _request = TestUpdateEndpoints._request
+    _post = TestUpdateEndpoints._post
+
+    @staticmethod
+    def _stored(gui):
+        return json.loads(gui._settings.path.read_text(encoding="utf-8"))
+
+    def test_settings_js_carries_the_stored_values(self, _mock_webview):
+        _mock_webview._ui_settings.update({"theme": "dark"})
+        response, body = self._request(_mock_webview, "GET", "/common/settings.js")
+        assert response.status == 200
+        assert response.getheader("Content-Type").startswith("text/javascript")
+        assert response.getheader("Cache-Control") == "no-store"
+        assert body == _mock_webview._ui_settings.script()
+        assert body.startswith(b'window.analyzeSettingsStored = {"theme": "dark", "lang": null};\n')
+
+    def test_settings_js_reads_the_file_for_every_page_load(self, _mock_webview):
+        _, before = self._request(_mock_webview, "GET", "/common/settings.js")
+        self._post(_mock_webview, "/settings", {"lang": "ja"})
+        _, after = self._request(_mock_webview, "GET", "/common/settings.js")
+        assert b'"lang": null' in before
+        assert b'"lang": "ja"' in after
+
+    def test_index_loads_settings_js_before_i18n_js(self, _mock_webview):
+        from pathlib import Path
+        html = (Path(_mock_webview.FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
+        assert 0 <= html.index('src="common/settings.js"') < html.index('src="i18n.js"')
+
+    def test_post_stores_one_setting_at_a_time(self, _mock_webview):
+        assert self._post(_mock_webview, "/settings", {"theme": "light"}) == (
+            200, {"theme": "light", "lang": None})
+        assert self._post(_mock_webview, "/settings", {"lang": "ja"}) == (
+            200, {"theme": "light", "lang": "ja"})
+        assert self._stored(_mock_webview) == {"theme": "light", "lang": "ja"}
+
+    @pytest.mark.parametrize("body", [{}, {"theme": "sepia"}, {"lang": "fr"}, {"theme": None},
+                                      {"theme": "dark", "lang": "ja"},
+                                      {"update_check_at_launch": False}, [], "dark"])
+    def test_post_rejects_anything_else_without_writing(self, _mock_webview, body):
+        _mock_webview._ui_settings.update({"theme": "dark"})
+        before = _mock_webview._settings.path.read_bytes()
+        response, data = self._request(_mock_webview, "POST", "/settings", json.dumps(body).encode())
+        assert response.status == 400
+        assert "error" in json.loads(data)
+        assert _mock_webview._settings.path.read_bytes() == before
+
+    def test_post_save_failure_is_500_with_the_cause(self, _mock_webview, monkeypatch):
+        def fail(key, value):
+            raise OSError("read-only")
+        monkeypatch.setattr(_mock_webview._settings, "set", fail)
+        assert self._post(_mock_webview, "/settings", {"theme": "dark"}) == (500, {"error": "read-only"})
+
+    def test_post_refuses_a_foreign_host(self, _mock_webview):
+        status, _ = self._post(_mock_webview, "/settings", {"theme": "dark"},
+                               headers={"Host": "attacker.example"})
+        assert status == 403
+        assert not _mock_webview._settings.path.exists()
+
+    def test_update_and_ui_settings_share_the_file_and_its_lock(self, _mock_webview):
+        assert _mock_webview._updater.settings is _mock_webview._settings
+        assert _mock_webview._ui_settings.settings is _mock_webview._settings
+        self._post(_mock_webview, "/update/settings", {"launch_check": False})
+        self._post(_mock_webview, "/settings", {"theme": "dark"})
+        assert self._stored(_mock_webview) == {"update_check_at_launch": False, "theme": "dark"}
+
+    @pytest.mark.parametrize("theme, dark_os, color", [
+        ("dark", False, "#1a1a2e"), ("light", True, "#fafafa"),
+        (None, True, "#1a1a2e"), (None, False, "#fafafa"),
+    ])
+    def test_window_starts_in_the_stored_theme(self, _mock_webview, monkeypatch, theme, dark_os, color):
+        from analyze_common import ui_settings
+        monkeypatch.setattr(ui_settings, "is_dark_mode", lambda: dark_os)
+        monkeypatch.setattr(_mock_webview, "hold_instance_mutex", lambda name: None)
+        if theme is not None:
+            _mock_webview._ui_settings.update({"theme": theme})
+        _mock_webview.main()
+        assert _mock_webview.webview.create_window.call_args.kwargs["background_color"] == color
+
+
 class TestUpdateConfig:
     def test_public_key_is_a_raw_ed25519_key(self):
         import base64
