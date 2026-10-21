@@ -524,8 +524,8 @@ dist/analyze-spectrum/
 
 ### 7.5 ビルド・配布
 
-- ビルド時アセット (ffmpeg, ffprobe, deno, uPlot) は SHA256 チェックサム検証 (yt-dlp は Python 依存のため対象外)
-- Frozen build は `_MEIPASS/bin` に PATH を限定
+- ビルド時アセット: uPlot と macOS の ffmpeg / ffprobe はリポジトリの SHA256 (`build_assets/checksums.json`、`build_assets/ffmpeg.json`) と照合する。Windows の ffmpeg / ffprobe (BtbN の `latest` にある固定した系列のビルド) と deno (最新リリース) は固定しない
+- Frozen build は `_MEIPASS/bin` を `PATH` の先頭に置く
 - 自動更新の取得物は Ed25519 の署名をアプリに組み込んだ公開鍵で検証してから適用する ([4.8](#48-自動更新))
 
 ### 7.6 既知の制限

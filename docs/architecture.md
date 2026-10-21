@@ -524,8 +524,8 @@ dist/analyze-spectrum/
 
 ### 7.5 Build and Distribution
 
-- Build-time assets (ffmpeg, ffprobe, deno, uPlot) are verified with SHA256 checksums (yt-dlp is excluded because it is a Python dependency)
-- The frozen build limits PATH to `_MEIPASS/bin`
+- Build-time assets: uPlot and the macOS ffmpeg / ffprobe are checked against SHA256 values in the repository (`build_assets/checksums.json`, `build_assets/ffmpeg.json`). The Windows ffmpeg / ffprobe (the pinned series' build in BtbN's `latest`) and deno (its latest release) are not pinned
+- The frozen build puts `_MEIPASS/bin` at the front of `PATH`
 - What auto-update fetches is applied only after its Ed25519 signature is verified with the public key built into the app ([4.8](#48-auto-update))
 
 ### 7.6 Known Limitations
