@@ -12,13 +12,8 @@ name: Dependabot auto-merge
 # steps and not on the job, and the trigger carries no filter: the job reports on every pull request.
 # A merge made by auto-merge is attributed to GITHUB_TOKEN, so the push it makes to the default branch
 # starts no workflow.
-# workflow_dispatch on a branch reports `auto-merge` on that branch's head commit with both steps skipped. It is for
-# a pull request GITHUB_TOKEN opens (ffmpeg-watch.yml), whose pull_request run waits for an approval. A dispatch on a
-# dependabot/ branch, or for a commit that a pull request dependabot[bot] opened contains, fails: a check run belongs
-# to the commit, and that commit is decided by its pull request's pull_request run.
 on:
   pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,20 +26,6 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Refuse a dispatch for a Dependabot commit
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [[ "$GITHUB_REF_NAME" == dependabot/* ]]; then
-            echo "::error::a dependabot/ branch is decided by its pull_request run, not by a dispatch"
-            exit 1
-          fi
-          authors=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '[.[].user.login] | join(" ")')
-          if [[ " ${authors} " == *" dependabot[bot] "* ]]; then
-            echo "::error::${GITHUB_SHA} is in a pull request dependabot[bot] opened, which its pull_request run decides"
-            exit 1
-          fi
       - id: metadata
         if: github.event.pull_request.user.login == 'dependabot[bot]'
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
