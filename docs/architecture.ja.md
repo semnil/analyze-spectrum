@@ -525,6 +525,7 @@ dist/analyze-spectrum/
 ### 7.5 ビルド・配布
 
 - ビルド時アセット: uPlot と macOS の ffmpeg / ffprobe はリポジトリの SHA256 (`build_assets/checksums.json`、`build_assets/ffmpeg.json`) と照合する。Windows の ffmpeg / ffprobe (BtbN の `latest` にある固定した系列のビルド) と deno (最新リリース) は固定しない
+- リリースのジョブは Python パッケージをハッシュで固定した `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg は `release.yaml` の SHA256 と照合したアーカイブから入れる
 - Frozen build は `_MEIPASS/bin` を `PATH` の先頭に置く
 - 自動更新の取得物は Ed25519 の署名をアプリに組み込んだ公開鍵で検証してから適用する ([4.8](#48-自動更新))
 
@@ -581,7 +582,7 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 | `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン |
 | `tests/test_dialog_busy.py` | unit | ネイティブダイアログの排他 (`_dialog_lock`) |
 | `tests/test_ffmpeg_binary.py` | integration | PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる (`EXPECT_FFMPEG_DIR` で同梱バイナリを指定) |
-| `tests/test_release_workflow.py` | unit | `release.yaml` が配布物に入った ffmpeg / ffprobe に `test_ffmpeg_binary.py` を通すこと、書き込めるのは `create-release` だけでそこでは Python を動かさないこと、更新用の署名鍵を持つジョブは読み取り権限だけで固定した版の yt-dlp の wheel だけを入れること、Developer ID の署名 ID を codesign の直前に取り込み、codesign の終わりに消すこと |
+| `tests/test_release_workflow.py` | unit | `release.yaml` が配布物に入った ffmpeg / ffprobe に `test_ffmpeg_binary.py` を通すこと、書き込めるのは `create-release` だけでそこでは Python を動かさないこと、更新用の署名鍵を持つジョブは読み取り権限だけでハッシュで固定した yt-dlp だけを入れること、Developer ID の署名 ID を codesign の直前に取り込み、codesign の終わりに消すこと、リリースのジョブがパッケージを `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg を SHA256 を照合してから入れること、`requirements/release.txt` が `pyproject.toml` を満たすこと |
 | `tests/test_third_party_licenses.py` | unit | `THIRD_PARTY_LICENSES.txt` が指す GPL の全文と、それを同梱する spec / `installer.iss` |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner。実際の index.html で更新の確認・承認・失敗・設定の保存と、テーマと言語の保存・次の起動での復元を通す |
 | `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト |
