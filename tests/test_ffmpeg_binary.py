@@ -11,7 +11,6 @@ fails the module instead of skipping it.
 
 import math
 import os
-import shutil
 import wave
 from pathlib import Path
 
@@ -19,7 +18,7 @@ import numpy as np
 import pytest
 
 from analyze_spectrum.analysis import SAMPLE_RATE
-from analyze_spectrum.pcm import extract_audio, probe_info
+from analyze_spectrum.pcm import extract_audio, find_executable, probe_info
 
 SECONDS = 3
 
@@ -28,7 +27,7 @@ SECONDS = 3
 def _binaries():
     expected = os.environ.get("EXPECT_FFMPEG_DIR")
     if not expected:
-        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        if find_executable("ffmpeg") is None or find_executable("ffprobe") is None:
             pytest.skip("ffmpeg / ffprobe not on PATH")
         yield
         return
@@ -37,7 +36,7 @@ def _binaries():
     patch.setenv("PATH", str(directory) + os.pathsep + os.environ.get("PATH", ""))
     try:
         for tool in ("ffmpeg", "ffprobe"):
-            found = shutil.which(tool)
+            found = find_executable(tool)
             assert found is not None and Path(found).parent.resolve() == directory, (
                 f"{tool} resolves to {found}, not to a file in {directory}")
         yield

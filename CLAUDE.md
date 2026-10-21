@@ -355,6 +355,10 @@ ffmpeg / ffprobe are the arm64 native builds from osxexperts.net. evermeet.cx (x
 
 - Checking: `tests/test_ffmpeg_binary.py` reads a 48 kHz 16-bit stereo WAV written with numpy (a different sine wave on left and right) with the ffmpeg / ffprobe on PATH and the app's `extract_audio()` / `probe_info()`, and checks that the returned float32 PCM matches the written samples times 1/32768 (including a cut from the middle), and the channel count and length. When the directory of the bundled binaries is passed in `EXPECT_FFMPEG_DIR`, it checks that the ffmpeg / ffprobe there are found first, and fails instead of skipping when they are not found (the last line of [Tests](#tests)). The release build (`.github/workflows/release.yaml`) runs this test on the copies in the distributed files (on Windows `dist/analyze-spectrum/_internal/bin` gathered by PyInstaller, on macOS `Contents/Frameworks/bin` of the `.app` after signing), and on failure does not go on to uploading the artifacts and creating the Draft Release (`tests/test_release_workflow.py` checks the position of that stage and the directories it passes against the spec and `installer.iss`)
 
+### Starting ffmpeg / ffprobe by absolute path
+
+`extract_audio()` in `src/analyze_spectrum/pcm.py`, and py-analyze-common's `probe_info()` / `download_audio()`, start ffmpeg / ffprobe (and yt-dlp's deno) by the absolute path that py-analyze-common's `find_executable()` returns. It searches only the absolute entries of PATH, in order; the frozen app puts the bundled `bin` folder at the front of PATH (`main()` in `src/analyze_spectrum/gui.py`). The reason is in the "Programs start by absolute path" section of `vendor/py-analyze-common/CLAUDE.md`. When the program they run is not on PATH (ffmpeg for `extract_audio()` / `download_audio()`, ffprobe for `probe_info()`), they raise `FileNotFoundError` without starting a process. `tests/test_ffmpeg_binary.py` checks `EXPECT_FFMPEG_DIR` with the same `find_executable()`.
+
 ### PCM conversion approach
 
 analyze-loudness parses the stderr of the ebur128 filter, but this tool reads the raw PCM data

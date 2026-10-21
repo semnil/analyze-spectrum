@@ -7,16 +7,29 @@ import pytest
 
 from analyze_spectrum.pcm import SAMPLE_RATE
 
+FFMPEG = "/opt/tools/ffmpeg"
+
 
 class TestExtractAudio:
     def test_sample_rate_constant(self):
         assert SAMPLE_RATE == 48000
 
+    def test_extract_audio_without_ffmpeg_on_path_raises(self):
+        """No ffmpeg on PATH: FileNotFoundError before any process starts."""
+        import analyze_spectrum.pcm as pcm_mod
+
+        with patch("analyze_spectrum.pcm.find_executable", return_value=None), \
+             patch("analyze_spectrum.pcm.subprocess.run") as mock_run:
+            with pytest.raises(FileNotFoundError, match="ffmpeg"):
+                pcm_mod.extract_audio("input.m4a")
+        mock_run.assert_not_called()
+
     def test_extract_audio_builds_correct_cmd(self):
         """Verify ffmpeg command construction without running ffmpeg."""
         import analyze_spectrum.pcm as pcm_mod
 
-        with patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
+        with patch("analyze_spectrum.pcm.find_executable", return_value=FFMPEG), \
+             patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
              patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile, \
              patch("analyze_spectrum.pcm.Path") as mock_path:
             mock_run.return_value = MagicMock(returncode=0)
@@ -35,7 +48,7 @@ class TestExtractAudio:
 
             assert mock_run.called
             cmd = mock_run.call_args[0][0]
-            assert cmd[0] == "ffmpeg"
+            assert cmd[0] == FFMPEG
             assert "-ar" in cmd
             assert "48000" in cmd
             assert "-ac" in cmd
@@ -46,7 +59,8 @@ class TestExtractAudio:
         """Verify ss and duration flags are passed to ffmpeg."""
         import analyze_spectrum.pcm as pcm_mod
 
-        with patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
+        with patch("analyze_spectrum.pcm.find_executable", return_value=FFMPEG), \
+             patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
              patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile, \
              patch("analyze_spectrum.pcm.Path") as mock_path:
             mock_run.return_value = MagicMock(returncode=0)
@@ -75,7 +89,8 @@ class TestExtractAudio:
         # Simulate stereo: L=1.0, R=0.5 repeated
         raw = np.array([1.0, 0.5, 1.0, 0.5], dtype=np.float32)
 
-        with patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
+        with patch("analyze_spectrum.pcm.find_executable", return_value=FFMPEG), \
+             patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
              patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile, \
              patch("analyze_spectrum.pcm.Path") as mock_path:
             mock_run.return_value = MagicMock(returncode=0)

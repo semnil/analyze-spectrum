@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from analyze_common.ffmpeg import ffmpeg_kwargs, probe_info  # noqa: F401
+from analyze_common.platform import find_executable
 from analyze_spectrum.analysis import SAMPLE_RATE
 
 
@@ -30,14 +31,20 @@ def extract_audio(
           ~+3 dB for correlated stereo; we avoid that path.)
         - 3 ch or more (surround): mean across all channels.  This keeps
           LFE / center / surrounds from being silently dropped.
+
+    ffmpeg runs from the path find_executable() gives; FileNotFoundError
+    when it is not on PATH.
     """
     if channels < 1:
         raise ValueError(f"channels must be >= 1, got {channels}")
+    ffmpeg = find_executable("ffmpeg")
+    if ffmpeg is None:
+        raise FileNotFoundError("ffmpeg was not found on PATH")
     with tempfile.NamedTemporaryFile(suffix=".pcm", delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
-        cmd = ["ffmpeg", "-y"]
+        cmd = [ffmpeg, "-y"]
         if ss is not None:
             cmd += ["-ss", str(ss)]
         cmd += ["-i", path]
