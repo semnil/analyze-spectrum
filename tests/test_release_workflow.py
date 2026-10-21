@@ -1,9 +1,16 @@
-"""release.yaml runs tests/test_ffmpeg_binary.py on the ffmpeg / ffprobe each build ships, before anything is uploaded."""
+"""release.yaml runs tests/test_ffmpeg_binary.py on the ffmpeg / ffprobe each build ships, before anything is uploaded,
+and keeps the release credentials out of the steps that run third-party code: only create-release can write, the
+Developer ID identity is imported right before codesign and deleted when codesign ends, and the job that signs
+latest.json installs only the pinned yt-dlp.
+"""
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+WORKFLOW = ROOT / ".github/workflows/release.yaml"
 TEST_STEP = "- name: Test the Bundled ffmpeg 🧪"
 TEST_RUN = "run: python -m pytest -q tests/test_ffmpeg_binary.py"
 
@@ -17,11 +24,15 @@ def _spec_names():
     return collect, bundle
 
 
+def _job(job):
+    """The text of ``job`` in release.yaml."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    return re.search(rf"^  {job}:\n(.*?)(?=^  \S|\Z)", text, re.M | re.S).group(1)
+
+
 def _steps(job):
     """The steps of ``job`` in release.yaml, each as its own text."""
-    text = (ROOT / ".github/workflows/release.yaml").read_text(encoding="utf-8")
-    body = re.search(rf"^  {job}:\n(.*?)(?=^  \S|\Z)", text, re.M | re.S).group(1)
-    return ["- " + step for step in re.split(r"^      - ", body, flags=re.M)[1:]]
+    return ["- " + step for step in re.split(r"^      - ", _job(job), flags=re.M)[1:]]
 
 
 def _index(steps, line):
@@ -50,3 +61,49 @@ def test_macos_tests_the_signed_binaries_before_the_dmg():
     assert f"EXPECT_FFMPEG_DIR: dist/{bundle}/Contents/Frameworks/bin\n" in steps[test]
     assert TEST_RUN in steps[test]
     assert "if:" not in steps[test]
+
+
+def test_only_create_release_can_write():
+    assert re.search(r"^permissions:\n  contents: read\n", WORKFLOW.read_text(encoding="utf-8"), re.M)
+    for job in ("check-event", "build-windows", "build-macos"):
+        assert "permissions:" not in _job(job), job
+    assert "    permissions:\n      contents: write\n" in _job("create-release")
+
+
+def test_macos_signing_identity_is_imported_right_before_codesign_and_deleted_after():
+    steps = _steps("build-macos")
+    imported = _index(steps, "- name: Import Apple Developer ID Certificate")
+    codesign = _index(steps, "- name: Codesign .app")
+    assert _index(steps, "- name: Install Dependencies") < _index(steps, "- name: Build .app Bundle") < imported
+    assert imported + 1 == codesign
+    assert "-T /usr/bin/codesign" in steps[imported]
+    assert not re.search(r"(?<!\S)-A(?!\S)", steps[imported])
+    assert """trap 'security delete-keychain "$KEYCHAIN_PATH"' EXIT""" in steps[codesign]
+
+
+def test_the_signing_job_installs_only_the_pinned_yt_dlp():
+    job = _job("create-release")
+    installs = re.findall(r"pip install[^\n]*", job)
+    assert installs == ['pip install --no-deps "${pin}"']
+    assert "startswith(\"yt-dlp==\")" in job and "pyproject.toml" in job
+    assert "cache: pip" not in job
+
+
+# Blocks every import outside the standard library, the app, analyze_common and yt-dlp, as in create-release.
+_ONLY_PINNED = """
+import importlib, importlib.abc, sys
+allowed = set(sys.stdlib_module_names) | {"analyze_spectrum", "analyze_common", "yt_dlp"}
+class Block(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path, target=None):
+        if name.split(".")[0] not in allowed:
+            raise ModuleNotFoundError(f"not installed in create-release: {name}", name=name)
+        return None
+sys.meta_path.insert(0, Block())
+importlib.import_module("analyze_spectrum.update")
+importlib.import_module("analyze_common.update_manifest")
+"""
+
+
+def test_the_manifest_tool_runs_with_only_the_pinned_yt_dlp():
+    result = subprocess.run([sys.executable, "-c", _ONLY_PINNED], cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

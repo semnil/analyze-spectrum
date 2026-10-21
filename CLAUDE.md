@@ -106,7 +106,7 @@ graph LR
     t --> t_int["test_integration.py<br>HTTP integration tests (real HTTPServer, no pywebview)"]
     t --> t_dlg["test_dialog_busy.py<br>mutual exclusion of native dialogs (_dialog_lock)"]
     t --> t_ffb["test_ffmpeg_binary.py<br>checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading<br>(EXPECT_FFMPEG_DIR selects the bundled binaries)"]
-    t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on<br>the ffmpeg / ffprobe in the distributed files"]
+    t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on<br>the ffmpeg / ffprobe in the distributed files, that only create-release can write,<br>that the Developer ID identity is imported right before codesign<br>and deleted when codesign ends, and that create-release installs only the pinned yt-dlp"]
     t --> t_tpl["test_third_party_licenses.py<br>the full GPL texts that THIRD_PARTY_LICENSES.txt points at,<br>and the spec / installer.iss that bundle them"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
     t --> tf["frontend/"]

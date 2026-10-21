@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check-event:
@@ -143,6 +143,12 @@ jobs:
             echo "::warning::MACOS_SIGNING_CERT not set — building unsigned DMG"
           fi
 
+      - name: Build .app Bundle 🧱
+        run: python build.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # Runs right before Codesign .app, which deletes the keychain when it ends. Only codesign may use the key.
       - name: Import Apple Developer ID Certificate 🔑
         if: steps.check-signing.outputs.signed == 'true'
         env:
@@ -151,6 +157,7 @@ jobs:
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -158,7 +165,7 @@ jobs:
 
           echo -n "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            -T /usr/bin/codesign -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: \
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
 
@@ -173,16 +180,12 @@ jobs:
           echo '--- Signing identities ---'
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      - name: Build .app Bundle 🧱
-        run: python build.py
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
       - name: Codesign .app 🔏
         if: steps.check-signing.outputs.signed == 'true'
         env:
           TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
         run: |
+          trap 'security delete-keychain "$KEYCHAIN_PATH"' EXIT
           APP="dist/Spectrum Analyzer.app"
           IDENTITY=$(security find-identity -v -p codesigning | \
             grep "Developer ID Application" | head -1 | \
@@ -280,6 +283,8 @@ jobs:
     needs: [check-event, build-windows, build-macos]
     if: needs.check-event.outputs.validTag == 'true'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     defaults:
       run:
         shell: bash
@@ -292,12 +297,14 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
-          cache: pip
 
-      # The manifest tool imports the app's UpdateConfig, which imports the package.
+      # The manifest tool imports the app's UpdateConfig from src/ and analyze_common, which imports yt-dlp.
+      # This job installs only that yt-dlp, at the version pyproject.toml pins, without its dependencies.
       - name: Install Dependencies 📦
         timeout-minutes: 10
-        run: pip install -e .
+        run: |
+          pin=$(python -c 'import tomllib; print(next(d for d in tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"] if d.startswith("yt-dlp==")))')
+          python -m pip install --no-deps "${pin}"
 
       - name: Download Build Artifacts 📥
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -314,7 +321,7 @@ jobs:
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           TAG: ${{ needs.check-event.outputs.version }}
-          PYTHONPATH: vendor/py-analyze-common/src
+          PYTHONPATH: src:vendor/py-analyze-common/src
         run: |
           if [[ -z "${UPDATE_SIGNING_KEY}" ]]; then
             echo "::error::UPDATE_SIGNING_KEY is not set; without latest.json no installed app can update to this release"
