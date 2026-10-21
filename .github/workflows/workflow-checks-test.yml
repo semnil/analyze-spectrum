@@ -2,8 +2,9 @@ name: Workflow checks test
 
 # Runs .github/tests/workflow-checks-test.sh, which executes the steps of workflow-checks.yml from this commit against fixture
 # git trees served by a fake gh and asserts which fixtures pass and which fail with which reason, and
-# .github/tests/dependabot-auto-merge-test.sh, which checks the workflow_dispatch entry of dependabot-auto-merge.yml, and
-# .github/tests/tag-release-test.sh, which runs the tag step of tag-release.yml against a fixture repository.
+# .github/tests/dependabot-auto-merge-test.sh, which checks the workflow_dispatch entry of dependabot-auto-merge.yml,
+# .github/tests/tag-release-test.sh, which runs the tag step of tag-release.yml against a fixture repository, and
+# .github/tests/ffmpeg-watch-land-test.sh, which runs the land step of ffmpeg-watch.yml against a fixture repository.
 on:
   pull_request:
     paths:
@@ -14,6 +15,8 @@ on:
       - .github/tests/dependabot-auto-merge-test.sh
       - .github/workflows/tag-release.yml
       - .github/tests/tag-release-test.sh
+      - .github/workflows/ffmpeg-watch.yml
+      - .github/tests/ffmpeg-watch-land-test.sh
   push:
     branches:
       - main
@@ -26,6 +29,8 @@ on:
       - .github/tests/dependabot-auto-merge-test.sh
       - .github/workflows/tag-release.yml
       - .github/tests/tag-release-test.sh
+      - .github/workflows/ffmpeg-watch.yml
+      - .github/tests/ffmpeg-watch-land-test.sh
   workflow_dispatch:
 
 permissions:
@@ -45,3 +50,5 @@ jobs:
         run: bash .github/tests/dependabot-auto-merge-test.sh
       - name: Run the tag release workflow test
         run: bash .github/tests/tag-release-test.sh
+      - name: Run the ffmpeg watch land test
+        run: bash .github/tests/ffmpeg-watch-land-test.sh
