@@ -581,7 +581,7 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 | `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン |
 | `tests/test_dialog_busy.py` | unit | ネイティブダイアログの排他 (`_dialog_lock`) |
 | `tests/test_ffmpeg_binary.py` | integration | PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる (`EXPECT_FFMPEG_DIR` で同梱バイナリを指定) |
-| `tests/test_release_workflow.py` | unit | `release.yaml` が配布物に入った ffmpeg / ffprobe に `test_ffmpeg_binary.py` を通すこと、書き込めるのは `create-release` だけであること、Developer ID の署名 ID を codesign の直前に取り込み、codesign の終わりに消すこと、`create-release` が入れるのは固定した版の yt-dlp だけであること |
+| `tests/test_release_workflow.py` | unit | `release.yaml` が配布物に入った ffmpeg / ffprobe に `test_ffmpeg_binary.py` を通すこと、書き込めるのは `create-release` だけでそこでは Python を動かさないこと、更新用の署名鍵を持つジョブは読み取り権限だけで固定した版の yt-dlp の wheel だけを入れること、Developer ID の署名 ID を codesign の直前に取り込み、codesign の終わりに消すこと |
 | `tests/test_third_party_licenses.py` | unit | `THIRD_PARTY_LICENSES.txt` が指す GPL の全文と、それを同梱する spec / `installer.iss` |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner。実際の index.html で更新の確認・承認・失敗・設定の保存と、テーマと言語の保存・次の起動での復元を通す |
 | `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト |

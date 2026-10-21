@@ -107,7 +107,7 @@ graph LR
     t --> t_int["test_integration.py<br>HTTP integration tests (real HTTPServer, no pywebview)"]
     t --> t_dlg["test_dialog_busy.py<br>mutual exclusion of native dialogs (_dialog_lock)"]
     t --> t_ffb["test_ffmpeg_binary.py<br>checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading<br>(EXPECT_FFMPEG_DIR selects the bundled binaries)"]
-    t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on<br>the ffmpeg / ffprobe in the distributed files, that only create-release can write,<br>that the Developer ID identity is imported right before codesign<br>and deleted when codesign ends, and that create-release installs only the pinned yt-dlp"]
+    t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe in the distributed files,<br>that only create-release can write and it runs no Python, that the job holding the update signing key<br>has a read-only token and installs only the pinned yt-dlp wheel, and that the Developer ID identity<br>is imported right before codesign and deleted when codesign ends (a mirror of analyze-loudness's)"]
     t --> t_tpl["test_third_party_licenses.py<br>the full GPL texts that THIRD_PARTY_LICENSES.txt points at,<br>and the spec / installer.iss that bundle them"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
     t --> tf["frontend/"]
@@ -469,7 +469,7 @@ At launch, the installed app reads the latest release's `latest.json`, and if th
 
 #### Signing key (first time only)
 
-Updates are signed with Ed25519, using a key separate from macOS code signing. The private key is not put in git; it is registered as the GitHub secret `UPDATE_SIGNING_KEY`. The Create Release job of `release.yaml` creates `latest.json` with `python -m analyze_common.update_manifest sign`. It verifies each installer's signature with `PUBLIC_KEY` before writing it out, so when the secret is missing, or when the key does not match `PUBLIC_KEY`, the job fails and no Release is created.
+Updates are signed with Ed25519, using a key separate from macOS code signing. The private key is not put in git; it is registered as the GitHub secret `UPDATE_SIGNING_KEY`. The `sign-manifest` job of `release.yaml` (a read-only token; it installs only the yt-dlp wheel that `pyproject.toml` pins) creates `latest.json` with `python -m analyze_common.update_manifest sign`, and the `create-release` job attaches it to the Release. It verifies each installer's signature with `PUBLIC_KEY` before writing it out, so when the secret is missing, or when the key does not match `PUBLIC_KEY`, the job fails and no Release is created.
 
 ```bash
 openssl genpkey -algorithm ed25519 -out ~/.analyze-update/analyze-spectrum-update.pem

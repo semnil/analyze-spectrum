@@ -581,7 +581,7 @@ are averaged into the final result. The frequency resolution does not change.
 | `tests/test_integration.py` | integration | HTTPServer + the analysis pipeline |
 | `tests/test_dialog_busy.py` | unit | Mutual exclusion of native dialogs (`_dialog_lock`) |
 | `tests/test_ffmpeg_binary.py` | integration | Checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading (`EXPECT_FFMPEG_DIR` selects the bundled binaries) |
-| `tests/test_release_workflow.py` | unit | That `release.yaml` runs `test_ffmpeg_binary.py` on the ffmpeg / ffprobe in the distributed files, that only `create-release` can write, that the Developer ID identity is imported right before codesign and deleted when codesign ends, and that `create-release` installs only the pinned yt-dlp |
+| `tests/test_release_workflow.py` | unit | That `release.yaml` runs `test_ffmpeg_binary.py` on the ffmpeg / ffprobe in the distributed files, that only `create-release` can write and it runs no Python, that the job holding the update signing key has a read-only token and installs only the pinned yt-dlp wheel, and that the Developer ID identity is imported right before codesign and deleted when codesign ends |
 | `tests/test_third_party_licenses.py` | unit | The full GPL texts that `THIRD_PARTY_LICENSES.txt` points at, and the spec / `installer.iss` that bundle them |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner. Runs the update check, approval, failure and settings save, and saving the theme and language and restoring them on the next launch, on the actual index.html |
 | `tests/frontend/test_ui.js` | browser | Frontend UI state tests |

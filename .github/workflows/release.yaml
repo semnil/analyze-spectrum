@@ -278,13 +278,18 @@ jobs:
             installer_output/*.dmg
           if-no-files-found: error
 
-  create-release:
-    name: Create Release 🛫
+  # The signing key is used only here: a read-only token, no credentials left
+  # in the checkout, no pip cache, and nothing installed from outside the
+  # repository except the yt-dlp release pyproject.toml pins (analyze_common
+  # imports yt_dlp), as a wheel without its optional dependencies.
+  sign-manifest:
+    name: Sign Update Manifest 🔏
     needs: [check-event, build-windows, build-macos]
     if: needs.check-event.outputs.validTag == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
-      contents: write
+      contents: read
     defaults:
       run:
         shell: bash
@@ -292,19 +297,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Set Up Python 🐍
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
-      # The manifest tool imports the app's UpdateConfig from src/ and analyze_common, which imports yt-dlp.
-      # This job installs only that yt-dlp, at the version pyproject.toml pins, without its dependencies.
-      - name: Install Dependencies 📦
+      - name: Install yt-dlp 📦
         timeout-minutes: 10
         run: |
-          pin=$(python -c 'import tomllib; print(next(d for d in tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"] if d.startswith("yt-dlp==")))')
-          python -m pip install --no-deps "${pin}"
+          requirement=$(python -c 'import tomllib; (r,) = [d for d in tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"] if d.startswith("yt-dlp==")]; print(r)')
+          python -m pip install --no-deps --only-binary :all: "${requirement}"
 
       - name: Download Build Artifacts 📥
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -341,6 +345,28 @@ jobs:
             "windows-x86_64=${exes[0]}" \
             darwin-aarch64=artifacts/Spectrum-Analyzer.dmg
           cat artifacts/latest.json
+
+      - name: Upload the Manifest 📡
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: update-manifest
+          path: artifacts/latest.json
+          if-no-files-found: error
+
+  create-release:
+    name: Create Release 🛫
+    needs: [check-event, sign-manifest]
+    if: needs.check-event.outputs.validTag == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download Build Artifacts and the Manifest 📥
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
 
       - name: Create Release 🛫
         uses: softprops/action-gh-release@9d7c94cfd0a1f3ed45544c887983e9fa900f0564 # v2.0.4
