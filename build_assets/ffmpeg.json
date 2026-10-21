@@ -1,13 +1,13 @@
 {
-  "series": "8.1",
+  "series": "9.0",
   "macos_arm64": {
     "ffmpeg": {
-      "url": "https://www.osxexperts.net/ffmpeg81arm.zip",
-      "sha256": "9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028"
+      "url": "https://www.osxexperts.net/ffmpeg9arm.zip",
+      "sha256": "591260c945d0eef150e3bf82b0ef988bd36a9cecc18ff05d6679617159f0a95e"
     },
     "ffprobe": {
-      "url": "https://www.osxexperts.net/ffprobe81arm.zip",
-      "sha256": "aab17ac7379c1178aaf400c3ef36cdb67db0b75b1a23eeef2cb9f658be8844e6"
+      "url": "https://www.osxexperts.net/ffprobe9arm.zip",
+      "sha256": "e11c17e8200b3ee4c4c186d245e2b4053f01d56957336c1817fca0b997469106"
     }
   }
 }
