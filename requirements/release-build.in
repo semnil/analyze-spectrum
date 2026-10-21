@@ -1,0 +1,4 @@
+# The pip that installs requirements/release.txt, and the build backends of its source distributions and of this
+# project (release.yaml installs them with --no-build-isolation).
+pip
+setuptools

@@ -1,0 +1,2 @@
+# What the job that signs latest.json installs: yt-dlp, which analyze_common imports.
+yt-dlp

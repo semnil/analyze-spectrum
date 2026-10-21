@@ -524,8 +524,9 @@ dist/analyze-spectrum/
 
 ### 7.5 Build and Distribution
 
-- Build-time assets (ffmpeg, ffprobe, deno, uPlot) are verified with SHA256 checksums (yt-dlp is excluded because it is a Python dependency)
-- The frozen build limits PATH to `_MEIPASS/bin`
+- Build-time assets: uPlot and the macOS ffmpeg / ffprobe are checked against SHA256 values in the repository (`build_assets/checksums.json`, `build_assets/ffmpeg.json`). The Windows ffmpeg / ffprobe (the pinned series' build in BtbN's `latest`) and deno (its latest release) are not pinned
+- The release jobs install Python packages only from the hash-pinned `requirements/*.txt`, and Inno Setup / create-dmg from archives checked against SHA256 in `release.yaml`
+- The frozen build puts `_MEIPASS/bin` at the front of `PATH`
 - What auto-update fetches is applied only after its Ed25519 signature is verified with the public key built into the app ([4.8](#48-auto-update))
 
 ### 7.6 Known Limitations
@@ -581,7 +582,7 @@ are averaged into the final result. The frequency resolution does not change.
 | `tests/test_integration.py` | integration | HTTPServer + the analysis pipeline |
 | `tests/test_dialog_busy.py` | unit | Mutual exclusion of native dialogs (`_dialog_lock`) |
 | `tests/test_ffmpeg_binary.py` | integration | Checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading (`EXPECT_FFMPEG_DIR` selects the bundled binaries) |
-| `tests/test_release_workflow.py` | unit | That `release.yaml` runs `test_ffmpeg_binary.py` on the ffmpeg / ffprobe in the distributed files, that only `create-release` can write, that the Developer ID identity is imported right before codesign and deleted when codesign ends, and that `create-release` installs only the pinned yt-dlp |
+| `tests/test_release_workflow.py` | unit | That `release.yaml` runs `test_ffmpeg_binary.py` on the ffmpeg / ffprobe in the distributed files, that only `create-release` can write and it runs no Python, that the job holding the update signing key has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity is imported right before codesign and deleted when codesign ends, that the release jobs install packages only from `requirements/*.txt` and Inno Setup / create-dmg only after a SHA256 check, and that `requirements/release.txt` satisfies `pyproject.toml` |
 | `tests/test_third_party_licenses.py` | unit | The full GPL texts that `THIRD_PARTY_LICENSES.txt` points at, and the spec / `installer.iss` that bundle them |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner. Runs the update check, approval, failure and settings save, and saving the theme and language and restoring them on the next launch, on the actual index.html |
 | `tests/frontend/test_ui.js` | browser | Frontend UI state tests |
