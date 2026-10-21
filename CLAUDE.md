@@ -64,7 +64,7 @@ graph LR
     wf --> wf_rel["release.yaml<br>v* tag / workflow_dispatch on a tag"]
     wf --> wf_tag["tag-release.yml<br>after CI succeeds on a push to master, or on a workflow_dispatch given a commit: if it is a version bump, tags that commit and starts release.yaml"]
     wf --> wf_ffw["ffmpeg-watch.yml<br>daily, detects a new ffmpeg on osxexperts.net, and creates PRs for the pinned-value update and the version bump<br>with a GitHub App's token and merges them without review"]
-    wf --> wf_chk["workflow-checks.yml<br>on every PR, checks the SHA pinning of uses: and the same-repository reference rules.<br>A workflow_dispatch given a PR number runs the same check<br>and puts the result on the PR's head commit as an action-pins check run"]
+    wf --> wf_chk["workflow-checks.yml<br>on every PR, checks the SHA pinning of uses: and the same-repository reference rules"]
     wf --> wf_chkt["workflow-checks-test.yml<br>runs the check's fixture tests, and the tests of dependabot-auto-merge.yml's<br>workflow_dispatch entry point, tag-release.yml's tag stage and ffmpeg-watch.yml's land stage"]
     wf --> wf_dam["dependabot-auto-merge.yml<br>on a Dependabot PR whose update is a semver patch, schedules an auto-merge. Required check auto-merge.<br>On workflow_dispatch, reports auto-merge to the head commit of the branch it was started on (fails on dependabot/ branches and on commits contained in PRs created by dependabot[bot])"]
     root --> ght[".github/tests/"]
