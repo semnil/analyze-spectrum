@@ -526,7 +526,7 @@ dist/analyze-spectrum/
 
 - Build-time assets (ffmpeg, ffprobe, deno, uPlot) are verified with SHA256 checksums (yt-dlp is excluded because it is a Python dependency)
 - The frozen build limits PATH to `_MEIPASS/bin`
-- What auto-update fetches is applied only after its Ed25519 signature is verified with the public key built into the app ([4.8](#48-auto-update), SEC-24 in `docs/security-audit.md`)
+- What auto-update fetches is applied only after its Ed25519 signature is verified with the public key built into the app ([4.8](#48-auto-update))
 
 ### 7.6 Known Limitations
 
