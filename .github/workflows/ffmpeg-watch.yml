@@ -12,20 +12,19 @@ run-name: ffmpeg watch 🔭
 #
 # smoke downloads the pin's binaries on macOS and Windows with build.py and runs tests/test_ffmpeg_binary.py on them.
 #
-# land lands up to two pull requests with GITHUB_TOKEN, one after the other: the new pin, then the version bump on its
-# own. A pull request GITHUB_TOKEN opens starts no pull_request_target run and its pull_request runs wait for an
-# approval, so land dispatches the required checks itself: CI (Test) and dependabot-auto-merge.yml (auto-merge) on the
-# pull request's branch, and workflow-checks.yml on master, which posts action-pins on the pull request's head commit.
-# It waits for all three and merges. A merge with GITHUB_TOKEN starts no CI on master either, so after the bump merges
-# land dispatches tag-release.yml with the merge commit, which has the tree of the pull request's head where CI passed;
-# tag-release.yml tags it and starts release.yaml, and a merge that lands after the bump does not change the commit that
-# gets tagged. When __version__ has no tag yet (a run stopped after its bump merged), detect reports the commit that set
-# it (release_sha) and land dispatches tag-release.yml with that. The draft Release is published by hand.
+# land lands up to two pull requests, one after the other: the new pin, then the version bump on its own. It pushes,
+# opens and merges them with a token of the GitHub App whose client ID is the repository variable
+# FFMPEG_WATCH_APP_CLIENT_ID and whose private key is the secret FFMPEG_WATCH_APP_PRIVATE_KEY, and it reads everything
+# else with GITHUB_TOKEN. The pull request starts its own CI and dependabot-auto-merge.yml runs (pull_request) and its
+# workflow-checks.yml run (pull_request_target); land waits for the three runs on the pull request's head commit and for
+# its required checks, and merges. The merge of the bump starts CI on master, and the CI run of that push starts
+# tag-release.yml, which tags the bump and starts release.yaml. When __version__ has no tag yet (the CI run of the
+# bump's merge failed, for example), detect reports the commit that set it (release_sha) and land dispatches
+# tag-release.yml with that. The draft Release is published by hand.
 #
 # An open pull request from an earlier run (head branch ffmpeg-watch/...) stops land before it changes anything. The
 # branch names carry the run id and attempt, so a branch an earlier run pushed without opening its pull request does
 # not collide with the next run's.
-# The repository setting "Allow GitHub Actions to create and approve pull requests" has to be on for land.
 on:
   schedule:
     - cron: '41 4 * * *'
@@ -156,14 +155,27 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
-      contents: write # push the pull request branches
-      pull-requests: write # open and merge the pull requests
-      actions: write # dispatch CI, dependabot-auto-merge.yml and workflow-checks.yml
+      contents: read # the App's token pushes the branches and merges
+      pull-requests: read # find the open pull requests and the one land opened
+      checks: read # gh pr checks
+      statuses: read # gh pr checks
+      actions: write # find the pull requests' runs and dispatch tag-release.yml with release_sha
     defaults:
       run:
         shell: bash
     steps:
+      - name: Create the App's Token 🔑
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.FFMPEG_WATCH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.FFMPEG_WATCH_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Download the New Pin 📥
         if: needs.detect.outputs.pin_update == 'true'
@@ -175,6 +187,8 @@ jobs:
       - name: Land 🛬
         env:
           GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           PIN_UPDATE: ${{ needs.detect.outputs.pin_update }}
           BUMP: ${{ needs.detect.outputs.bump }}
           SERIES: ${{ needs.detect.outputs.series }}
@@ -198,22 +212,27 @@ jobs:
             exit 1
           fi
 
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          bot_id=$(gh api "users/${APP_SLUG}[bot]" --jq .id)
+          if ! [[ "${bot_id}" =~ ^[0-9]+$ ]]; then
+            echo "::error::could not read the user id of ${APP_SLUG}[bot] (got '${bot_id}')"
+            exit 1
+          fi
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
 
-          # find_run <workflow> <jq condition>: the newest workflow_dispatch run of <workflow> that matches.
+          # find_run <workflow> <event> <commit>: the newest <event> run of <workflow> on <commit>.
           find_run() {
-            local workflow="$1" condition="$2" id
+            local workflow="$1" event="$2" commit="$3" id
             for _ in $(seq 36); do
-              id=$(gh run list --workflow "${workflow}" --event workflow_dispatch --limit 20 \
-                --json databaseId,headSha,displayTitle --jq "[.[] | select(${condition})][0].databaseId // empty")
+              id=$(gh run list --workflow "${workflow}" --event "${event}" --commit "${commit}" --limit 1 \
+                --json databaseId --jq '.[0].databaseId // empty')
               if [[ -n "${id}" ]]; then
                 echo "${id}"
                 return 0
               fi
               sleep 5
             done
-            echo "::error::no ${workflow} run with ${condition} appeared" >&2
+            echo "::error::no ${event} run of ${workflow} on ${commit} appeared" >&2
             return 1
           }
 
@@ -223,8 +242,8 @@ jobs:
             git switch --quiet --create "$1" FETCH_HEAD
           }
 
-          # land <branch> <title> <body> <path>...: commit the paths, open the pull request, run its required checks
-          # through workflow_dispatch and merge it once they pass.
+          # land <branch> <title> <body> <path>...: commit the paths, push them and open the pull request with the App's
+          # token, wait for the pull request's runs and required checks, and merge it with the App's token.
           land() {
             local branch="$1" title="$2" body="$3" sha pr ci automerge pins
             shift 3
@@ -232,29 +251,18 @@ jobs:
             git commit --quiet -m "${title}"
             sha=$(git rev-parse HEAD)
             git push --quiet origin "HEAD:refs/heads/${branch}"
-            gh pr create --base master --head "${branch}" --title "${title}" --body "${body}" > /dev/null
+            GH_TOKEN="${APP_TOKEN}" gh pr create --base master --head "${branch}" --title "${title}" --body "${body}" > /dev/null
             pr=$(gh pr view "${branch}" --json number --jq .number)
             echo "opened #${pr}: ${title}"
-            gh workflow run ci.yaml --ref "${branch}"
-            gh workflow run dependabot-auto-merge.yml --ref "${branch}"
-            gh workflow run workflow-checks.yml --ref master -f pr="${pr}"
-            ci=$(find_run ci.yaml ".headSha == \"${sha}\"")
-            automerge=$(find_run dependabot-auto-merge.yml ".headSha == \"${sha}\"")
-            pins=$(find_run workflow-checks.yml ".displayTitle == \"Workflow checks for #${pr}\"")
+            ci=$(find_run ci.yaml pull_request "${sha}")
+            automerge=$(find_run dependabot-auto-merge.yml pull_request "${sha}")
+            pins=$(find_run workflow-checks.yml pull_request_target "${sha}")
             gh run watch "${ci}" --exit-status --compact --interval 30
             gh run watch "${automerge}" --exit-status --compact --interval 15
             gh run watch "${pins}" --exit-status --compact --interval 15
             gh pr checks "${pr}" --required
-            gh pr merge "${pr}" --merge --match-head-commit "${sha}"
+            GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --merge --match-head-commit "${sha}"
             echo "merged #${pr}"
-            landed_pr="${pr}"
-          }
-
-          # tag_release <commit> <version>: dispatch tag-release.yml with <commit>, which tags it v<version> and starts
-          # release.yaml.
-          tag_release() {
-            gh workflow run tag-release.yml --ref master -f sha="$1"
-            echo "dispatched tag-release.yml with $1 for v$2"
           }
 
           if [[ "${PIN_UPDATE}" == true ]]; then
@@ -285,12 +293,8 @@ jobs:
             fi
             body=$(printf '%s\n\n%s\n' "Patch release that bundles ffmpeg ${SERIES}. It contains only the version bump." "${run_url}")
             land "${branch}" "chore: update the version to v${NEXT_VERSION}" "${body}" "${version_file}"
-            merged=$(gh pr view "${landed_pr}" --json mergeCommit --jq .mergeCommit.oid)
-            if ! [[ "${merged}" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "::error::could not read the merge commit of #${landed_pr} (got '${merged}')"
-              exit 1
-            fi
-            tag_release "${merged}" "${NEXT_VERSION}"
+            echo "the CI run of the merge on master starts tag-release.yml for v${NEXT_VERSION}"
           elif [[ -n "${RELEASE_SHA}" ]]; then
-            tag_release "${RELEASE_SHA}" "${VERSION}"
+            gh workflow run tag-release.yml --ref master -f sha="${RELEASE_SHA}"
+            echo "dispatched tag-release.yml with ${RELEASE_SHA} for v${VERSION}"
           fi
