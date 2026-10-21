@@ -25,7 +25,8 @@ pin_file=$(printf '%s\n' "$land" | sed -n 's/^pin_file=//p')
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com \
-  GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
+  GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.useConfigOnly GIT_CONFIG_VALUE_0=true
 app_token=app-token
 github_token=github-token
 app_slug=ffmpeg-watch-test
@@ -44,10 +45,12 @@ STATE, REMOTE = os.environ["FAKE_STATE"], os.environ["FAKE_REMOTE"]
 APP, GITHUB = os.environ["FAKE_APP_TOKEN"], os.environ["FAKE_GITHUB_TOKEN"]
 REQUIRED = {"ci.yaml": "pull_request", "dependabot-auto-merge.yml": "pull_request",
             "workflow-checks.yml": "pull_request_target"}
+GIT_ENV = dict(os.environ, GIT_AUTHOR_NAME="GitHub", GIT_AUTHOR_EMAIL="noreply@github.com",
+               GIT_COMMITTER_NAME="GitHub", GIT_COMMITTER_EMAIL="noreply@github.com")
 
 
 def git(*args):
-    r = subprocess.run(["git", "-C", REMOTE, *args], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", REMOTE, *args], capture_output=True, text=True, env=GIT_ENV)
     if r.returncode != 0:
         sys.exit(f"fake gh: git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout.strip()
