@@ -6,7 +6,7 @@ Built on the same architecture as analyze-loudness (pywebview + a local HTTP ser
 
 ## Documentation languages
 
-- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/<name>.md`, Japanese at `README.ja.md` and `docs/<name>.ja.md`. `docs/security-audit.md`, which is rewritten in every audit round, is English only
+- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/<name>.md`, Japanese at `README.ja.md` and `docs/<name>.ja.md`
 
 ## Architecture overview
 
@@ -106,7 +106,7 @@ graph LR
     t --> t_int["test_integration.py<br>HTTP integration tests (real HTTPServer, no pywebview)"]
     t --> t_dlg["test_dialog_busy.py<br>mutual exclusion of native dialogs (_dialog_lock)"]
     t --> t_ffb["test_ffmpeg_binary.py<br>checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading<br>(EXPECT_FFMPEG_DIR selects the bundled binaries)"]
-    t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on<br>the ffmpeg / ffprobe in the distributed files"]
+    t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on<br>the ffmpeg / ffprobe in the distributed files, that only create-release can write,<br>that the Developer ID identity is imported right before codesign<br>and deleted when codesign ends, and that create-release installs only the pinned yt-dlp"]
     t --> t_tpl["test_third_party_licenses.py<br>the full GPL texts that THIRD_PARTY_LICENSES.txt points at,<br>and the spec / installer.iss that bundle them"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
     t --> tf["frontend/"]
@@ -116,7 +116,6 @@ graph LR
     docs --> docs_arch["architecture.md"]
     docs --> docs_arch_ja["architecture.ja.md"]
     docs --> docs_shot["screenshot.png"]
-    docs --> docs_sec["security-audit.md"]
     root --> vend["vendor/py-analyze-common/<br>git submodule (used through sys.path injection)"]
     root --> r_build["build.py"]
     root --> r_spec["analyze-spectrum.spec"]
@@ -216,7 +215,7 @@ python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q te
 | `/update/check` | POST | Reads the latest release's `latest.json`, and returns `{"available": true, "version"}` if there is a newer version and `{"available": false}` otherwise. A failed fetch or parse is 502 |
 | `/update/install` | POST | Downloads, verifies and applies `{"version"}` (accepts only the version the previous check found). On success, returns `{"restarting": true}` and then quits the app. When only the restart after the install fails, returns `{"installed": true, "restart_error"}` and keeps running. A failure is 500 |
 
-After the Host validation, POST checks the Content-Type and returns 415 unless it is `application/octet-stream` for `/upload` and `application/json` for everything else (the charset etc. after `;` is ignored) (SEC-23 in `docs/security-audit.md`).
+After the Host validation, POST checks the Content-Type and returns 415 unless it is `application/octet-stream` for `/upload` and `application/json` for everything else (the charset etc. after `;` is ignored). Browsers send a cross-origin request with these types only after a CORS preflight, which this server does not answer.
 
 ## Response format (GUI NDJSON)
 
