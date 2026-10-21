@@ -6,9 +6,8 @@ run-name: ${{ github.event.workflow_run.head_branch || inputs.sha }} tag release
 # tested commit as vX.Y.Z and dispatches release.yaml on the tag.
 # workflow_dispatch with a commit (sha) does the same for that commit, which has to be on master
 # and have a successful CI run on it or on a parent with the same tree (the head of a pull request
-# merged while it contained the tip of master). ffmpeg-watch.yml merges its bump with GITHUB_TOKEN,
-# which starts no push run, and dispatches this with the merge commit, whose pull request head
-# passed CI; a merge that lands after the bump does not take its place.
+# merged while it contained the tip of master). ffmpeg-watch.yml dispatches this with the commit
+# that set a version it finds without a tag.
 # A tag pushed with GITHUB_TOKEN starts no workflow, so release.yaml is started with
 # workflow_dispatch on the tag ref instead of by its push: tags trigger.
 on:
