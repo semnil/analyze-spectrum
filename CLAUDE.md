@@ -71,6 +71,7 @@ graph LR
     ght --> ght_sh["workflow-checks-test.sh<br>a test that runs workflow-checks.yml with a fake gh and fixture git trees"]
     ght --> ght_am["dependabot-auto-merge-test.sh<br>a test that dependabot-auto-merge.yml runs on every PR, with only its stages limited to Dependabot PRs"]
     ght --> ght_tag["tag-release-test.sh<br>a test that runs tag-release.yml's check and tag stages with a fake gh and a fixture repository"]
+    root --> r_dep[".github/dependabot.yml<br>weekly version updates of the GitHub Actions, the py-analyze-common submodule<br>and the Python dependencies (uv)"]
     ght --> ght_land["ffmpeg-watch-land-test.sh<br>a test that runs ffmpeg-watch.yml's land stage with a fake gh that answers by the token of each call and a fixture repository"]
     root --> r_claude["CLAUDE.md"]
     root --> r_readme["README.md"]
@@ -325,7 +326,7 @@ analyze-spectrum uses blues (`--accent: #1565C0`), analyze-loudness purples (`--
 
 ### yt-dlp version pin
 
-`pyproject.toml` has an exact pin `yt-dlp==<version>`. The three `pyproject.toml` files of analyze-loudness / analyze-spectrum / py-analyze-common have the same pin, and a manual version change updates all three at the same time. When a Dependabot update is a semver patch, it is merged automatically per repository once its required checks pass (`.github/workflows/dependabot-auto-merge.yml`), so the three values can differ. In analyze-loudness and analyze-spectrum the checks pass only when the update also keeps `requirements/release.txt` in step with `pyproject.toml` ([Pinned release dependencies](#pinned-release-dependencies)). What goes into the shipped app is the pin in this repository's `pyproject.toml`; py-analyze-common's `pyproject.toml` is not used to build the shipped app (the submodule is read through `sys.path` injection).
+`pyproject.toml` has an exact pin `yt-dlp==<version>`. The three `pyproject.toml` files of analyze-loudness / analyze-spectrum / py-analyze-common have the same pin, and a manual version change updates all three at the same time. When a Dependabot update is a semver patch, it is merged automatically per repository once its required checks pass (`.github/workflows/dependabot-auto-merge.yml`), so the three values can differ. In analyze-loudness and analyze-spectrum, Dependabot (`.github/dependabot.yml`, the `uv` ecosystem) opens an update of the pin and of `requirements/*.txt` once a week, for a version released at least three days before; py-analyze-common's Dependabot does not watch its Python dependencies, so its pin is changed by hand. In analyze-loudness and analyze-spectrum the checks pass only when the update also keeps `requirements/release.txt` in step with `pyproject.toml` ([Pinned release dependencies](#pinned-release-dependencies)). What goes into the shipped app is the pin in this repository's `pyproject.toml`; py-analyze-common's `pyproject.toml` is not used to build the shipped app (the submodule is read through `sys.path` injection).
 
 Why pin: the shipped app has yt-dlp baked into the PYZ by PyInstaller, so it cannot be updated after installation. Leaving it unpinned makes the version depend on the resolution at build time, and the version inside a shipped app cannot be identified afterwards.
 
