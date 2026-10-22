@@ -71,6 +71,7 @@ graph LR
     ght --> ght_sh["workflow-checks-test.sh<br>a test that runs workflow-checks.yml with a fake gh and fixture git trees"]
     ght --> ght_am["dependabot-auto-merge-test.sh<br>a test that dependabot-auto-merge.yml runs on every PR, with only its stages limited to Dependabot PRs"]
     ght --> ght_tag["tag-release-test.sh<br>a test that runs tag-release.yml's check and tag stages with a fake gh and a fixture repository"]
+    root --> r_dep[".github/dependabot.yml<br>weekly version updates of the GitHub Actions, the py-analyze-common submodule<br>and the Python dependencies (uv)"]
     ght --> ght_land["ffmpeg-watch-land-test.sh<br>a test that runs ffmpeg-watch.yml's land stage with a fake gh that answers by the token of each call and a fixture repository"]
     root --> r_claude["CLAUDE.md"]
     root --> r_readme["README.md"]
@@ -108,7 +109,7 @@ graph LR
     t --> t_int["test_integration.py<br>HTTP integration tests (real HTTPServer, no pywebview)"]
     t --> t_dlg["test_dialog_busy.py<br>mutual exclusion of native dialogs (_dialog_lock)"]
     t --> t_ffb["test_ffmpeg_binary.py<br>checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading<br>(EXPECT_FFMPEG_DIR selects the bundled binaries)"]
-    t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe in the distributed files,<br>that only create-release can write and it runs no Python, that the job holding the update signing key<br>has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity<br>is imported right before codesign and deleted when codesign ends, that the release jobs install<br>packages only from requirements/*.txt and build tools only after a SHA256 check,<br>and that requirements/release.txt satisfies pyproject.toml (a mirror of analyze-loudness's)"]
+    t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe in the distributed files,<br>that only create-release can write and it runs no Python, that the job holding the update signing key<br>has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity<br>is imported right before codesign and deleted when codesign ends, that the release jobs install<br>packages only from requirements/*.txt and build tools only after a SHA256 check,<br>that requirements/release.txt satisfies pyproject.toml, and that every requirements/*.txt resolves with its own pins (a mirror of analyze-loudness's)"]
     t --> t_tpl["test_third_party_licenses.py<br>the full GPL texts that THIRD_PARTY_LICENSES.txt points at,<br>and the spec / installer.iss that bundle them"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
     t --> tf["frontend/"]
@@ -325,7 +326,7 @@ analyze-spectrum uses blues (`--accent: #1565C0`), analyze-loudness purples (`--
 
 ### yt-dlp version pin
 
-`pyproject.toml` has an exact pin `yt-dlp==<version>`. The three `pyproject.toml` files of analyze-loudness / analyze-spectrum / py-analyze-common have the same pin, and a manual version change updates all three at the same time. When a Dependabot update is a semver patch, it is merged automatically per repository once its required checks pass (`.github/workflows/dependabot-auto-merge.yml`), so the three values can differ. In analyze-loudness and analyze-spectrum the checks pass only when the update also keeps `requirements/release.txt` in step with `pyproject.toml` ([Pinned release dependencies](#pinned-release-dependencies)). What goes into the shipped app is the pin in this repository's `pyproject.toml`; py-analyze-common's `pyproject.toml` is not used to build the shipped app (the submodule is read through `sys.path` injection).
+`pyproject.toml` has an exact pin `yt-dlp==<version>`. The three `pyproject.toml` files of analyze-loudness / analyze-spectrum / py-analyze-common have the same pin, and a manual version change updates all three at the same time. When a Dependabot update is a semver patch, it is merged automatically per repository once its required checks pass (`.github/workflows/dependabot-auto-merge.yml`), so the three values can differ. In analyze-loudness and analyze-spectrum, Dependabot (`.github/dependabot.yml`, the `uv` ecosystem) opens an update of the pin and of `requirements/*.txt` once a week, for a version released at least three days before; py-analyze-common's Dependabot does not watch its Python dependencies, so its pin is changed by hand. In analyze-loudness and analyze-spectrum the checks pass only when the update also keeps `requirements/release.txt` in step with `pyproject.toml` ([Pinned release dependencies](#pinned-release-dependencies)). What goes into the shipped app is the pin in this repository's `pyproject.toml`; py-analyze-common's `pyproject.toml` is not used to build the shipped app (the submodule is read through `sys.path` injection).
 
 Why pin: the shipped app has yt-dlp baked into the PYZ by PyInstaller, so it cannot be updated after installation. Leaving it unpinned makes the version depend on the resolution at build time, and the version inside a shipped app cannot be identified afterwards.
 
@@ -499,7 +500,7 @@ The release jobs install nothing that is resolved at build time:
 - Build tools: Inno Setup (Windows) and create-dmg (macOS) are downloaded from their GitHub releases and checked against the SHA256 in `release.yaml` (`INNOSETUP_SHA256`, `CREATE_DMG_SHA256`)
 - Not pinned: deno and the Windows ffmpeg / ffprobe, which `build.py` downloads ([Bundled ffmpeg pin](#bundled-ffmpeg-pin))
 
-`requirements/*.txt` are generated by uv from `pyproject.toml` and `requirements/*.in` (uv is needed only to generate them, e.g. `pip install uv` in a separate venv). Run the following from the repository root after changing the dependencies of `pyproject.toml` (the yt-dlp pin included); add `--upgrade` to the first command to take newer versions:
+`requirements/*.txt` are generated by uv from `pyproject.toml` and `requirements/*.in` (uv is in the `dev` extra of `pyproject.toml`). Run the following from the repository root after changing the dependencies of `pyproject.toml` (the yt-dlp pin included); add `--upgrade` to the first command to take newer versions:
 
 ```bash
 uv pip compile pyproject.toml --extra gui --extra dev --universal --python-version 3.12 --generate-hashes -o requirements/release.txt
@@ -507,7 +508,7 @@ uv pip compile requirements/release-build.in -c requirements/release.txt --unive
 uv pip compile requirements/sign-manifest.in -c requirements/release.txt --universal --python-version 3.12 --generate-hashes -o requirements/sign-manifest.txt
 ```
 
-`--python-version` is the `python-version` of `release.yaml`. `tests/test_release_workflow.py` fails when `requirements/release.txt` does not satisfy `pyproject.toml` or a file was generated with other options, so a branch that changes `pyproject.toml` without regenerating these files does not pass CI, whoever opened it.
+`--python-version` is the `python-version` of `release.yaml`. `tests/test_release_workflow.py` fails when `requirements/release.txt` does not satisfy `pyproject.toml`, when a file was generated with other options, or when uv finds no resolution for the command in a file's header with that file's own pins as constraints (a pin that breaks the requirement of another package in the file), so a branch that changes `pyproject.toml` without regenerating these files does not pass CI, whoever opened it.
 
 This section is a mirror with the same content as the one in analyze-loudness's CLAUDE.md.
 

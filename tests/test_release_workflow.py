@@ -2,12 +2,14 @@
 and keeps the release credentials away from code that is not pinned: only create-release can write and it runs no
 Python, the update signing key is in a job with a read-only token, the Developer ID identity is imported right before
 codesign and deleted when codesign ends, and each package and build tool a release job installs is checked against a
-SHA256 (requirements/*.txt, Inno Setup, create-dmg).
+SHA256 (requirements/*.txt, Inno Setup, create-dmg). Each requirements/*.txt is also a resolution uv accepts for the
+command in its header.
 
 This file is a mirror of tests/test_release_workflow.py in analyze-loudness and analyze-spectrum; only APP differs.
 """
 
 import re
+import shlex
 import subprocess
 import sys
 import tomllib
@@ -182,6 +184,18 @@ def test_locks_match_pyproject():
     sign, _ = _lock("sign-manifest.txt")
     assert set(sign) == {"yt-dlp"}
     assert sign["yt-dlp"][0] == release["yt-dlp"][0]
+
+
+def test_locks_resolve_with_their_own_pins(tmp_path):
+    """uv resolves the command in each lock's header again with the lock itself as a constraint, so every pin in the
+    lock meets the requirements of the other packages in it."""
+    for name in LOCKS:
+        _, command = _lock(name)
+        args = shlex.split(command)[3:]
+        args[args.index("-o") + 1] = str(tmp_path / name)
+        result = subprocess.run([sys.executable, "-m", "uv", "pip", "compile", "--quiet", *args,
+                                 "-c", f"requirements/{name}"], cwd=ROOT, capture_output=True, text=True)
+        assert result.returncode == 0, f"{name}: {result.stderr}"
 
 
 # Blocks every import outside the standard library, the app, analyze_common and yt-dlp, as in the signing job.

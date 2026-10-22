@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # The workflow actions. Actions are SHA-pinned with a version comment
+  # (`@<sha> # vX.Y.Z`); Dependabot bumps the pin and comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  # vendor/py-analyze-common, moved to the newest commit of its default branch.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: weekly
+  # pyproject.toml and the uv pip compile output in requirements/. A version is
+  # offered three days after its release (Dependabot's default cooldown).
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
