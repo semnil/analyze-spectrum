@@ -15,6 +15,7 @@ jobs:
   check-event:
     name: Check Release Tag ☑️
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     defaults:
       run:
         shell: bash
@@ -57,6 +58,7 @@ jobs:
     name: Build for Windows 🪟
     needs: check-event
     runs-on: windows-2022
+    timeout-minutes: 15
     defaults:
       run:
         shell: pwsh
@@ -117,6 +119,7 @@ jobs:
     name: Build for macOS 🍏
     needs: check-event
     runs-on: macos-15
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
