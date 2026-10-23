@@ -5,15 +5,15 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: daily
   # vendor/py-analyze-common, moved to the newest commit of its default branch.
   - package-ecosystem: gitsubmodule
     directory: /
     schedule:
-      interval: weekly
+      interval: daily
   # pyproject.toml and the uv pip compile output in requirements/. A version is
   # offered three days after its release (Dependabot's default cooldown).
   - package-ecosystem: uv
     directory: /
     schedule:
-      interval: weekly
+      interval: daily
