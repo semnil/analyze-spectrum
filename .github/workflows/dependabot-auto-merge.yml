@@ -5,8 +5,9 @@ name: Dependabot auto-merge
 # Python dependencies (package ecosystem uv) of any semver level, of a git submodule (submodules), and of a
 # GitHub Action (github_actions) when it is a semver patch or minor, and only when dependabot[bot] is the
 # only author of every commit of the pull request and the pull request is one commit, the head the event
-# names, which dependabot[bot] wrote and GitHub verified the signature of: fetch-metadata classifies the first
-# commit alone. For any other update, including one fetch-metadata cannot read, and for any other commit
+# names, which dependabot[bot] wrote, GitHub (web-flow) committed and GitHub verified the signature of:
+# fetch-metadata classifies the first commit alone, and an amend keeps the author while it makes the amending
+# person the committer. For any other update, including one fetch-metadata cannot read, and for any other commit
 # history, it turns off an auto-merge an earlier head enabled: a push leaves auto-merge on, and a rebase or an
 # added commit can change the update. On every other pull request both steps are skipped.
 # The step fails when it cannot read the commits or whether auto-merge is on.
@@ -51,7 +52,8 @@ jobs:
               authors=$(gh pr view "$PR_URL" --json commits --jq '[.commits[].authors[].login] | unique | join(" ")')
               commits=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100")
               single=$(printf '%s' "$commits" | jq -r --arg head "$HEAD_SHA" '
-                length == 1 and .[0].sha == $head and .[0].commit.verification.verified == true')
+                length == 1 and .[0].sha == $head and .[0].committer.login == "web-flow"
+                and .[0].commit.verification.verified == true')
               ;;
           esac
           if [ "$authors" = 'dependabot[bot]' ] && [ "$single" = 'true' ]; then

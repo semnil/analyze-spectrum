@@ -2,11 +2,11 @@
 # Checks that dependabot-auto-merge.yml reports `auto-merge` on every pull request: only pull_request starts it, the
 # job has no condition of its own, and its steps alone are limited to pull requests dependabot[bot] opened. Then runs
 # the step that decides, against a fake gh, for each package ecosystem and update type fetch-metadata can report and
-# for the commits of the pull request (their authors, how many there are, whether the last is the head and whether its
-# signature is verified): which get auto-merge enabled (pinned to the head commit), which get an earlier auto-merge
-# turned off, and that a failure to read the commits or the auto-merge state fails the step. The fake gh answers the
-# commits query by running its --jq expression with jq on a commits document of the case, and the REST commit list
-# with the same commits in the shape the pulls API returns.
+# for the commits of the pull request (their authors, how many there are, whether the last is the head, who committed
+# it and whether its signature is verified): which get auto-merge enabled (pinned to the head commit), which get an
+# earlier auto-merge turned off, and that a failure to read the commits or the auto-merge state fails the step. The
+# fake gh answers the commits query by running its --jq expression with jq on a commits document of the case, and the
+# REST commit list with the same commits in the shape the pulls API returns.
 # WORKFLOW_FILE selects the workflow under test (relative to the repository root, or absolute).
 set -euo pipefail
 
@@ -51,12 +51,12 @@ other=fedcba9876543210fedcba9876543210fedcba98
 # decision_case <name> <ecosystem> <update type> <commit authors: commits split by ";", the authors of a commit by ","|FAIL>
 #   <auto-merge state gh reports: true|false|FAIL> <expected: enable|disable|none|fail>
 #   [<the REST commit list: ok|FAIL> <signature of the commits: verified|unverified> <sha of the last commit: head|other>
-#   <sha of the other commits: other|head>]
+#   <sha of the other commits: other|head> <committer of the commits: web-flow|another login>]
 # In the REST commit list each commit's author is the first of its authors, the last commit carries the given sha and
 # the others the other given one.
 decision_case() {
   local name="$1" ecosystem="$2" update="$3" commits="$4" state="$5" expected="$6" rest="${7:-ok}"
-  local signature="${8:-verified}" last="${9:-head}" first="${10:-other}" dir out status got
+  local signature="${8:-verified}" last="${9:-head}" first="${10:-other}" committer="${11:-web-flow}" dir out status got
   count=$((count + 1))
   dir="$work/case${count}"
   mkdir -p "$dir/bin"
@@ -66,9 +66,10 @@ decision_case() {
     > "$dir/commits.json"
   jq -c --arg last "$([ "$last" = head ] && echo "$head" || echo "$other")" \
     --arg first "$([ "$first" = head ] && echo "$head" || echo "$other")" \
-    --argjson verified "$([ "$signature" = verified ] && echo true || echo false)" \
+    --argjson verified "$([ "$signature" = verified ] && echo true || echo false)" --arg committer "$committer" \
     '.commits | length as $n | to_entries | map({sha: (if .key == ($n - 1) then $last else $first end),
-      author: {login: (.value.authors[0].login // null)}, commit: {verification: {verified: $verified}}})' \
+      author: {login: (.value.authors[0].login // null)}, committer: {login: $committer},
+      commit: {verification: {verified: $verified}}})' \
     "$dir/commits.json" > "$dir/rest-commits.json"
   cat > "$dir/bin/gh" <<EOF
 #!/usr/bin/env bash
@@ -138,6 +139,8 @@ decision_case "a GitHub Action patch whose commit has an author without a GitHub
 decision_case "a uv patch with no commits" uv "$patch" "" true disable
 decision_case "a uv patch when the commits cannot be read" uv "$patch" FAIL false fail
 decision_case "a uv patch whose only commit is unverified" uv "$patch" "$bot" true disable ok unverified
+decision_case "a GitHub Action patch whose Dependabot commit someone else amended and signed" github_actions "$patch" \
+  "$bot" true disable ok verified head other someone
 decision_case "a GitHub Action minor whose Dependabot commit is not the head" github_actions "$minor" "$bot" true disable ok verified other
 decision_case "a submodule update when the REST commit list cannot be read" submodules "$major" "$bot" false fail FAIL
 
