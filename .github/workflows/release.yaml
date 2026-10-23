@@ -266,6 +266,7 @@ jobs:
         run: python build.py --installer --skip-download --skip-build
 
       - name: Notarize DMG 📮
+        timeout-minutes: 20
         if: steps.check-signing.outputs.signed == 'true'
         env:
           APPLE_ID: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
