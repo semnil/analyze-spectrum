@@ -44,7 +44,7 @@ jobs:
           pip install playwright
 
       - name: Install Playwright Chromium 🌐
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: python -m playwright install --with-deps chromium
 
       - name: Run Tests ✅
