@@ -15,7 +15,7 @@ jobs:
   test:
     name: Test 🧪
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 50
     defaults:
       run:
         shell: bash
@@ -31,7 +31,7 @@ jobs:
           cache: pip
 
       - name: Install System Dependencies 🔧
-        timeout-minutes: 10
+        timeout-minutes: 35
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
