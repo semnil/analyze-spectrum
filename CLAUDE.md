@@ -155,7 +155,6 @@ analyze-spectrum original.m4a eq_v1.m4a --eq-bands 3
 - `yt-dlp` — downloading URLs (through the Python API)
 - `ffmpeg` / `ffprobe` — PCM conversion, getting the duration, detecting the channel count
 - `numpy`, `scipy` — spectral analysis
-- `matplotlib` — the CLI's plot output (optional)
 - `pytest` — a development dependency
 
 ## GUI usage
