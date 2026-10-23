@@ -2,9 +2,11 @@
 # Checks that dependabot-auto-merge.yml reports `auto-merge` on every pull request: only pull_request starts it, the
 # job has no condition of its own, and its steps alone are limited to pull requests dependabot[bot] opened. Then runs
 # the step that decides, against a fake gh, for each package ecosystem and update type fetch-metadata can report and
-# for the commit authors of the pull request: which get auto-merge enabled (pinned to the head commit), which get an
-# earlier auto-merge turned off, and that a failure to read the commits or the auto-merge state fails the step. The
-# fake gh answers the commits query by running its --jq expression with jq on a commits document of the case.
+# for the commits of the pull request (their authors, how many there are, whether the last is the head and whether its
+# signature is verified): which get auto-merge enabled (pinned to the head commit), which get an earlier auto-merge
+# turned off, and that a failure to read the commits or the auto-merge state fails the step. The fake gh answers the
+# commits query by running its --jq expression with jq on a commits document of the case, and the REST commit list
+# with the same commits in the shape the pulls API returns.
 # WORKFLOW_FILE selects the workflow under test (relative to the repository root, or absolute).
 set -euo pipefail
 
@@ -45,10 +47,16 @@ expect "the deciding step reads the update type from fetch-metadata" "$(yq "${de
 script=$(yq "${decide} | .run" "$workflow_path")
 head=0123456789abcdef0123456789abcdef01234567
 url=https://github.com/owner/repo/pull/7
+other=fedcba9876543210fedcba9876543210fedcba98
 # decision_case <name> <ecosystem> <update type> <commit authors: commits split by ";", the authors of a commit by ","|FAIL>
 #   <auto-merge state gh reports: true|false|FAIL> <expected: enable|disable|none|fail>
+#   [<the REST commit list: ok|FAIL> <signature of the commits: verified|unverified> <sha of the last commit: head|other>
+#   <sha of the other commits: other|head>]
+# In the REST commit list each commit's author is the first of its authors, the last commit carries the given sha and
+# the others the other given one.
 decision_case() {
-  local name="$1" ecosystem="$2" update="$3" commits="$4" state="$5" expected="$6" dir out status got
+  local name="$1" ecosystem="$2" update="$3" commits="$4" state="$5" expected="$6" rest="${7:-ok}"
+  local signature="${8:-verified}" last="${9:-head}" first="${10:-other}" dir out status got
   count=$((count + 1))
   dir="$work/case${count}"
   mkdir -p "$dir/bin"
@@ -56,6 +64,12 @@ decision_case() {
   jq -n -c --arg c "$commits" \
     '{commits: ($c | if . == "" then [] else split(";") end | map({authors: (split(",") | map({login: .}))}))}' \
     > "$dir/commits.json"
+  jq -c --arg last "$([ "$last" = head ] && echo "$head" || echo "$other")" \
+    --arg first "$([ "$first" = head ] && echo "$head" || echo "$other")" \
+    --argjson verified "$([ "$signature" = verified ] && echo true || echo false)" \
+    '.commits | length as $n | to_entries | map({sha: (if .key == ($n - 1) then $last else $first end),
+      author: {login: (.value.authors[0].login // null)}, commit: {verification: {verified: $verified}}})' \
+    "$dir/commits.json" > "$dir/rest-commits.json"
   cat > "$dir/bin/gh" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$dir/calls"
@@ -66,13 +80,17 @@ case "\$*" in
   "pr view ${url} --json commits --jq "*)
     if [ "${commits}" = FAIL ]; then echo "HTTP 502" >&2; exit 1; fi
     jq -r "\$7" "$dir/commits.json" ;;
+  "api repos/owner/repo/pulls/7/commits?per_page=100")
+    if [ "${rest}" = FAIL ]; then echo "HTTP 502" >&2; exit 1; fi
+    cat "$dir/rest-commits.json" ;;
   "pr merge --auto --merge --match-head-commit ${head} ${url}" | "pr merge --disable-auto ${url}") ;;
   *) echo "unexpected gh call: \$*" >&2; exit 2 ;;
 esac
 EOF
   chmod +x "$dir/bin/gh"
-  if out=$(PATH="$dir/bin:$PATH" GH_TOKEN=unused PR_URL="$url" HEAD_SHA="$head" ECOSYSTEM="$ecosystem" \
-    UPDATE_TYPE="$update" bash -e -o pipefail -c "$script" 2>&1 < /dev/null); then status=0; else status=$?; fi
+  if out=$(PATH="$dir/bin:$PATH" GH_TOKEN=unused GITHUB_REPOSITORY=owner/repo PR_URL="$url" PR_NUMBER=7 \
+    HEAD_SHA="$head" ECOSYSTEM="$ecosystem" UPDATE_TYPE="$update" \
+    bash -e -o pipefail -c "$script" 2>&1 < /dev/null); then status=0; else status=$?; fi
   if [ "$status" -ne 0 ]; then
     got=fail
   elif grep -qx "pr merge --auto --merge --match-head-commit ${head} ${url}" "$dir/calls"; then
@@ -109,7 +127,9 @@ decision_case "another ecosystem's patch" pip "$patch" "$bot" false none
 decision_case "no ecosystem" "" "$patch" "$bot" true disable
 decision_case "a GitHub Action major when the auto-merge state cannot be read" github_actions "$major" "$bot" FAIL fail
 decision_case "an unexpected auto-merge state" github_actions "$major" "$bot" maybe fail
-decision_case "a uv patch with two Dependabot commits" uv "$patch" "$bot;$bot" false enable
+decision_case "a uv patch with two Dependabot commits" uv "$patch" "$bot;$bot" false none
+decision_case "a uv patch with two Dependabot commits after auto-merge was enabled" uv "$patch" "$bot;$bot" true disable
+decision_case "a uv patch with two Dependabot commits, the head listed first" uv "$patch" "$bot;$bot" true disable ok verified other head
 decision_case "a uv major with a commit someone else wrote" uv "$major" "$bot;someone" false none
 decision_case "a uv major with a commit someone else wrote after auto-merge was enabled" uv "$major" "$bot;someone" true disable
 decision_case "a submodule update with a merge commit someone else made" submodules "$major" "$bot;someone,other" true disable
@@ -117,6 +137,9 @@ decision_case "a GitHub Action minor whose commit has a second author" github_ac
 decision_case "a GitHub Action patch whose commit has an author without a GitHub login" github_actions "$patch" "$bot," true disable
 decision_case "a uv patch with no commits" uv "$patch" "" true disable
 decision_case "a uv patch when the commits cannot be read" uv "$patch" FAIL false fail
+decision_case "a uv patch whose only commit is unverified" uv "$patch" "$bot" true disable ok unverified
+decision_case "a GitHub Action minor whose Dependabot commit is not the head" github_actions "$minor" "$bot" true disable ok verified other
+decision_case "a submodule update when the REST commit list cannot be read" submodules "$major" "$bot" false fail FAIL
 
 echo "${count} cases, ${failures} failed"
 if [ "$failures" -ne 0 ]; then
