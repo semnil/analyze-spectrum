@@ -17,3 +17,8 @@ updates:
     directory: /
     schedule:
       interval: daily
+    # pyee is a transitive dependency of playwright, which requires pyee<15.
+    # Skip isolated pyee bumps; pyee still moves when a playwright update
+    # re-resolves requirements/release.txt.
+    ignore:
+      - dependency-name: "pyee"
