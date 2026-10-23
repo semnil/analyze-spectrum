@@ -7,10 +7,15 @@ updates:
     schedule:
       interval: daily
   # vendor/py-analyze-common, moved to the newest commit of its default branch.
+  # The entry is excluded from Dependabot's default cooldown, so a commit is
+  # offered on the next daily run.
   - package-ecosystem: gitsubmodule
     directory: /
     schedule:
       interval: daily
+    cooldown:
+      exclude:
+        - "*"
   # pyproject.toml and the uv pip compile output in requirements/. A version is
   # offered three days after its release (Dependabot's default cooldown).
   - package-ecosystem: uv
