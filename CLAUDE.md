@@ -446,6 +446,8 @@ The theme and language choices are kept in the same settings file as auto-update
 
 PyInstaller's `EXE(icon=...)` is only the icon of the EXE file itself (for display in Explorer). pywebview's window icon (title bar, taskbar) has to be set explicitly with `webview.start(icon=...)` (moved from `create_window` to `start` in pywebview 6.x). `build_assets/icon.ico` is bundled with PyInstaller's `datas` and resolved with `_ICON_PATH`.
 
+The `icon=` argument is passed only on Windows (`sys.platform == "win32"`). On macOS the Dock/app icon comes from the `.app` bundle (`CFBundleIconFile` = `icon.icns`); passing `icon=` there makes pywebview's Cocoa backend call `NSApplication.setApplicationIconImage_`, which overrides the bundle icon with the raw `icon.ico` bitmap. That bitmap carries no icon-grid inset, so on macOS 26 the Dock renders it edge-to-edge (oversized) instead of at the system-masked size the bundle icon gets.
+
 ### pywebview file_types constraint
 
 pywebview 6.x's `parse_file_type()` validates the description part of `file_types` with `[\w ]+`. Including a slash (`/`), a hyphen (`-`) or the like raises `ValueError`, so descriptions are written only with space-separated alphanumerics (e.g. "Audio Video Files").
