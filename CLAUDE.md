@@ -60,7 +60,7 @@ True Peak is measured on the stereo PCM for each channel separately, following I
 graph LR
     root["analyze-spectrum/"]
     root --> wf[".github/workflows/"]
-    wf --> wf_ci["ci.yaml<br>PR / push"]
+    wf --> wf_ci["ci.yaml<br>PR / push<br>caches the apt package files and the Playwright browsers, saved only by the runs that are not PRs"]
     wf --> wf_rel["release.yaml<br>v* tag / workflow_dispatch on a tag"]
     wf --> wf_tag["tag-release.yml<br>after CI succeeds on a push to master, or on a workflow_dispatch given a commit: if it is a version bump, tags that commit and starts release.yaml"]
     wf --> wf_ffw["ffmpeg-watch.yml<br>daily, detects a new ffmpeg on osxexperts.net, and creates PRs for the pinned-value update and the version bump<br>with a GitHub App's token and merges them without review"]
