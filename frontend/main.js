@@ -474,6 +474,7 @@ function _reserveButtonWidth(btn, keys, textSel) {
   const savedText = target.textContent;
   const savedFlex = btn.style.flex;
   btn.style.flex = "none";
+  btn.style.width = "auto";
   btn.style.minWidth = "0";
   let max = 0;
   for (const lang of ["en", "ja"]) {
@@ -485,7 +486,11 @@ function _reserveButtonWidth(btn, keys, textSel) {
   }
   target.textContent = savedText;
   btn.style.flex = savedFlex;
+  // Pin both the floor and the flex-basis: at a narrow viewport the input bar
+  // switches to flex:1 1 auto, where a bare min-width still lets the width
+  // follow the current label through the auto basis.
   btn.style.minWidth = max + "px";
+  btn.style.width = max + "px";
 }
 
 // Border-box width a fresh button of `className` needs for the widest of `keys`
