@@ -1,6 +1,12 @@
 name: CI
 run-name: ${{ github.ref_name }} CI ✅
 
+# Caches the apt package files (ffmpeg and Playwright's system dependencies) and the Playwright browsers.
+# Runs that are not pull requests (a push to master, workflow_dispatch) save them; a pull request restores
+# the caches of master and saves none.
+# The key of the apt cache is the hash of the names of the package files the run installed. A run restores
+# the newest apt cache of the runner's ImageOS and saves only when it installed a different set of files.
+# The key of the Playwright cache is the runner's ImageOS and the version of the playwright package.
 on:
   push:
     branches: [master]
@@ -30,22 +36,80 @@ jobs:
           python-version: '3.12'
           cache: pip
 
+      - name: Name Caches 🏷️
+        id: cache-names
+        run: echo "image=${ImageOS}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore apt Packages 📥
+        id: apt-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-archives
+          key: apt-${{ steps.cache-names.outputs.image }}-${{ github.run_id }}
+          restore-keys: apt-${{ steps.cache-names.outputs.image }}-
+
       - name: Install System Dependencies 🔧
         timeout-minutes: 35
         run: |
+          if compgen -G "$HOME/apt-archives/*.deb" > /dev/null; then
+            sudo cp "$HOME"/apt-archives/*.deb /var/cache/apt/archives/
+          fi
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
       - name: Install Python Dependencies 📦
+        id: python-dependencies
         timeout-minutes: 10
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[gui,dev]"
           pip install playwright
+          echo "playwright=$(python -c 'import importlib.metadata; print(importlib.metadata.version("playwright"))')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright Browsers 📥
+        id: playwright-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.cache-names.outputs.image }}-${{ steps.python-dependencies.outputs.playwright }}
 
       - name: Install Playwright Chromium 🌐
         timeout-minutes: 15
         run: python -m playwright install --with-deps chromium
+
+      - name: Collect apt Packages 🗂️
+        id: apt-collect
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE: ${{ steps.cache-names.outputs.image }}
+        run: |
+          find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -printf '%f\n' | LC_ALL=C sort > "$RUNNER_TEMP/cached-debs.txt"
+          dpkg-query -W -f='${Package}_${Version}_${Architecture}.deb\n' | sed 's/:/%3a/g' | LC_ALL=C sort > "$RUNNER_TEMP/installed-debs.txt"
+          LC_ALL=C comm -12 "$RUNNER_TEMP/cached-debs.txt" "$RUNNER_TEMP/installed-debs.txt" > "$RUNNER_TEMP/debs.txt"
+          if [ ! -s "$RUNNER_TEMP/debs.txt" ]; then
+            echo "::warning::no installed package file is in /var/cache/apt/archives; the apt cache is not saved"
+            exit 0
+          fi
+          rm -rf "$HOME/apt-archives"
+          mkdir "$HOME/apt-archives"
+          while read -r deb; do
+            cp "/var/cache/apt/archives/$deb" "$HOME/apt-archives/"
+          done < "$RUNNER_TEMP/debs.txt"
+          echo "key=apt-${IMAGE}-$(sha256sum < "$RUNNER_TEMP/debs.txt" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Save apt Packages 📤
+        if: steps.apt-collect.outputs.key != '' && steps.apt-collect.outputs.key != steps.apt-restore.outputs.cache-matched-key
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-archives
+          key: ${{ steps.apt-collect.outputs.key }}
+
+      - name: Save Playwright Browsers 📤
+        if: github.event_name != 'pull_request' && steps.playwright-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.playwright-restore.outputs.cache-primary-key }}
 
       - name: Run Tests ✅
         run: pytest -q
