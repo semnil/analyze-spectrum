@@ -35,3 +35,10 @@ updates:
     # re-resolves requirements/release.txt.
     ignore:
       - dependency-name: "pyee"
+    # yt-dlp and the yt-dlp-ejs solver scripts it reads move in one pull request;
+    # tests/test_yt_dlp_ejs.py fails a pull request that moves only one of them.
+    groups:
+      yt-dlp:
+        patterns:
+          - "yt-dlp"
+          - "yt-dlp-ejs"
