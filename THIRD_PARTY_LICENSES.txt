@@ -34,6 +34,16 @@ License: The Unlicense (public domain)
 Website: https://github.com/yt-dlp/yt-dlp
 
 ----------------------------------------------------------------------
+yt-dlp-ejs
+----------------------------------------------------------------------
+License: The Unlicense (public domain)
+Website: https://github.com/yt-dlp/ejs
+Its yt_dlp_ejs/yt/solver/lib.min.js bundles meriyah 6.1.4 (ISC License,
+Copyright (c) 2019 and later, KFlash and others) and astring 1.9.0 (MIT
+License, Copyright (c) 2015, David Bonnet). Their full license texts are
+at the top of that file.
+
+----------------------------------------------------------------------
 Python
 ----------------------------------------------------------------------
 License: Python Software Foundation License (PSF-2.0)

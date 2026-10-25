@@ -584,6 +584,7 @@ are averaged into the final result. The frequency resolution does not change.
 | `tests/test_ffmpeg_binary.py` | integration | Checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading (`EXPECT_FFMPEG_DIR` selects the bundled binaries) |
 | `tests/test_release_workflow.py` | unit | That `release.yaml` runs `test_ffmpeg_binary.py` on the ffmpeg / ffprobe in the distributed files, that only `create-release` can write and it runs no Python, that the job holding the update signing key has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity is imported right before codesign and deleted when codesign ends, that the release jobs install packages only from `requirements/*.txt` and Inno Setup / create-dmg only after a SHA256 check, and that `requirements/release.txt` satisfies `pyproject.toml` |
 | `tests/test_third_party_licenses.py` | unit | The full GPL texts that `THIRD_PARTY_LICENSES.txt` points at, and the spec / `installer.iss` that bundle them |
+| `tests/test_yt_dlp_ejs.py` | unit | That the installed yt-dlp-ejs has the version (major.minor) and the script hashes the installed yt-dlp accepts |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner. Runs the update check, approval, failure and settings save, and saving the theme and language and restoring them on the next launch, on the actual index.html |
 | `tests/frontend/test_ui.js` | browser | Frontend UI state tests |
 
