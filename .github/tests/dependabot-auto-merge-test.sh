@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Checks that dependabot-auto-merge.yml reports `auto-merge` on every pull request: only pull_request starts it, the
-# job has no condition of its own, and its steps alone are limited to pull requests dependabot[bot] opened. Then runs
-# the step that decides, against a fake gh, for each package ecosystem and update type fetch-metadata can report and
-# for the commits of the pull request (their authors, how many there are, whether the last is the head, who committed
+# job has no condition of its own, its steps alone are limited to pull requests dependabot[bot] opened, and a failure of
+# the metadata step lets the job go on to the deciding step. Then runs the step that decides, against a fake gh, for
+# each outcome of the metadata step, package ecosystem and update type fetch-metadata can report and for the commits
+# of the pull request (their authors, how many there are, whether the last is the head, who committed
 # it and whether its signature is verified): which get auto-merge enabled (pinned to the head commit), which get an
 # earlier auto-merge turned off, and that a failure to read the commits or the auto-merge state fails the step. The
 # fake gh answers the commits query by running its --jq expression with jq on a commits document of the case, and the
@@ -43,6 +44,10 @@ expect "the deciding step reads the ecosystem from fetch-metadata" "$(yq "${deci
   '${{ steps.metadata.outputs.package-ecosystem }}'
 expect "the deciding step reads the update type from fetch-metadata" "$(yq "${decide} | .env.UPDATE_TYPE" "$workflow_path")" \
   '${{ steps.metadata.outputs.update-type }}'
+# The deciding step runs after a failed metadata step only when that failure does not fail the job (dependabot-auto-merge.yml:36).
+expect "a failed metadata step does not fail the job" "$(yq '.jobs."auto-merge".steps[0].continue-on-error' "$workflow_path")" true
+expect "the deciding step reads the outcome of the metadata step" "$(yq "${decide} | .env.METADATA_OUTCOME" "$workflow_path")" \
+  '${{ steps.metadata.outcome }}'
 
 script=$(yq "${decide} | .run" "$workflow_path")
 head=0123456789abcdef0123456789abcdef01234567
@@ -53,7 +58,8 @@ other=fedcba9876543210fedcba9876543210fedcba98
 #   [<the REST commit list: ok|FAIL> <signature of the commits: verified|unverified> <sha of the last commit: head|other>
 #   <sha of the other commits: other|head> <committer of the commits: web-flow|another login>]
 # In the REST commit list each commit's author is the first of its authors, the last commit carries the given sha and
-# the others the other given one.
+# the others the other given one. METADATA_OUTCOME (default success) set before the call gives the outcome of the
+# metadata step.
 decision_case() {
   local name="$1" ecosystem="$2" update="$3" commits="$4" state="$5" expected="$6" rest="${7:-ok}"
   local signature="${8:-verified}" last="${9:-head}" first="${10:-other}" committer="${11:-web-flow}" dir out status got
@@ -90,7 +96,7 @@ esac
 EOF
   chmod +x "$dir/bin/gh"
   if out=$(PATH="$dir/bin:$PATH" GH_TOKEN=unused GITHUB_REPOSITORY=owner/repo PR_URL="$url" PR_NUMBER=7 \
-    HEAD_SHA="$head" ECOSYSTEM="$ecosystem" UPDATE_TYPE="$update" \
+    HEAD_SHA="$head" METADATA_OUTCOME="${METADATA_OUTCOME:-success}" ECOSYSTEM="$ecosystem" UPDATE_TYPE="$update" \
     bash -e -o pipefail -c "$script" 2>&1 < /dev/null); then status=0; else status=$?; fi
   if [ "$status" -ne 0 ]; then
     got=fail
@@ -143,6 +149,9 @@ decision_case "a GitHub Action patch whose Dependabot commit someone else amende
   "$bot" true disable ok verified head other someone
 decision_case "a GitHub Action minor whose Dependabot commit is not the head" github_actions "$minor" "$bot" true disable ok verified other
 decision_case "a submodule update when the REST commit list cannot be read" submodules "$major" "$bot" false fail FAIL
+METADATA_OUTCOME=failure decision_case "a failed metadata step after auto-merge was enabled" "" "" "$bot" true disable
+METADATA_OUTCOME=failure decision_case "a failed metadata step" "" "" "$bot" false none
+METADATA_OUTCOME=failure decision_case "a failed metadata step with a uv patch left" uv "$patch" "$bot" true disable
 
 echo "${count} cases, ${failures} failed"
 if [ "$failures" -ne 0 ]; then

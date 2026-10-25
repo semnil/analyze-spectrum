@@ -7,9 +7,10 @@ name: Dependabot auto-merge
 # only author of every commit of the pull request and the pull request is one commit, the head the event
 # names, which dependabot[bot] wrote, GitHub (web-flow) committed and GitHub verified the signature of:
 # fetch-metadata classifies the first commit alone, and an amend keeps the author while it makes the amending
-# person the committer. For any other update, including one fetch-metadata cannot read, and for any other commit
-# history, it turns off an auto-merge an earlier head enabled: a push leaves auto-merge on, and a rebase or an
-# added commit can change the update. On every other pull request both steps are skipped.
+# person the committer. For any other update, including one fetch-metadata cannot read or a run in which
+# fetch-metadata fails, and for any other commit history, it turns off an auto-merge an earlier head enabled: a
+# push leaves auto-merge on, and a rebase or an added commit can change the update. On every other pull request
+# both steps are skipped.
 # The step fails when it cannot read the commits or whether auto-merge is on.
 # The job reports `auto-merge`, a required status check of the default branch, so a pull request does not
 # merge before the run for its head commit has decided. The Dependabot condition therefore sits on the
@@ -32,6 +33,7 @@ jobs:
     steps:
       - id: metadata
         if: github.event.pull_request.user.login == 'dependabot[bot]'
+        continue-on-error: true # the deciding step keeps auto-merge off and the check passes (dependabot-auto-merge-test.sh:152)
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
       - name: Enable auto-merge for an update that merges on its own, disable it otherwise
         if: github.event.pull_request.user.login == 'dependabot[bot]'
@@ -40,22 +42,27 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          METADATA_OUTCOME: ${{ steps.metadata.outcome }}
           ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
         run: |
           authors=''
           single=false
-          case "${ECOSYSTEM}:${UPDATE_TYPE}" in
-            uv:version-update:semver-major | uv:version-update:semver-minor | uv:version-update:semver-patch | \
-            submodules:* | \
-            github_actions:version-update:semver-minor | github_actions:version-update:semver-patch)
-              authors=$(gh pr view "$PR_URL" --json commits --jq '[.commits[].authors[].login] | unique | join(" ")')
-              commits=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100")
-              single=$(printf '%s' "$commits" | jq -r --arg head "$HEAD_SHA" '
-                length == 1 and .[0].sha == $head and .[0].committer.login == "web-flow"
-                and .[0].commit.verification.verified == true')
-              ;;
-          esac
+          if [ "$METADATA_OUTCOME" != 'success' ]; then
+            echo "::warning::fetch-metadata did not classify this pull request (${METADATA_OUTCOME}), so auto-merge stays off"
+          else
+            case "${ECOSYSTEM}:${UPDATE_TYPE}" in
+              uv:version-update:semver-major | uv:version-update:semver-minor | uv:version-update:semver-patch | \
+              submodules:* | \
+              github_actions:version-update:semver-minor | github_actions:version-update:semver-patch)
+                authors=$(gh pr view "$PR_URL" --json commits --jq '[.commits[].authors[].login] | unique | join(" ")')
+                commits=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100")
+                single=$(printf '%s' "$commits" | jq -r --arg head "$HEAD_SHA" '
+                  length == 1 and .[0].sha == $head and .[0].committer.login == "web-flow"
+                  and .[0].commit.verification.verified == true')
+                ;;
+            esac
+          fi
           if [ "$authors" = 'dependabot[bot]' ] && [ "$single" = 'true' ]; then
             gh pr merge --auto --merge --match-head-commit "$HEAD_SHA" "$PR_URL"
           else
