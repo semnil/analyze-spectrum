@@ -187,6 +187,7 @@ Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip 
 - `pywebview` — an optional dependency (`gui` extra)
 - `numpy`, `scipy` — spectral analysis
 - `yt-dlp` — bundled as a Python library (PyInstaller includes it automatically)
+- `yt-dlp-ejs` — the YouTube challenge solver scripts yt-dlp runs on deno, pinned to the version of yt-dlp's `pin` extra. yt-dlp's own PyInstaller hook (`yt_dlp/__pyinstaller/hook-yt_dlp.py`) bundles their `.js` files; without them yt-dlp warns `n challenge solving failed: Some formats may be missing`
 - `certifi` — the CA certificates that auto-update's HTTPS connections use (`gui` extra. In the frozen macOS app, the CA path that the bundled OpenSSL points at does not exist on the user's Mac). PyInstaller goes ahead with only a warning when certifi is missing, so `check_prerequisites()` in `build.py` stops the build when certifi cannot be imported
 - ffmpeg, ffprobe, deno — bundled from `build_assets/bin/`
 - `py-analyze-common` — git submodule (`vendor/py-analyze-common`). Provides OS detection, subprocess kwargs, dark mode detection, ffmpeg/ffprobe wrappers, yt-dlp download, JSON sanitizing, auto-update, and saving the theme and language. Not listed in pyproject.toml; used through `sys.path` injection
