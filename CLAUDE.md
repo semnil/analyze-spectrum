@@ -203,7 +203,7 @@ python -m playwright install --with-deps chromium  # first time only (used by te
 python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q tests/test_ffmpeg_binary.py  # with the bundled ffmpeg / ffprobe
 ```
 
-CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml` and uploads `coverage.xml` to Codecov with `codecov/codecov-action`. The job's `id-token: write` lets the upload authenticate with GitHub's OIDC token (`use_oidc: true`), so the repository holds no Codecov token. The upload has `fail_ci_if_error: false`, so a failed upload does not fail `Test 🧪`, and Codecov's statuses (`codecov/project`, `codecov/patch`) are not required checks of master. `vendor/py-analyze-common` is not measured here (`source_pkgs` names this package only); py-analyze-common's own CI uploads its coverage.
+CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml` and uploads `coverage.xml` to Codecov with `codecov/codecov-action`. The job's `id-token: write` lets the upload authenticate with GitHub's OIDC token (`use_oidc: true`), so the repository holds no Codecov token. The upload step has `continue-on-error: true` (`fail_ci_if_error: false` covers only the action's last step, the upload itself; a failure in an earlier step of the action, such as the OIDC token request, fails the step), so a failed upload does not fail `Test 🧪`, and Codecov's statuses (`codecov/project`, `codecov/patch`) are not required checks of master. `vendor/py-analyze-common` is not measured here (`source_pkgs` names this package only); py-analyze-common's own CI uploads its coverage.
 
 ## GUI endpoints
 
