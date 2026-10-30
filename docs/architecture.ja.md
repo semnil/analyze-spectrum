@@ -513,7 +513,7 @@ dist/analyze-spectrum/
 ### 7.3 XSS 防止
 
 - フロントエンドの DOM 操作は `textContent` ベース (ユーザー入力の HTML 解釈なし)
-- `showError()` は `innerHTML = ""` でクリア後、`textContent` で再設定
+- `showError()` (py-analyze-common の `analyze_common/web/ui.js` の `_renderError()`) は `textContent = ""` でクリア後、`textContent` でメッセージを設定
 - `confirm()` に表示するメッセージはユーザー選択 JSON 由来のプレーンテキスト (ネイティブ OS ダイアログ、HTML 解釈なし)
 
 ### 7.4 ファイルシステム
@@ -664,7 +664,7 @@ sequenceDiagram
     HTML->>PY: GET /common/settings.js
     PY->>SF: theme と lang を読む
     PY-->>HTML: window.analyzeSettingsStored + settings.js
-    HTML->>HTML: inline script で html に data-theme と lang を付与
+    HTML->>HTML: common/boot.js が html に data-theme と lang を付与
     HTML->>CSS: CSS カスタムプロパティ解決
 ```
 

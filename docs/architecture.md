@@ -513,7 +513,7 @@ dist/analyze-spectrum/
 ### 7.3 XSS Prevention
 
 - The frontend's DOM operations are based on `textContent` (no HTML interpretation of user input)
-- `showError()` clears with `innerHTML = ""` and then sets it again with `textContent`
+- `showError()` (`_renderError()` of py-analyze-common's `analyze_common/web/ui.js`) clears the status with `textContent = ""` and then sets the message with `textContent`
 - The message shown in `confirm()` is plain text from the JSON the user chose (a native OS dialog, no HTML interpretation)
 
 ### 7.4 File System
@@ -664,7 +664,7 @@ sequenceDiagram
     HTML->>PY: GET /common/settings.js
     PY->>SF: read theme and lang
     PY-->>HTML: window.analyzeSettingsStored + settings.js
-    HTML->>HTML: an inline script sets data-theme and lang on html
+    HTML->>HTML: common/boot.js sets data-theme and lang on html
     HTML->>CSS: resolve the CSS custom properties
 ```
 

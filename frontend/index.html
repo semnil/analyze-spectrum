@@ -5,20 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>analyze-spectrum</title>
   <script src="common/settings.js"></script>
+  <script src="common/i18n.js"></script>
   <script src="i18n.js"></script>
-  <script>
-    // Resolve theme + lang before CSS paints to prevent flash and to avoid
-    // screen readers briefly announcing the wrong language on boot.
-    (function() {
-      var s = (window.analyzeSettings || {}).theme;
-      var mode = (s === "light" || s === "dark") ? s : "auto";
-      var resolved = mode === "auto"
-        ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-        : mode;
-      document.documentElement.setAttribute("data-theme", resolved);
-      document.documentElement.setAttribute("lang", window.i18n.lang());
-    })();
-  </script>
+  <script src="common/boot.js"></script>
   <link rel="stylesheet" href="common/common.css">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="vendor/uPlot.min.css">
@@ -57,6 +46,7 @@
   <script src="charts/transfer.js"></script>
   <script src="charts/lowend.js"></script>
   <script src="charts/midhigh.js"></script>
+  <script src="common/ui.js"></script>
   <script src="common/update.js"></script>
   <script src="main.js"></script>
 </body>
