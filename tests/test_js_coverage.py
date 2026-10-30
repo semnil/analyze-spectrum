@@ -20,7 +20,7 @@ SOURCE = "function f(x) {\n  // note\n  if (x) {\n    return 1;\n  }\n\n  return
 
 def _script(tmp_path):
     (tmp_path / "frontend").mkdir()
-    (tmp_path / "frontend" / "app.js").write_text(SOURCE, encoding="utf-8")
+    (tmp_path / "frontend" / "app.js").write_bytes(SOURCE.encode("utf-8"))
     return tmp_path / "frontend" / "app.js"
 
 
