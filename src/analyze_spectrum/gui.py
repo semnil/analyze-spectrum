@@ -30,6 +30,7 @@ from analyze_common.server import GuiHandler
 from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
 from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
 from analyze_common.update import Updater, hold_instance_mutex
+from analyze_common.window import set_app_user_model_id
 
 # Temporary directory for uploaded (drag & drop) files, cleaned up on exit
 _upload_dir = tempfile.mkdtemp(prefix="spectrum_uploads_")
@@ -822,6 +823,7 @@ class _HTTPServer(ThreadingHTTPServer):
 
 
 def main():
+    set_app_user_model_id("com.semnil.spectrum-analyzer")
     hold_instance_mutex(UPDATE_CONFIG.mutex_name)
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):

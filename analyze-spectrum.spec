@@ -62,6 +62,7 @@ a = Analysis(
         "analyze_common.ui_settings",
         "analyze_common.update",
         "analyze_common.web",
+        "analyze_common.window",
         "certifi",
         "webview",
         "scipy.signal._signaltools",

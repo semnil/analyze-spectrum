@@ -712,7 +712,7 @@ class TestUpdateConfig:
         spec = (Path(__file__).resolve().parent.parent / "analyze-spectrum.spec").read_text(encoding="utf-8")
         for path in [SETTINGS_JS] + [path for path, _ in GuiHandler._SHARED_ASSETS.values()]:
             assert f"vendor/py-analyze-common/src/analyze_common/web/{path.name}" in spec
-        for module in ("analyze_common.server",):
+        for module in ("analyze_common.server", "analyze_common.window"):
             assert f'"{module}"' in spec
 
     def test_build_py_passes_the_config_mutex_to_the_installer(self):
