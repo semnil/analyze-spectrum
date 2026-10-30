@@ -588,6 +588,8 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 | `tests/test_build_network.py` | unit | build.py が HTTPS の取得を py-analyze-common の `network` (接続に失敗したとき試した全てのアドレスを示す) を通して行うこと |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner。実際の index.html で更新の確認・承認・失敗・設定の保存と、テーマと言語の保存・次の起動での復元を通す |
 | `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト |
+| `tests/js_coverage.py` | tool | `--js-coverage=PATH` を付けたとき、Playwright のテストが動かした `frontend/*.js` の V8 のカバレッジを LCOV で書き出す |
+| `tests/test_js_coverage.py` | unit | `js_coverage.py` が V8 の範囲を行に対応させる方法と、書き出す LCOV |
 
 ### 10.2 Integration テスト
 
@@ -634,6 +636,8 @@ flowchart TD
 - Remove Track 時の urlInput 値保持
 
 `playwright>=1.40` が dev dependency として追加されている。
+
+`--js-coverage=PATH` を付けると、`tests/js_coverage.py` がこれらのテストの開く Chromium のページごとに `frontend/*.js` (`frontend/vendor/` を除く) の行カバレッジを取り、LCOV で書き出す。CI はそれを Python のカバレッジと一緒に Codecov へ送る。
 
 ### 10.4 ホワイトフラッシュ防止
 
