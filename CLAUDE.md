@@ -112,7 +112,6 @@ graph LR
     t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe in the distributed files,<br>that only create-release can write and it runs no Python, that the job holding the update signing key<br>has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity<br>is imported right before codesign and deleted when codesign ends, that the release jobs install<br>packages only from requirements/*.txt and build tools only after a SHA256 check,<br>that requirements/release.txt satisfies pyproject.toml, and that every requirements/*.txt resolves, with its own pins as constraints,<br>to exactly the packages it pins under the same environment markers (a mirror of analyze-loudness's)"]
     t --> t_tpl["test_third_party_licenses.py<br>the full GPL texts that THIRD_PARTY_LICENSES.txt points at,<br>and the spec / installer.iss that bundle them"]
     t --> t_ejs["test_yt_dlp_ejs.py<br>the installed yt-dlp-ejs has the version (major.minor) and script hashes<br>the installed yt-dlp accepts (the same file as analyze-loudness's)"]
-    t --> t_bnet["test_build_network.py<br>build.py fetches over HTTPS through py-analyze-common's network,<br>whose failed connection names every address it tried (the same file as analyze-loudness's)"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
     t --> t_jsc["js_coverage.py<br>with --js-coverage, the V8 coverage of frontend/*.js that the Playwright tests run,<br>written as LCOV (the same file as analyze-loudness's)"]
     t --> t_jsct["test_js_coverage.py<br>js_coverage.py: matching V8 ranges to lines, and the LCOV it writes<br>(the same file as analyze-loudness's)"]
@@ -124,7 +123,7 @@ graph LR
     docs --> docs_arch_ja["architecture.ja.md"]
     docs --> docs_shot["screenshot.png"]
     root --> vend["vendor/py-analyze-common/<br>git submodule (used through sys.path injection)"]
-    root --> r_build["build.py"]
+    root --> r_build["build.py<br>py-analyze-common's analyze_common.build with this app's names"]
     root --> r_spec["analyze-spectrum.spec"]
     root --> r_iss["installer.iss"]
     root --> r_lic["THIRD_PARTY_LICENSES.txt"]
@@ -192,7 +191,7 @@ Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip 
 - `numpy`, `scipy` — spectral analysis
 - `yt-dlp` — bundled as a Python library (PyInstaller includes it automatically)
 - `yt-dlp-ejs` — the YouTube challenge solver scripts yt-dlp runs on deno, pinned to the version of yt-dlp's `pin` extra. yt-dlp's own PyInstaller hook (`yt_dlp/__pyinstaller/hook-yt_dlp.py`) bundles their `.js` files; without them yt-dlp warns `n challenge solving failed: Some formats may be missing`; `tests/test_yt_dlp_ejs.py` fails when its version or scripts are not the ones the installed yt-dlp accepts, and Dependabot moves yt-dlp and yt-dlp-ejs in one pull request (the `yt-dlp` group of `.github/dependabot.yml`)
-- `certifi` — the CA certificates that auto-update's HTTPS connections use (`gui` extra. In the frozen macOS app, the CA path that the bundled OpenSSL points at does not exist on the user's Mac). PyInstaller goes ahead with only a warning when certifi is missing, so `check_prerequisites()` in `build.py` stops the build when certifi cannot be imported
+- `certifi` — the CA certificates that auto-update's HTTPS connections use (`gui` extra. In the frozen macOS app, the CA path that the bundled OpenSSL points at does not exist on the user's Mac). PyInstaller goes ahead with only a warning when certifi is missing, so `check_prerequisites()` of py-analyze-common's `analyze_common/build.py` (which `build.py` runs) stops the build when certifi cannot be imported
 - ffmpeg, ffprobe, deno — bundled from `build_assets/bin/`
 - `py-analyze-common` — git submodule (`vendor/py-analyze-common`). Provides OS detection, subprocess kwargs, dark mode detection, ffmpeg/ffprobe wrappers, yt-dlp download, JSON sanitizing, auto-update, and saving the theme and language. Not listed in pyproject.toml; used through `sys.path` injection
 
@@ -478,7 +477,7 @@ At launch, the installed app reads the latest release's `latest.json`, and if th
 - Settings: the dialog that the toolbar's settings button opens shows "Check at launch", "Check now" and the version. `/update/settings` saves the check-at-launch ON/OFF into `update_check_at_launch` of the app's settings file (`~/Library/Application Support/analyze-spectrum/settings.json` on macOS, `%APPDATA%\analyze-spectrum\settings.json` on Windows) (the default is ON). The webview's localStorage is cleared when the app restarts, so it is not used (pywebview starts in private mode, and the local server's port = the page's origin also changes on every launch). Tests point the settings file at a temporary folder with `_isolated_settings` in `tests/conftest.py`. "Check now" also shows inside the dialog the results that the check at launch does not show (up to date, failed)
 - When `/update/install` succeeds, it returns the response and then quits the app (`_exit_for_update()`). On Windows the installer has already started, so it ends normally with `window.destroy()`. On macOS the `.app` has already been replaced, so it first deletes the temporary directories that atexit would delete and ends with `os._exit(0)` (because an import running after the replacement would read the new version's files)
 - During the download, `_setUpdateLock()` in main.js stops the input field, each button, track operations, drops and saving results (Save JSON / Save Image; result buttons redrawn while locked are also created disabled)
-- Windows: while running, it holds a named mutex with `hold_instance_mutex(UPDATE_CONFIG.mutex_name)`, and the update installer waits for it to disappear before replacing the files. The installer shows the UAC prompt after the app has exited (the reason is in the Windows line of the "Auto-update" section of `vendor/py-analyze-common/CLAUDE.md`), so if UAC is declined, nothing is installed and the app stays closed (launching it again starts the old version, and if the check at launch is ON it offers the same update again). `installer.iss` receives the same name from `build.py` with `/DMyAppMutex=` (`mutex_name` is the single source of truth; `_read_mutex_name()` in `build.py` reads it)
+- Windows: while running, it holds a named mutex with `hold_instance_mutex(UPDATE_CONFIG.mutex_name)`, and the update installer waits for it to disappear before replacing the files. The installer shows the UAC prompt after the app has exited (the reason is in the Windows line of the "Auto-update" section of `vendor/py-analyze-common/CLAUDE.md`), so if UAC is declined, nothing is installed and the app stays closed (launching it again starts the old version, and if the check at launch is ON it offers the same update again). `installer.iss` receives the same name from `build.py` with `/DMyAppMutex=` (`mutex_name` is the single source of truth; `_read_mutex_name()` of py-analyze-common's `analyze_common/build.py` reads it)
 - A non-frozen launch (`analyze-spectrum-gui`) cannot update. The settings dialog disables the button and shows "Available in the installed app only."
 
 #### Signing key (first time only)
@@ -545,7 +544,7 @@ The single source of truth is `__version__` in `src/analyze_spectrum/__init__.py
 |----------|----------|
 | `pyproject.toml` | `[tool.setuptools.dynamic]` `attr` (AST extraction, no import) |
 | `analyze-spectrum.spec` | regex read in `_read_version()` |
-| `installer.iss` | injected with `/DMyAppVersion=` by `_build_inno()` in `build.py` |
+| `installer.iss` | injected with `/DMyAppVersion=` by `_build_inno()` of py-analyze-common's `analyze_common/build.py` (run by `build.py`) |
 
 On a version bump, change only `__version__` in `__init__.py`.
 

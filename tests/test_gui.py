@@ -706,13 +706,6 @@ class TestUpdateConfig:
         return build
 
     def test_build_py_passes_the_config_mutex_to_the_installer(self):
+        from analyze_common import build
         from analyze_spectrum.update import UPDATE_CONFIG
-        assert self._load_build()._read_mutex_name() == UPDATE_CONFIG.mutex_name
-
-    def test_build_refuses_without_certifi(self, monkeypatch, capsys):
-        import sys
-        build = self._load_build()
-        monkeypatch.setitem(sys.modules, "certifi", None)
-        with pytest.raises(SystemExit):
-            build.check_prerequisites()
-        assert "certifi not installed" in capsys.readouterr().out
+        assert build._read_mutex_name(self._load_build().APP) == UPDATE_CONFIG.mutex_name
