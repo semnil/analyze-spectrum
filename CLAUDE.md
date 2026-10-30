@@ -112,6 +112,7 @@ graph LR
     t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe in the distributed files,<br>that only create-release can write and it runs no Python, that the job holding the update signing key<br>has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity<br>is imported right before codesign and deleted when codesign ends, that the release jobs install<br>packages only from requirements/*.txt and build tools only after a SHA256 check,<br>that requirements/release.txt satisfies pyproject.toml, and that every requirements/*.txt resolves with its own pins (a mirror of analyze-loudness's)"]
     t --> t_tpl["test_third_party_licenses.py<br>the full GPL texts that THIRD_PARTY_LICENSES.txt points at,<br>and the spec / installer.iss that bundle them"]
     t --> t_ejs["test_yt_dlp_ejs.py<br>the installed yt-dlp-ejs has the version (major.minor) and script hashes<br>the installed yt-dlp accepts (the same file as analyze-loudness's)"]
+    t --> t_bnet["test_build_network.py<br>build.py fetches over HTTPS through py-analyze-common's network,<br>whose failed connection names every address it tried (the same file as analyze-loudness's)"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
     t --> tf["frontend/"]
     tf --> tf_html["test_ui.html<br>the test harness page"]
