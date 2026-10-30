@@ -1,8 +1,9 @@
 """V8 coverage of the frontend scripts the Playwright tests run, written as LCOV.
 
 ``Collector.install()`` wraps Playwright's page creation so that every Chromium page starts precise coverage
-(``Profiler.startPreciseCoverage``) before it loads anything, and takes it when the page, its context or its browser
-is closed. Scripts are matched to ``frontend/*.js`` by URL path, as either server in the tests serves them: the
+(``Profiler.startPreciseCoverage``) before it loads anything, and takes it before each navigation the test starts
+(``goto``, ``reload``, ``go_back``, ``go_forward``), which leaves the scripts of the document behind, and when the
+page, its context or its browser is closed. Each take adds the counts since the previous one. Scripts are matched to ``frontend/*.js`` by URL path, as either server in the tests serves them: the
 project root (``/frontend/main.js``) or the app's handler (``/main.js``). ``frontend/vendor/`` and the scripts of
 py-analyze-common are left out. A line's hit count is the count of the innermost V8 range that contains all of its
 code, summed over pages. Blank lines and lines that start a comment are not counted as code.
@@ -66,8 +67,9 @@ class Collector:
         session.send("Profiler.startPreciseCoverage", {"callCount": True, "detailed": True})
         self._sessions[page] = session
 
-    def _take(self, page):
-        session = self._sessions.pop(page, None)
+    def _take(self, page, end=False):
+        """Adds the counts since the previous take (V8 resets them on each take); end=True stops following the page."""
+        session = self._sessions.pop(page, None) if end else self._sessions.get(page)
         if session is None or page.is_closed():
             return
         for script in session.send("Profiler.takePreciseCoverage")["result"]:
@@ -97,19 +99,30 @@ class Collector:
                 return page
             return new_page
 
-        def wrap_close(original, pages):
-            def close(self, *args, **kwargs):
+        def wrap_take(original, pages, end):
+            def method(self, *args, **kwargs):
                 for page in pages(self):
-                    collector._take(page)
+                    collector._take(page, end=end)
                 return original(self, *args, **kwargs)
-            return close
+            return method
 
-        Browser.new_page = wrap_new_page(Browser.new_page)
-        BrowserContext.new_page = wrap_new_page(BrowserContext.new_page)
-        Page.close = wrap_close(Page.close, lambda page: [page])
-        BrowserContext.close = wrap_close(BrowserContext.close, lambda context: list(context.pages))
-        Browser.close = wrap_close(
-            Browser.close, lambda browser: [page for context in browser.contexts for page in context.pages])
+        wrappers = {
+            (Browser, "new_page"): wrap_new_page,
+            (BrowserContext, "new_page"): wrap_new_page,
+            (Page, "close"): lambda original: wrap_take(original, lambda page: [page], True),
+            (BrowserContext, "close"): lambda original: wrap_take(original, lambda context: list(context.pages), True),
+            (Browser, "close"): lambda original: wrap_take(
+                original, lambda browser: [page for context in browser.contexts for page in context.pages], True),
+        }
+        for name in ("goto", "reload", "go_back", "go_forward"):
+            wrappers[(Page, name)] = lambda original: wrap_take(original, lambda page: [page], False)
+        self._originals = {key: getattr(*key) for key in wrappers}
+        for (cls, name), wrap in wrappers.items():
+            setattr(cls, name, wrap(getattr(cls, name)))
+
+    def uninstall(self):
+        for (cls, name), original in self._originals.items():
+            setattr(cls, name, original)
 
     def write(self, output):
         """Writes every frontend script outside frontend/vendor/, those no test loaded with zero hits."""

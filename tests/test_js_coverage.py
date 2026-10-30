@@ -1,10 +1,19 @@
 """tests/js_coverage.py: matching V8 ranges to lines, and the LCOV it writes (the same file as analyze-loudness's)."""
 
+import threading
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
 import pytest
 
 pytest.importorskip("playwright")
 
 from tests.js_coverage import Collector, _code_lines  # noqa: E402
+
+
+class _QuietHandler(SimpleHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
 
 SOURCE = "function f(x) {\n  // note\n  if (x) {\n    return 1;\n  }\n\n  return '\U0001F600';\n}\nf(0);\n"
 
@@ -80,6 +89,37 @@ def test_urls_map_to_frontend_scripts_outside_vendor(tmp_path):
     assert collector._source("http://127.0.0.1:1/vendor/lib.js") is None
     assert collector._source("http://127.0.0.1:1/common/update.js") is None
     assert collector._source("http://127.0.0.1:1/index.html") is None
+
+
+def test_counts_from_before_a_reload_or_a_navigation_are_kept(tmp_path):
+    """A navigation leaves the scripts of the document behind; what ran there is taken before it."""
+    from playwright.sync_api import sync_playwright
+
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "app.js").write_text("function once() {\n  return 1;\n}\nfunction never() {\n  return 2;\n}\n",
+                                     encoding="utf-8")
+    (frontend / "index.html").write_text('<script src="app.js"></script>', encoding="utf-8")
+    (frontend / "other.html").write_text("<p>other</p>", encoding="utf-8")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(_QuietHandler, directory=str(frontend)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}"
+    collector = Collector(tmp_path)
+    collector.install()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(f"{url}/index.html")
+            page.evaluate("once()")
+            page.reload()
+            page.goto(f"{url}/other.html")
+            browser.close()
+    finally:
+        collector.uninstall()
+        server.shutdown()
+        server.server_close()
+    assert collector.hits["frontend/app.js"] == {1: 1, 2: 1, 3: 1, 4: 0, 5: 0, 6: 0}
 
 
 def test_lcov_lists_every_frontend_script_with_unloaded_ones_at_zero(tmp_path):
