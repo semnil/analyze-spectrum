@@ -46,6 +46,25 @@ def test_a_line_takes_the_count_of_the_innermost_range_that_holds_it(tmp_path):
     assert collector.hits["frontend/app.js"] == {1: 2, 3: 2, 4: 0, 5: 0, 7: 2, 8: 2, 9: 2}
 
 
+def test_crlf_line_ends_count_as_the_served_script_does(tmp_path):
+    """A checkout with CRLF line ends (core.autocrlf on Windows) is served as is, so V8's offsets include the CRs."""
+    (tmp_path / "frontend").mkdir()
+    local = tmp_path / "frontend" / "app.js"
+    local.write_bytes(SOURCE.replace("\n", "\r\n").encode("utf-8"))
+    crlf = SOURCE.replace("\n", "\r\n")
+
+    def shift(offset):
+        return offset + SOURCE[:offset].count("\n")
+
+    functions = [{"functionName": f["functionName"], "ranges": [
+        {"startOffset": shift(r["startOffset"]), "endOffset": shift(r["endOffset"]), "count": r["count"]}
+        for r in f["ranges"]]} for f in _functions()]
+    assert functions[0]["ranges"][0]["endOffset"] == len(crlf.encode("utf-16-le")) // 2
+    collector = Collector(tmp_path)
+    collector._add(local, functions)
+    assert collector.hits["frontend/app.js"] == {1: 1, 3: 1, 4: 0, 5: 0, 7: 1, 8: 1, 9: 1}
+
+
 def test_a_script_of_another_length_than_the_file_fails(tmp_path):
     with pytest.raises(AssertionError, match="UTF-16 units"):
         Collector(tmp_path)._add(_script(tmp_path), _functions(end=len(SOURCE)))

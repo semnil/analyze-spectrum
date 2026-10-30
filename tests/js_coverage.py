@@ -17,6 +17,11 @@ from playwright.sync_api import Browser, BrowserContext, Page
 _COMMENT = re.compile(r"(//|/\*|\*)")
 
 
+def _read(local):
+    """The file's text with its line ends as they are on disk, as the test servers serve it."""
+    return local.read_bytes().decode("utf-8")
+
+
 def _utf16_len(text):
     return sum(2 if ord(char) > 0xFFFF else 1 for char in text)
 
@@ -71,7 +76,7 @@ class Collector:
                 self._add(local, script["functions"])
 
     def _add(self, local, functions):
-        text = local.read_text(encoding="utf-8")
+        text = _read(local)
         ranges = [r for function in functions for r in function["ranges"]]
         script_end = max(r["endOffset"] for r in ranges)
         assert script_end == _utf16_len(text), (
@@ -114,7 +119,7 @@ class Collector:
                 continue
             name = local.relative_to(self.root).as_posix()
             counts = self.hits.get(name, {})
-            lines = [(number, counts.get(number, 0)) for number, _, _ in _code_lines(local.read_text(encoding="utf-8"))]
+            lines = [(number, counts.get(number, 0)) for number, _, _ in _code_lines(_read(local))]
             records.append("\n".join(
                 ["TN:", f"SF:{name}"] + [f"DA:{number},{hits}" for number, hits in lines]
                 + [f"LF:{len(lines)}", f"LH:{sum(1 for _, hits in lines if hits)}", "end_of_record"]))
