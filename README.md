@@ -1,5 +1,7 @@
 # analyze-spectrum
 
+[![Test coverage](https://codecov.io/gh/semnil/analyze-spectrum/branch/master/graph/badge.svg)](https://codecov.io/gh/semnil/analyze-spectrum)
+
 > 日本語版は [README.ja.md](README.ja.md) を参照してください.
 
 A tool that comprehensively analyzes the frequency spectrum of a YouTube video or a local audio file.

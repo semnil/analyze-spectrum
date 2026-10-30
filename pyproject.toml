@@ -21,6 +21,7 @@ gui = [
 ]
 dev = [
     "pytest>=8.0",
+    "pytest-cov",
     "playwright>=1.40",
     "pyinstaller>=6.0",
     "pywebview>=5.0",
@@ -41,3 +42,9 @@ version = {attr = "analyze_spectrum.__version__"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Measures this package only; vendor/py-analyze-common is measured by its own repository's CI.
+[tool.coverage.run]
+source_pkgs = ["analyze_spectrum"]
+branch = true
+relative_files = true
