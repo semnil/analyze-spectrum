@@ -582,7 +582,7 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 | `tests/test_integration.py` | integration | HTTPServer + 解析パイプライン |
 | `tests/test_dialog_busy.py` | unit | ネイティブダイアログの排他 (`_dialog_lock`) |
 | `tests/test_ffmpeg_binary.py` | integration | PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる (`EXPECT_FFMPEG_DIR` で同梱バイナリを指定) |
-| `tests/test_release_workflow.py` | unit | `release.yaml` が配布物に入った ffmpeg / ffprobe に `test_ffmpeg_binary.py` を通すこと、書き込めるのは `create-release` だけでそこでは Python を動かさないこと、更新用の署名鍵を持つジョブは読み取り権限だけでハッシュで固定した yt-dlp だけを入れること、Developer ID の署名 ID を codesign の直前に取り込み、codesign の終わりに消すこと、リリースのジョブがパッケージを `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg を SHA256 を照合してから入れること、`requirements/release.txt` が `pyproject.toml` を満たすこと |
+| `tests/test_release_workflow.py` | unit | `release.yaml` が配布物に入った ffmpeg / ffprobe に `test_ffmpeg_binary.py` を通すこと、書き込めるのは `create-release` だけでそこでは Python を動かさないこと、更新用の署名鍵を持つジョブは読み取り権限だけでハッシュで固定した yt-dlp だけを入れること、Developer ID の署名 ID を codesign の直前に取り込み、codesign の終わりに消すこと、リリースのジョブがパッケージを `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg を SHA256 を照合してから入れること、`requirements/release.txt` が `pyproject.toml` を満たすこと、各 `requirements/*.txt` を自分の固定値を制約にして解き直すと、ちょうどそのファイルが固定しているパッケージに、同じ環境マーカー (どの OS で入れるかの条件) でなること |
 | `tests/test_third_party_licenses.py` | unit | `THIRD_PARTY_LICENSES.txt` が指す GPL の全文と、それを同梱する spec / `installer.iss` |
 | `tests/test_yt_dlp_ejs.py` | unit | 入っている yt-dlp-ejs の版 (major.minor) と台本のハッシュが、入っている yt-dlp の受け付けるものであること |
 | `tests/test_build_network.py` | unit | build.py が HTTPS の取得を py-analyze-common の `network` (接続に失敗したとき試した全てのアドレスを示す) を通して行うこと |
