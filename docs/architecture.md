@@ -498,7 +498,7 @@ dist/analyze-spectrum/
 
 - The HTTP server binds to `127.0.0.1` (no external access)
 - The port is assigned at random (chosen by the OS)
-- External drops are disabled with pywebview WebView2's `AllowExternalDrop = False`
+- A dropped file is taken by the page's drop handler in the window capture phase (`main.js`) and sent to `/upload`
 
 ### 7.2 Input Validation
 

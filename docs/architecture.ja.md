@@ -498,7 +498,7 @@ dist/analyze-spectrum/
 
 - HTTP サーバーは `127.0.0.1` にバインド (外部アクセス不可)
 - ポートはランダム割り当て (OS 指定)
-- pywebview WebView2 の `AllowExternalDrop = False` で外部ドロップ無効化
+- ドロップしたファイルは、ページのドロップ処理 (`main.js`、window のキャプチャフェーズ) が受け取って `/upload` に送る
 
 ### 7.2 入力検証
 

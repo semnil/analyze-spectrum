@@ -848,24 +848,6 @@ def main():
         background_color=bg,
     )
     show_window_color_until_paint(_window)
-
-    def _disable_external_drop():
-        # Disable native file drop (causes unwanted navigation).
-        # JavaScript drop handler in main.js handles D&D via /upload endpoint.
-        # On macOS (WKWebView) the JS-side stopImmediatePropagation suffices.
-        try:
-            _window.gui.webview.AllowExternalDrop = False
-        except Exception:
-            pass
-        try:
-            _window.gui.webview.CoreWebView2.Settings.IsSwipeNavigationEnabled = False
-        except Exception:
-            pass
-
-    from analyze_common.platform import IS_WINDOWS
-    if IS_WINDOWS:
-        _window.events.shown += _disable_external_drop
-        _window.events.loaded += _disable_external_drop
     webview.start(icon=icon)
     server.shutdown()
 

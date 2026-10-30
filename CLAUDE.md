@@ -467,7 +467,7 @@ pywebview 6.x's `parse_file_type()` validates the description part of `file_type
 
 ### WebView2 drag & drop
 
-`AllowExternalDrop = False` is set on pywebview's `shown` + `loaded` events.
+WebView2's `AllowExternalDrop` (whether files can be dropped into it) is left at its default, true, so dropped files reach the page; pywebview itself turns off WebView2's swipe navigation.
 On the JavaScript side, `stopImmediatePropagation` in the window capture phase blocks
 propagation to WebView2's native handler.
 
