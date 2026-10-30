@@ -15,6 +15,7 @@ import sys
 import tomllib
 from pathlib import Path
 
+from packaging.markers import Marker
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
@@ -58,9 +59,9 @@ def _index(steps, line):
     return found[0]
 
 
-def _lock(name, folder=ROOT / "requirements"):
-    """{canonical name: (version, number of SHA256 hashes)} of folder/<name>, and the uv command in its header."""
-    text = (folder / name).read_text(encoding="utf-8")
+def _lock(name):
+    """{canonical name: (version, number of SHA256 hashes)} of requirements/<name>, and the uv command in its header."""
+    text = (ROOT / "requirements" / name).read_text(encoding="utf-8")
     command = re.search(r"^#\s+(uv pip compile .*)$", text, re.M).group(1)
     entries = {}
     for block in re.split(r"\n(?=\S)", text):
@@ -72,6 +73,15 @@ def _lock(name, folder=ROOT / "requirements"):
         hashes = re.findall(r"--hash=sha256:[0-9a-f]{64}", block)
         entries[canonicalize_name(match.group(1))] = (match.group(2), len(hashes))
     return entries, command
+
+
+def _pins(name, folder=ROOT / "requirements"):
+    """{(canonical name, version, environment marker)} of folder/<name>; the marker as packaging writes it, "" when
+    there is none."""
+    text = (folder / name).read_text(encoding="utf-8")
+    return {(canonicalize_name(match.group(1)), match.group(2),
+             str(Marker(match.group(3).strip())) if match.group(3) else "")
+            for match in re.finditer(r"^([A-Za-z0-9._-]+)==([^\s;\\]+)(?: ;([^\\]*))? \\$", text, re.M)}
 
 
 def test_windows_tests_the_collected_binaries_before_the_upload():
@@ -189,19 +199,18 @@ def test_locks_match_pyproject():
 def test_locks_resolve_with_their_own_pins(tmp_path):
     """uv resolves the command in each lock's header again with the lock itself as a constraint, so every pin in the
     lock meets the requirements of the other packages in it, and the resolution holds the same packages at the same
-    versions as the lock: none it needs is missing from the lock (the release jobs install with --no-deps) and none in
-    the lock is left over."""
+    versions under the same environment markers as the lock: none it needs is missing from the lock, or pinned for
+    other platforms (the release jobs install with --no-deps), and none in the lock is left over."""
     for name in LOCKS:
-        pinned, command = _lock(name)
+        _, command = _lock(name)
         args = shlex.split(command)[3:]
         args[args.index("-o") + 1] = str(tmp_path / name)
         result = subprocess.run([sys.executable, "-m", "uv", "pip", "compile", "--quiet", *args,
                                  "-c", f"requirements/{name}"], cwd=ROOT, capture_output=True, text=True)
         assert result.returncode == 0, f"{name}: {result.stderr}"
-        resolved, _ = _lock(name, tmp_path)
-        assert {package: version for package, (version, _) in resolved.items()} == {
-            package: version for package, (version, _) in pinned.items()}, (
-            f"{name}: missing {sorted(set(resolved) - set(pinned))}, left over {sorted(set(pinned) - set(resolved))}")
+        resolved, pinned = _pins(name, tmp_path), _pins(name)
+        assert resolved == pinned, (
+            f"{name}: missing {sorted(resolved - pinned)}, left over {sorted(pinned - resolved)}")
 
 
 # Blocks every import outside the standard library, the app, analyze_common and yt-dlp, as in the signing job.
