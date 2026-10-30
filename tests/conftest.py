@@ -2,8 +2,27 @@
 
 import math
 import struct
+from pathlib import Path
 
 import pytest
+
+
+def pytest_addoption(parser):
+    parser.addoption("--js-coverage", metavar="PATH",
+                     help="write the V8 coverage of frontend/*.js that the Playwright tests ran to PATH as LCOV")
+
+
+def pytest_configure(config):
+    if config.getoption("--js-coverage"):
+        from tests.js_coverage import Collector
+        config.js_coverage = Collector(Path(__file__).resolve().parent.parent)
+        config.js_coverage.install()
+
+
+def pytest_sessionfinish(session):
+    collector = getattr(session.config, "js_coverage", None)
+    if collector is not None:
+        collector.write(session.config.getoption("--js-coverage"))
 
 
 def _make_wav_bytes(freq: float = 440.0, duration: float = 0.5, sr: int = 48000) -> bytes:

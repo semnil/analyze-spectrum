@@ -116,7 +116,7 @@ jobs:
           key: ${{ steps.playwright-restore.outputs.cache-primary-key }}
 
       - name: Run Tests ✅
-        run: pytest -q --cov --cov-report=xml
+        run: pytest -q --cov --cov-report=xml --js-coverage=coverage-js.lcov
 
       # A failed upload leaves the job green, the steps of the action before the upload itself (the OIDC token
       # request among them) included: the Codecov statuses are not required checks.
@@ -126,5 +126,5 @@ jobs:
         continue-on-error: true
         with:
           fail_ci_if_error: false
-          files: ./coverage.xml
+          files: ./coverage.xml,./coverage-js.lcov
           use_oidc: true

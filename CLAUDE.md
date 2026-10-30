@@ -60,7 +60,7 @@ True Peak is measured on the stereo PCM for each channel separately, following I
 graph LR
     root["analyze-spectrum/"]
     root --> wf[".github/workflows/"]
-    wf --> wf_ci["ci.yaml<br>PR / push<br>runs pytest with coverage and uploads coverage.xml to Codecov<br>caches the apt package files and the Playwright browsers, saved only by the runs that are not PRs"]
+    wf --> wf_ci["ci.yaml<br>PR / push<br>runs pytest with the coverage of the Python package and of frontend/*.js and uploads both to Codecov<br>caches the apt package files and the Playwright browsers, saved only by the runs that are not PRs"]
     wf --> wf_rel["release.yaml<br>v* tag / workflow_dispatch on a tag"]
     wf --> wf_tag["tag-release.yml<br>after CI succeeds on a push to master, or on a workflow_dispatch given a commit: if it is a version bump, tags that commit and starts release.yaml"]
     wf --> wf_ffw["ffmpeg-watch.yml<br>daily, detects a new ffmpeg on osxexperts.net, and creates PRs for the pinned-value update and the version bump<br>with a GitHub App's token and merges them without review"]
@@ -114,6 +114,8 @@ graph LR
     t --> t_ejs["test_yt_dlp_ejs.py<br>the installed yt-dlp-ejs has the version (major.minor) and script hashes<br>the installed yt-dlp accepts (the same file as analyze-loudness's)"]
     t --> t_bnet["test_build_network.py<br>build.py fetches over HTTPS through py-analyze-common's network,<br>whose failed connection names every address it tried (the same file as analyze-loudness's)"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
+    t --> t_jsc["js_coverage.py<br>with --js-coverage, the V8 coverage of frontend/*.js that the Playwright tests run,<br>written as LCOV (the same file as analyze-loudness's)"]
+    t --> t_jsct["test_js_coverage.py<br>js_coverage.py: matching V8 ranges to lines, and the LCOV it writes<br>(the same file as analyze-loudness's)"]
     t --> tf["frontend/"]
     tf --> tf_html["test_ui.html<br>the test harness page"]
     tf --> tf_js["test_ui.js<br>UI state tests in the browser"]
@@ -199,11 +201,14 @@ Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip 
 ```bash
 pytest -q                                          # all tests
 pytest -q --cov --cov-report=term-missing          # with line and branch coverage of src/analyze_spectrum ([tool.coverage.run] in pyproject.toml)
+pytest -q --js-coverage=coverage-js.lcov           # with the line coverage of frontend/*.js that the Playwright tests run, as LCOV (tests/js_coverage.py)
 python -m playwright install --with-deps chromium  # first time only (used by test_frontend.py)
 python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q tests/test_ffmpeg_binary.py  # with the bundled ffmpeg / ffprobe
 ```
 
-CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml` and uploads `coverage.xml` to Codecov with `codecov/codecov-action`. The job's `id-token: write` lets the upload authenticate with GitHub's OIDC token (`use_oidc: true`), so the repository holds no Codecov token. The upload step has `continue-on-error: true` (`fail_ci_if_error: false` covers only the action's last step, the upload itself; a failure in an earlier step of the action, such as the OIDC token request, fails the step), so a failed upload does not fail `Test 🧪`, and Codecov's statuses (`codecov/project`, `codecov/patch`) are not required checks of master. `vendor/py-analyze-common` is not measured here (`source_pkgs` names this package only); py-analyze-common's own CI uploads its coverage.
+CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml --js-coverage=coverage-js.lcov` and uploads `coverage.xml` and `coverage-js.lcov` to Codecov with `codecov/codecov-action`. The job's `id-token: write` lets the upload authenticate with GitHub's OIDC token (`use_oidc: true`), so the repository holds no Codecov token. The upload step has `continue-on-error: true` (`fail_ci_if_error: false` covers only the action's last step, the upload itself; a failure in an earlier step of the action, such as the OIDC token request, fails the step), so a failed upload does not fail `Test 🧪`, and Codecov's statuses (`codecov/project`, `codecov/patch`) are not required checks of master. `vendor/py-analyze-common` is not measured here (`source_pkgs` names this package only); py-analyze-common's own CI uploads its coverage.
+
+With `--js-coverage=PATH`, `tests/js_coverage.py` starts V8's precise coverage on every Chromium page the tests open, before the page loads anything, and takes it when the page, its context or its browser is closed. It counts the scripts of `frontend/` outside `frontend/vendor/`, served either from the project root (`/frontend/main.js`, `tests/frontend/test_ui.html`) or by the app's handler (`/main.js`), and writes every one of them to PATH as LCOV, a script no test loaded with zero hits. A line's hit count is the count of the innermost V8 range that contains all of its code, summed over pages; blank lines and lines that start a comment are not counted. It fails the test whose page ran a script of another length than the file on disk. py-analyze-common's scripts (`/common/*.js`) are not counted.
 
 ## GUI endpoints
 
