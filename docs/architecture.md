@@ -588,6 +588,8 @@ are averaged into the final result. The frequency resolution does not change.
 | `tests/test_build_network.py` | unit | That build.py fetches over HTTPS through py-analyze-common's `network`, whose failed connection names every address it tried |
 | `tests/test_frontend.py` | e2e | Playwright headless Chromium runner. Runs the update check, approval, failure and settings save, and saving the theme and language and restoring them on the next launch, on the actual index.html |
 | `tests/frontend/test_ui.js` | browser | Frontend UI state tests |
+| `tests/js_coverage.py` | tool | With `--js-coverage=PATH`, the V8 coverage of `frontend/*.js` that the Playwright tests run, written as LCOV |
+| `tests/test_js_coverage.py` | unit | `js_coverage.py`: matching V8 ranges to lines, and the LCOV it writes |
 
 ### 10.2 Integration Tests
 
@@ -634,6 +636,8 @@ and reads the result from `window._testResult`.
 - Keeping the urlInput value on Remove Track
 
 `playwright>=1.40` is added as a dev dependency.
+
+With `--js-coverage=PATH`, `tests/js_coverage.py` records the line coverage of `frontend/*.js` (outside `frontend/vendor/`) on every Chromium page these tests open, and writes it as LCOV. CI uploads it to Codecov with the Python coverage.
 
 ### 10.4 White-Flash Prevention
 
