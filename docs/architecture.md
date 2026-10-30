@@ -333,7 +333,7 @@ sequenceDiagram
     FE->>U: "Cancelled."
 ```
 
-**Known behavior on cancel** (a known limitation; the cancel is detected in `_send_event()`, [src/analyze_spectrum/gui.py:1034](https://github.com/semnil/analyze-spectrum/blob/b40e893132c4003ec4c86eff404c5d051c245267/src/analyze_spectrum/gui.py#L1034)):
+**Known behavior on cancel** (a known limitation; the cancel is detected in `_send_event()` of py-analyze-common's `GuiHandler`, `analyze_common/server.py`):
 
 A cancel is detected only when the next NDJSON event is sent.
 That is, long-blocking synchronous work like the following

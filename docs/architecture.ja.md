@@ -333,7 +333,7 @@ sequenceDiagram
     FE->>U: "Cancelled."
 ```
 
-**キャンセル時の既知挙動** (既知の制限。キャンセルは `_send_event()` で検知する、[src/analyze_spectrum/gui.py:1034](https://github.com/semnil/analyze-spectrum/blob/b40e893132c4003ec4c86eff404c5d051c245267/src/analyze_spectrum/gui.py#L1034)):
+**キャンセル時の既知挙動** (既知の制限。キャンセルは py-analyze-common の `GuiHandler` の `_send_event()` で検知する、`analyze_common/server.py`):
 
 キャンセルは次の NDJSON イベント送信タイミングでのみ検知される。
 すなわち以下のような長時間ブロックする同期処理は、キャンセル後も
