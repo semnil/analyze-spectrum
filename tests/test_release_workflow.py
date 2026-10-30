@@ -58,9 +58,9 @@ def _index(steps, line):
     return found[0]
 
 
-def _lock(name):
-    """{canonical name: (version, number of SHA256 hashes)} of requirements/<name>, and the uv command in its header."""
-    text = (ROOT / "requirements" / name).read_text(encoding="utf-8")
+def _lock(name, folder=ROOT / "requirements"):
+    """{canonical name: (version, number of SHA256 hashes)} of folder/<name>, and the uv command in its header."""
+    text = (folder / name).read_text(encoding="utf-8")
     command = re.search(r"^#\s+(uv pip compile .*)$", text, re.M).group(1)
     entries = {}
     for block in re.split(r"\n(?=\S)", text):
@@ -188,14 +188,20 @@ def test_locks_match_pyproject():
 
 def test_locks_resolve_with_their_own_pins(tmp_path):
     """uv resolves the command in each lock's header again with the lock itself as a constraint, so every pin in the
-    lock meets the requirements of the other packages in it."""
+    lock meets the requirements of the other packages in it, and the resolution holds the same packages at the same
+    versions as the lock: none it needs is missing from the lock (the release jobs install with --no-deps) and none in
+    the lock is left over."""
     for name in LOCKS:
-        _, command = _lock(name)
+        pinned, command = _lock(name)
         args = shlex.split(command)[3:]
         args[args.index("-o") + 1] = str(tmp_path / name)
         result = subprocess.run([sys.executable, "-m", "uv", "pip", "compile", "--quiet", *args,
                                  "-c", f"requirements/{name}"], cwd=ROOT, capture_output=True, text=True)
         assert result.returncode == 0, f"{name}: {result.stderr}"
+        resolved, _ = _lock(name, tmp_path)
+        assert {package: version for package, (version, _) in resolved.items()} == {
+            package: version for package, (version, _) in pinned.items()}, (
+            f"{name}: missing {sorted(set(resolved) - set(pinned))}, left over {sorted(set(pinned) - set(resolved))}")
 
 
 # Blocks every import outside the standard library, the app, analyze_common and yt-dlp, as in the signing job.
