@@ -3,10 +3,12 @@
 ``Collector.install()`` wraps Playwright's page creation so that every Chromium page starts precise coverage
 (``Profiler.startPreciseCoverage``) before it loads anything, and takes it before each navigation the test starts
 (``goto``, ``reload``, ``go_back``, ``go_forward``), which leaves the scripts of the document behind, and when the
-page, its context or its browser is closed. Each take adds the counts since the previous one. Scripts are matched to ``frontend/*.js`` by URL path, as either server in the tests serves them: the
-project root (``/frontend/main.js``) or the app's handler (``/main.js``). ``frontend/vendor/`` and the scripts of
+page, its context or its browser is closed. Each take adds the counts since the previous one; a take of a document
+already taken holds only the functions that ran since, so the lines no range of it holds add nothing. Scripts are
+matched to ``frontend/*.js`` by URL path, as either server in the tests serves them: the project root
+(``/frontend/main.js``) or the app's handler (``/main.js``). ``frontend/vendor/`` and the scripts of
 py-analyze-common are left out. A line's hit count is the count of the innermost V8 range that contains all of its
-code, summed over pages. Blank lines and lines that start a comment are not counted as code.
+code, summed over takes. Blank lines and lines that start a comment are not counted as code.
 """
 
 import re
@@ -80,14 +82,18 @@ class Collector:
     def _add(self, local, functions):
         text = _read(local)
         ranges = [r for function in functions for r in function["ranges"]]
-        script_end = max(r["endOffset"] for r in ranges)
-        assert script_end == _utf16_len(text), (
-            f"{local}: the page ran {script_end} UTF-16 units, the file has {_utf16_len(text)}")
+        # The script's own top-level function is the unnamed one whose range starts at 0; a take holds it only when
+        # the document was not taken before.
+        for function in functions:
+            if function["functionName"] == "" and function["ranges"][0]["startOffset"] == 0:
+                script_end = function["ranges"][0]["endOffset"]
+                assert script_end == _utf16_len(text), (
+                    f"{local}: the page ran {script_end} UTF-16 units, the file has {_utf16_len(text)}")
         counts = self.hits.setdefault(local.relative_to(self.root).as_posix(), {})
         for number, start, end in _code_lines(text):
             inside = [r for r in ranges if r["startOffset"] <= start and end <= r["endOffset"]]
-            innermost = min(inside, key=lambda r: r["endOffset"] - r["startOffset"])
-            counts[number] = counts.get(number, 0) + innermost["count"]
+            innermost = min(inside, key=lambda r: r["endOffset"] - r["startOffset"], default=None)
+            counts[number] = counts.get(number, 0) + (innermost["count"] if innermost else 0)
 
     def install(self):
         collector = self

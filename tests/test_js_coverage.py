@@ -91,8 +91,21 @@ def test_urls_map_to_frontend_scripts_outside_vendor(tmp_path):
     assert collector._source("http://127.0.0.1:1/index.html") is None
 
 
+def test_a_take_of_a_document_already_taken_adds_only_what_ran_since(tmp_path):
+    """V8 leaves out of such a take the top-level function and the functions that did not run since."""
+    collector = Collector(tmp_path)
+    local = _script(tmp_path)
+    collector._add(local, _functions())
+    collector._add(local, [{"functionName": "f", "ranges": [
+        {"startOffset": 0, "endOffset": _offset("\nf(0)") + 1, "count": 1},
+        {"startOffset": _offset("\n\n  return"), "endOffset": _offset("\n}\nf(0)"), "count": 0}]}])
+    collector._add(local, [])
+    assert collector.hits["frontend/app.js"] == {1: 2, 3: 2, 4: 1, 5: 1, 7: 1, 8: 2, 9: 1}
+
+
 def test_counts_from_before_a_reload_or_a_navigation_are_kept(tmp_path):
-    """A navigation leaves the scripts of the document behind; what ran there is taken before it."""
+    """A navigation leaves the scripts of the document behind; what ran there is taken before it. A navigation within
+    the same document, or one that goes nowhere, takes it too, and the later take adds only what ran since."""
     from playwright.sync_api import sync_playwright
 
     frontend = tmp_path / "frontend"
@@ -112,6 +125,9 @@ def test_counts_from_before_a_reload_or_a_navigation_are_kept(tmp_path):
             page = browser.new_page()
             page.goto(f"{url}/index.html")
             page.evaluate("once()")
+            page.goto(f"{url}/index.html#section")
+            page.evaluate("once()")
+            page.go_forward()
             page.reload()
             page.goto(f"{url}/other.html")
             browser.close()
@@ -119,7 +135,7 @@ def test_counts_from_before_a_reload_or_a_navigation_are_kept(tmp_path):
         collector.uninstall()
         server.shutdown()
         server.server_close()
-    assert collector.hits["frontend/app.js"] == {1: 1, 2: 1, 3: 1, 4: 0, 5: 0, 6: 0}
+    assert collector.hits["frontend/app.js"] == {1: 2, 2: 2, 3: 2, 4: 0, 5: 0, 6: 0}
 
 
 def test_lcov_lists_every_frontend_script_with_unloaded_ones_at_zero(tmp_path):
