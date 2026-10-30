@@ -12,6 +12,8 @@ build_assets/icon.icns
 installer_output/
 .pytest_cache/
 .coverage
+coverage.xml
+htmlcov/
 
 # Local review and verification records
 work/

@@ -60,7 +60,7 @@ True Peak is measured on the stereo PCM for each channel separately, following I
 graph LR
     root["analyze-spectrum/"]
     root --> wf[".github/workflows/"]
-    wf --> wf_ci["ci.yaml<br>PR / push<br>caches the apt package files and the Playwright browsers, saved only by the runs that are not PRs"]
+    wf --> wf_ci["ci.yaml<br>PR / push<br>runs pytest with coverage and uploads coverage.xml to Codecov<br>caches the apt package files and the Playwright browsers, saved only by the runs that are not PRs"]
     wf --> wf_rel["release.yaml<br>v* tag / workflow_dispatch on a tag"]
     wf --> wf_tag["tag-release.yml<br>after CI succeeds on a push to master, or on a workflow_dispatch given a commit: if it is a version bump, tags that commit and starts release.yaml"]
     wf --> wf_ffw["ffmpeg-watch.yml<br>daily, detects a new ffmpeg on osxexperts.net, and creates PRs for the pinned-value update and the version bump<br>with a GitHub App's token and merges them without review"]
@@ -157,7 +157,7 @@ analyze-spectrum original.m4a eq_v1.m4a --eq-bands 3
 - `yt-dlp` — downloading URLs (through the Python API)
 - `ffmpeg` / `ffprobe` — PCM conversion, getting the duration, detecting the channel count
 - `numpy`, `scipy` — spectral analysis
-- `pytest` — a development dependency
+- `pytest`, `pytest-cov` — development dependencies
 
 ## GUI usage
 
@@ -198,9 +198,12 @@ Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip 
 
 ```bash
 pytest -q                                          # all tests
+pytest -q --cov --cov-report=term-missing          # with line and branch coverage of src/analyze_spectrum ([tool.coverage.run] in pyproject.toml)
 python -m playwright install --with-deps chromium  # first time only (used by test_frontend.py)
 python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q tests/test_ffmpeg_binary.py  # with the bundled ffmpeg / ffprobe
 ```
+
+CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml` and uploads `coverage.xml` to Codecov with `codecov/codecov-action`. The job's `id-token: write` lets the upload authenticate with GitHub's OIDC token (`use_oidc: true`), so the repository holds no Codecov token. The upload step has `continue-on-error: true` (`fail_ci_if_error: false` covers only the action's last step, the upload itself; a failure in an earlier step of the action, such as the OIDC token request, fails the step), so a failed upload does not fail `Test 🧪`, and Codecov's statuses (`codecov/project`, `codecov/patch`) are not required checks of master. `vendor/py-analyze-common` is not measured here (`source_pkgs` names this package only); py-analyze-common's own CI uploads its coverage.
 
 ## GUI endpoints
 

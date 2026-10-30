@@ -1,5 +1,7 @@
 # analyze-spectrum
 
+[![テストカバレッジ](https://codecov.io/gh/semnil/analyze-spectrum/branch/master/graph/badge.svg)](https://codecov.io/gh/semnil/analyze-spectrum)
+
 > For the English version, see [README.md](README.md).
 
 YouTube 動画またはローカル音声ファイルの周波数スペクトルを包括的に分析するツール。

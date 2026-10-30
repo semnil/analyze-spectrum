@@ -22,6 +22,10 @@ jobs:
     name: Test 🧪
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    permissions:
+      contents: read
+      # The Codecov upload authenticates with GitHub's OIDC token instead of a stored token.
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -112,4 +116,15 @@ jobs:
           key: ${{ steps.playwright-restore.outputs.cache-primary-key }}
 
       - name: Run Tests ✅
-        run: pytest -q
+        run: pytest -q --cov --cov-report=xml
+
+      # A failed upload leaves the job green, the steps of the action before the upload itself (the OIDC token
+      # request among them) included: the Codecov statuses are not required checks.
+      - name: Upload Coverage 📤
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          fail_ci_if_error: false
+          files: ./coverage.xml
+          use_oidc: true
