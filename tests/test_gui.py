@@ -705,6 +705,16 @@ class TestUpdateConfig:
         spec.loader.exec_module(build)
         return build
 
+    def test_bundle_carries_the_shared_web_files_and_modules(self):
+        from pathlib import Path
+        from analyze_common.server import GuiHandler
+        from analyze_common.web import SETTINGS_JS
+        spec = (Path(__file__).resolve().parent.parent / "analyze-spectrum.spec").read_text(encoding="utf-8")
+        for path in [SETTINGS_JS] + [path for path, _ in GuiHandler._SHARED_ASSETS.values()]:
+            assert f"vendor/py-analyze-common/src/analyze_common/web/{path.name}" in spec
+        for module in ("analyze_common.server", "analyze_common.window"):
+            assert f'"{module}"' in spec
+
     def test_build_py_passes_the_config_mutex_to_the_installer(self):
         from analyze_common import build
         from analyze_spectrum.update import UPDATE_CONFIG

@@ -333,7 +333,7 @@ sequenceDiagram
     FE->>U: "Cancelled."
 ```
 
-**キャンセル時の既知挙動** (既知の制限。キャンセルは `_send_event()` で検知する、[src/analyze_spectrum/gui.py:1034](https://github.com/semnil/analyze-spectrum/blob/b40e893132c4003ec4c86eff404c5d051c245267/src/analyze_spectrum/gui.py#L1034)):
+**キャンセル時の既知挙動** (既知の制限。キャンセルは py-analyze-common の `GuiHandler` の `_send_event()` で検知する、`analyze_common/server.py`):
 
 キャンセルは次の NDJSON イベント送信タイミングでのみ検知される。
 すなわち以下のような長時間ブロックする同期処理は、キャンセル後も
@@ -498,7 +498,7 @@ dist/analyze-spectrum/
 
 - HTTP サーバーは `127.0.0.1` にバインド (外部アクセス不可)
 - ポートはランダム割り当て (OS 指定)
-- pywebview WebView2 の `AllowExternalDrop = False` で外部ドロップ無効化
+- ドロップしたファイルは、ページのドロップ処理 (`main.js`、window のキャプチャフェーズ) が受け取って `/upload` に送る
 
 ### 7.2 入力検証
 
@@ -513,7 +513,7 @@ dist/analyze-spectrum/
 ### 7.3 XSS 防止
 
 - フロントエンドの DOM 操作は `textContent` ベース (ユーザー入力の HTML 解釈なし)
-- `showError()` は `innerHTML = ""` でクリア後、`textContent` で再設定
+- `showError()` (py-analyze-common の `analyze_common/web/ui.js` の `_renderError()`) は `textContent = ""` でクリア後、`textContent` でメッセージを設定
 - `confirm()` に表示するメッセージはユーザー選択 JSON 由来のプレーンテキスト (ネイティブ OS ダイアログ、HTML 解釈なし)
 
 ### 7.4 ファイルシステム
@@ -663,7 +663,7 @@ sequenceDiagram
     HTML->>PY: GET /common/settings.js
     PY->>SF: theme と lang を読む
     PY-->>HTML: window.analyzeSettingsStored + settings.js
-    HTML->>HTML: inline script で html に data-theme と lang を付与
+    HTML->>HTML: common/boot.js が html に data-theme と lang を付与
     HTML->>CSS: CSS カスタムプロパティ解決
 ```
 

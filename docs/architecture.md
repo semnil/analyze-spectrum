@@ -333,7 +333,7 @@ sequenceDiagram
     FE->>U: "Cancelled."
 ```
 
-**Known behavior on cancel** (a known limitation; the cancel is detected in `_send_event()`, [src/analyze_spectrum/gui.py:1034](https://github.com/semnil/analyze-spectrum/blob/b40e893132c4003ec4c86eff404c5d051c245267/src/analyze_spectrum/gui.py#L1034)):
+**Known behavior on cancel** (a known limitation; the cancel is detected in `_send_event()` of py-analyze-common's `GuiHandler`, `analyze_common/server.py`):
 
 A cancel is detected only when the next NDJSON event is sent.
 That is, long-blocking synchronous work like the following
@@ -498,7 +498,7 @@ dist/analyze-spectrum/
 
 - The HTTP server binds to `127.0.0.1` (no external access)
 - The port is assigned at random (chosen by the OS)
-- External drops are disabled with pywebview WebView2's `AllowExternalDrop = False`
+- A dropped file is taken by the page's drop handler in the window capture phase (`main.js`) and sent to `/upload`
 
 ### 7.2 Input Validation
 
@@ -513,7 +513,7 @@ dist/analyze-spectrum/
 ### 7.3 XSS Prevention
 
 - The frontend's DOM operations are based on `textContent` (no HTML interpretation of user input)
-- `showError()` clears with `innerHTML = ""` and then sets it again with `textContent`
+- `showError()` (`_renderError()` of py-analyze-common's `analyze_common/web/ui.js`) clears the status with `textContent = ""` and then sets the message with `textContent`
 - The message shown in `confirm()` is plain text from the JSON the user chose (a native OS dialog, no HTML interpretation)
 
 ### 7.4 File System
@@ -663,7 +663,7 @@ sequenceDiagram
     HTML->>PY: GET /common/settings.js
     PY->>SF: read theme and lang
     PY-->>HTML: window.analyzeSettingsStored + settings.js
-    HTML->>HTML: an inline script sets data-theme and lang on html
+    HTML->>HTML: common/boot.js sets data-theme and lang on html
     HTML->>CSS: resolve the CSS custom properties
 ```
 
