@@ -1,10 +1,16 @@
-"""Shared fixtures for analyze-spectrum tests."""
+"""Shared fixtures for analyze-spectrum tests, and the repository and package analyze_common.testing's shared tests
+check."""
 
 import math
 import struct
 from pathlib import Path
 
 import pytest
+
+import analyze_spectrum  # noqa: F401  (puts vendor/py-analyze-common on sys.path)
+from analyze_common import testing
+
+testing.configure(Path(__file__).resolve().parent.parent, "analyze_spectrum")
 
 
 def pytest_addoption(parser):
