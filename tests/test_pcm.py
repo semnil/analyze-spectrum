@@ -106,3 +106,66 @@ class TestExtractAudio:
 
         assert stereo.shape == (2, 2)
         np.testing.assert_allclose(mono, [0.75, 0.75])
+
+
+@pytest.fixture
+def pcm_output(tmp_path, monkeypatch):
+    from pathlib import Path
+    from analyze_spectrum import pcm
+
+    make_temp = pcm.tempfile.NamedTemporaryFile
+    monkeypatch.setattr(pcm.tempfile, "NamedTemporaryFile", lambda **kwargs: make_temp(dir=tmp_path, **kwargs))
+    monkeypatch.setattr(pcm, "find_executable", lambda name: FFMPEG)
+    state = {"raw": np.array([], dtype=np.float32), "error": None, "calls": []}
+
+    def run(command, **kwargs):
+        state["calls"].append((command, kwargs))
+        state["raw"].tofile(command[-1])
+        if state["error"]:
+            raise state["error"]
+
+    monkeypatch.setattr(pcm.subprocess, "run", run)
+    state["files"] = lambda: list(Path(tmp_path).iterdir())
+    return state
+
+
+@pytest.mark.parametrize("channels, raw, expected", [
+    (1, [0.2, -0.4], [0.2, -0.4]),
+    (2, [1, -1, 0.2, 0.6, 9], [0, 0.4]),
+    (3, [1, 0.5, -0.6, -1, 0.2, 0.5, 9, 9], [0.3, -0.1]),
+])
+def test_pcm_downmix_trims_partial_frame_and_removes_temp_file(pcm_output, channels, raw, expected):
+    from analyze_spectrum.pcm import extract_audio
+
+    pcm_output["raw"] = np.array(raw, dtype=np.float32)
+    mono, stereo = extract_audio("input.wav", channels=channels)
+    np.testing.assert_allclose(mono, expected, atol=1e-7)
+    assert stereo.shape == (len(expected), channels)
+    assert mono.dtype == stereo.dtype == np.float32
+    assert pcm_output["files"]() == []
+
+
+@pytest.mark.parametrize("failure", ["empty", "process", "timeout"])
+def test_pcm_failure_removes_partial_file(pcm_output, failure):
+    import subprocess
+    from analyze_spectrum.pcm import extract_audio
+
+    error_type = RuntimeError
+    if failure != "empty":
+        pcm_output["raw"] = np.array([0.2], dtype=np.float32)
+        error = subprocess.CalledProcessError(1, [FFMPEG]) if failure == "process" else subprocess.TimeoutExpired([FFMPEG], 600)
+        pcm_output["error"] = error
+        error_type = type(error)
+    with pytest.raises(error_type):
+        extract_audio("input.wav", channels=1)
+    assert pcm_output["files"]() == []
+
+
+@pytest.mark.parametrize("channels", [0, -1])
+def test_invalid_channel_count_starts_no_process(pcm_output, channels):
+    from analyze_spectrum.pcm import extract_audio
+
+    with pytest.raises(ValueError, match="channels must be >= 1"):
+        extract_audio("input.wav", channels=channels)
+    assert pcm_output["calls"] == []
+    assert pcm_output["files"]() == []
