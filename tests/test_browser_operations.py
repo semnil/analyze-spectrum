@@ -1,6 +1,7 @@
 """Browser input, track ordering and file operations through the app's page."""
 
 import base64
+from urllib.parse import unquote
 
 import numpy as np
 import pytest
@@ -167,6 +168,20 @@ def test_file_drop_uploads_files_and_preserves_the_pending_source(page):
     assert page.evaluate("document.body.classList.contains('drag-over')") is False
     assert requests == [(name, "application/octet-stream", b"audio")
                         for name in ("one.wav", "two.wav", "three.wav", "four.wav")]
+
+
+def test_file_drop_sends_a_non_ascii_name_percent_encoded(page):
+    requests = []
+
+    def upload(route):
+        name = route.request.headers["x-filename"]
+        requests.append(name)
+        route.fulfill(json={"uploaded": True, "path": "/uploaded/" + unquote(name)})
+
+    page.route("**/upload", upload)
+    _drop(page, ["日本語 track.wav"])
+    expect(page.locator("#url-input")).to_have_value("/uploaded/日本語 track.wav")
+    assert requests == ["%E6%97%A5%E6%9C%AC%E8%AA%9E%20track.wav"]
 
 
 def _response(page, endpoint, status, body):
