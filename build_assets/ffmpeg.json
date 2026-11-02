@@ -2,12 +2,12 @@
   "series": "9.0",
   "macos_arm64": {
     "ffmpeg": {
-      "url": "https://www.osxexperts.net/ffmpeg9arm.zip",
-      "sha256": "591260c945d0eef150e3bf82b0ef988bd36a9cecc18ff05d6679617159f0a95e"
+      "url": "https://www.osxexperts.net/ffmpeg902arm.zip",
+      "sha256": "762f16b2913b8d3b8fdb8092df12b691053b035b13ae9b88205513c55cb8e71e"
     },
     "ffprobe": {
-      "url": "https://www.osxexperts.net/ffprobe9arm.zip",
-      "sha256": "e11c17e8200b3ee4c4c186d245e2b4053f01d56957336c1817fca0b997469106"
+      "url": "https://www.osxexperts.net/ffprobe902arm.zip",
+      "sha256": "e9d3ad989b11d1ff4e3b0d140df170a6b38f194f83ac77f0e05a127a0f3a0ae4"
     }
   }
 }
