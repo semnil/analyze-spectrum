@@ -71,7 +71,7 @@ graph LR
     ght --> ght_sh["workflow-checks-test.sh<br>a test that runs workflow-checks.yml with a fake gh and fixture git trees"]
     ght --> ght_am["dependabot-auto-merge-test.sh<br>a test that dependabot-auto-merge.yml runs on every PR, with only its stages limited to Dependabot PRs,<br>and of which updates and commits (their authors, how many, whether the last is the head, who committed it, whether its signature is verified)<br>its stage schedules or turns off an auto-merge for, with a fake gh"]
     ght --> ght_tag["tag-release-test.sh<br>a test that runs tag-release.yml's check and tag stages with a fake gh and a fixture repository"]
-    root --> r_dep[".github/dependabot.yml<br>version updates every day at 00:00 JST of the GitHub Actions, the py-analyze-common submodule<br>(without Dependabot's default three-day cooldown) and the Python dependencies (uv;<br>yt-dlp and yt-dlp-ejs in one pull request)"]
+    root --> r_dep[".github/dependabot.yml<br>version updates every day at 00:00 JST of the GitHub Actions, the py-analyze-common submodule<br>(without Dependabot's default three-day cooldown) and the Python dependencies (uv;<br>yt-dlp and yt-dlp-ejs in one pull request, pyobjc-core and pyobjc-framework-* in another)"]
     ght --> ght_land["ffmpeg-watch-land-test.sh<br>a test that runs ffmpeg-watch.yml's land stage with a fake gh that answers by the token of each call and a fixture repository"]
     root --> r_claude["CLAUDE.md"]
     root --> r_readme["README.md"]
@@ -509,6 +509,8 @@ Before opening the version bump PR, check the pinned yt-dlp version with a full-
 The merge of the version bump PR is the starting point of a release. `tag-release.yml` does nothing on a push where `__version__` does not change, and does not move a tag when a tag with the same name already exists on another commit. `tag-release.yml`'s `workflow_dispatch` handles the commit in the input `sha`, and tags it only when it is on master and CI succeeded on that commit or on a parent commit with the same tree (the tip of a PR merged while containing the tip of master). `release.yaml` also builds and releases on a tag push and on a `workflow_dispatch` on a tag (a `workflow_dispatch` on a branch only builds).
 
 ### Pinned release dependencies
+
+Dependabot updates `pyobjc-core` and `pyobjc-framework-*` together in the `pyobjc` group of `.github/dependabot.yml`.
 
 The release jobs install nothing that is resolved at build time:
 
