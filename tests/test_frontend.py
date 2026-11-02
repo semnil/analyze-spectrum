@@ -196,6 +196,8 @@ def test_running_analysis_keeps_its_cancel_button_across_a_language_switch():
             finally:
                 for route in held:
                     route.abort()
+            page.wait_for_function("!isBusy")
+            assert "Failed to fetch" in page.inner_text("#status.error")
             browser.close()
     finally:
         server.shutdown()
