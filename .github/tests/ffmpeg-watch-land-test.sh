@@ -4,7 +4,8 @@
 # CI and dependabot-auto-merge.yml and a pull_request_target run of workflow-checks.yml, one GITHUB_TOKEN opens gets
 # pull_request runs that wait for an approval and no pull_request_target run, a merge needs the three required checks,
 # and a merge with the App's token starts a push run of CI on master. It asserts what lands on master, which token
-# opened and merged each pull request, and what land dispatched.
+# opened and merged each pull request, and what land dispatched. It also checks that a queued detect reads the
+# updated pin, version and tags from master after an earlier run completes, and smoke uses its recorded commit.
 # WORKFLOW_FILE selects the workflow under test (relative to the repository root, or absolute).
 set -euo pipefail
 
@@ -187,6 +188,49 @@ base=$(git -C "$work/seed" rev-parse HEAD)
 git -C "$work/seed" tag v1.4.1
 git -C "$work/seed" push -q origin master v1.4.1
 printf '{"series": "9.0"}\n' > "$work/candidate.json"
+
+# A queued run retains the event's commit while an earlier run advances master.
+printf '{"series": "9.0"}\n' > "$work/seed/$pin_file"
+printf '__version__ = "1.4.2"\n' > "$work/seed/$version_file"
+git -C "$work/seed" add -- "$pin_file" "$version_file"
+git -C "$work/seed" commit -q -m "an earlier run completed the update"
+completed=$(git -C "$work/seed" rev-parse HEAD)
+git -C "$work/seed" tag v1.4.2
+git -C "$work/seed" push -q origin master v1.4.2
+detect_ref=$(yq '.jobs.detect.steps[] | select(.uses | test("^actions/checkout@")) | .with.ref // ""' "$workflow_path")
+git clone -q --no-checkout "file://$work/remote.git" "$work/detect" 2>/dev/null
+git -C "$work/detect" checkout -q --detach "${detect_ref:-$base}"
+count=$((count + 1))
+if [ "$(git -C "$work/detect" rev-parse HEAD)" = "$completed" ] \
+  && [ "$(git -C "$work/detect" show "HEAD:$pin_file" | jq -r .series)" = 9.0 ] \
+  && [ "$(git -C "$work/detect" show "HEAD:$version_file")" = '__version__ = "1.4.2"' ] \
+  && [ "$(git -C "$work/detect" rev-parse v1.4.2)" = "$completed" ] \
+  && [ "$(yq '.jobs.detect.steps[] | select(.uses | test("^actions/checkout@")) | .with.fetch-depth' "$workflow_path")" = 0 ] \
+  && [ "$(yq '.concurrency.group' "$workflow_path")" = ffmpeg-watch ] \
+  && [ "$(yq '.concurrency.cancel-in-progress' "$workflow_path")" = false ]; then
+  echo "ok   a queued detect reads master's completed pin, version and tag under serial execution"
+else
+  failures=$((failures + 1))
+  echo "FAIL a queued detect must read master's completed pin, version and tag under serial execution"
+  echo "     event=$base checked_out=$(git -C "$work/detect" rev-parse HEAD) master=$completed"
+fi
+
+snapshot=$(yq '.jobs.detect.steps[] | select(.id == "snapshot") | .run' "$workflow_path")
+if [ -z "$snapshot" ] || [ "$snapshot" = null ]; then
+  echo "FAIL detect must record its checkout commit" >&2
+  exit 1
+fi
+(cd "$work/detect" && GITHUB_OUTPUT="$work/snapshot-output" bash -e -o pipefail -c "$snapshot")
+snapshot_commit=$(sed -n 's/^commit=//p' "$work/snapshot-output")
+count=$((count + 1))
+if [ "$snapshot_commit" = "$completed" ] \
+  && [ "$(yq '.jobs.detect.outputs.commit' "$workflow_path")" = '${{ steps.snapshot.outputs.commit }}' ] \
+  && [ "$(yq '.jobs.smoke.steps[] | select(.uses | test("^actions/checkout@")) | .with.ref' "$workflow_path")" = '${{ needs.detect.outputs.commit }}' ]; then
+  echo "ok   smoke checks out the commit recorded and exported by detect"
+else
+  failures=$((failures + 1))
+  echo "FAIL smoke must check out the commit recorded and exported by detect"
+fi
 
 mkdir -p "$work/bin"
 printf '#!/usr/bin/env bash\nexec python3 -I %q "$@"\n' "$work/gh.py" > "$work/bin/gh"
