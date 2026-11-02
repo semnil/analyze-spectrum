@@ -510,6 +510,8 @@ The merge of the version bump PR is the starting point of a release. `tag-releas
 
 ### Pinned release dependencies
 
+Dependabot updates `pyobjc-core` and `pyobjc-framework-*` together in the `pyobjc` group of `.github/dependabot.yml`.
+
 The release jobs install nothing that is resolved at build time:
 
 - Python packages: `requirements/release.txt` (the dependencies of `pyproject.toml` and its `gui` and `dev` extras), installed with `--require-hashes --no-deps --no-build-isolation` after `requirements/release-build.txt` (the pip that installs it, and the build backends of its source distributions and of this project). The `sign-manifest` job installs only `requirements/sign-manifest.txt` (yt-dlp, which analyze_common imports) as a wheel
