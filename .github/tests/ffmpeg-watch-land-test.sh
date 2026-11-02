@@ -5,7 +5,7 @@
 # pull_request runs that wait for an approval and no pull_request_target run, a merge needs the three required checks,
 # and a merge with the App's token starts a push run of CI on master. It asserts what lands on master, which token
 # opened and merged each pull request, and what land dispatched. It also checks that a queued detect reads the
-# updated pin, version and tags from master after an earlier run completes.
+# updated pin, version and tags from master after an earlier run completes, and smoke uses its recorded commit.
 # WORKFLOW_FILE selects the workflow under test (relative to the repository root, or absolute).
 set -euo pipefail
 
@@ -213,6 +213,23 @@ else
   failures=$((failures + 1))
   echo "FAIL a queued detect must read master's completed pin, version and tag under serial execution"
   echo "     event=$base checked_out=$(git -C "$work/detect" rev-parse HEAD) master=$completed"
+fi
+
+snapshot=$(yq '.jobs.detect.steps[] | select(.id == "snapshot") | .run' "$workflow_path")
+if [ -z "$snapshot" ] || [ "$snapshot" = null ]; then
+  echo "FAIL detect must record its checkout commit" >&2
+  exit 1
+fi
+(cd "$work/detect" && GITHUB_OUTPUT="$work/snapshot-output" bash -e -o pipefail -c "$snapshot")
+snapshot_commit=$(sed -n 's/^commit=//p' "$work/snapshot-output")
+count=$((count + 1))
+if [ "$snapshot_commit" = "$completed" ] \
+  && [ "$(yq '.jobs.detect.outputs.commit' "$workflow_path")" = '${{ steps.snapshot.outputs.commit }}' ] \
+  && [ "$(yq '.jobs.smoke.steps[] | select(.uses | test("^actions/checkout@")) | .with.ref' "$workflow_path")" = '${{ needs.detect.outputs.commit }}' ]; then
+  echo "ok   smoke checks out the commit recorded and exported by detect"
+else
+  failures=$((failures + 1))
+  echo "FAIL smoke must check out the commit recorded and exported by detect"
 fi
 
 mkdir -p "$work/bin"

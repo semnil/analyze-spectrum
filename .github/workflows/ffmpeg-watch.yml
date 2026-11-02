@@ -46,6 +46,7 @@ jobs:
       run:
         shell: bash
     outputs:
+      commit: ${{ steps.snapshot.outputs.commit }}
       pin_update: ${{ steps.detect.outputs.pin_update }}
       bump: ${{ steps.detect.outputs.bump }}
       series: ${{ steps.detect.outputs.series }}
@@ -66,6 +67,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Record the Checkout Commit
+        id: snapshot
+        run: |
+          commit=$(git rev-parse HEAD)
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
 
       - name: Set Up Python 🐍
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -116,6 +123,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.detect.outputs.commit }}
           submodules: recursive
           persist-credentials: false
 
