@@ -321,7 +321,7 @@ def test_input_bar_controls_stay_inside_the_window_around_the_wrap_width():
             for source in ("https://example.com/a", "/music/b.wav"):
                 page.fill("#url-input", source)
                 page.click("#add-btn")
-            for width in (660, 700, 740, 770, 780, 800, 801, 1100):
+            for width in (660, 700, 740, 780, 820, 860, 900, 901, 1100):
                 page.set_viewport_size({"width": width, "height": 700})
                 assert page.evaluate(_OVERFLOW_JS) <= 0.5, width
             browser.close()
