@@ -82,7 +82,7 @@ graph TD
 
 ```mermaid
 flowchart TD
-    INPUT["Input<br>YouTube URL / Local File"]
+    INPUT["Input<br>URL / Local File"]
     RESOLVE{"is_url?"}
     YTDLP["yt_dlp.YoutubeDL<br>(audio extraction)"]
     LOCAL["Local file path"]

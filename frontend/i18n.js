@@ -6,8 +6,8 @@
     en: {
       "app.title": "Spectrum Analyzer",
       "form.aria": "Analyze audio source",
-      "url.label": "YouTube URL or local audio file path",
-      "url.placeholder": "YouTube URL or local file path",
+      "url.label": "URL or local audio file path",
+      "url.placeholder": "URL or local file path",
       "btn.browse": "Browse",
       "btn.browse.aria": "Browse local audio file",
       "btn.analyze": "Analyze",
@@ -106,8 +106,8 @@
     ja: {
       "app.title": "Spectrum Analyzer",
       "form.aria": "音声ソースを分析",
-      "url.label": "YouTube URL またはローカル音声ファイルのパス",
-      "url.placeholder": "YouTube URL またはローカルファイルのパス",
+      "url.label": "URL またはローカル音声ファイルのパス",
+      "url.placeholder": "URL またはローカルファイルのパス",
       "btn.browse": "参照",
       "btn.browse.aria": "ローカル音声ファイルを参照",
       "btn.analyze": "分析",
