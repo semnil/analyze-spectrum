@@ -236,6 +236,151 @@ def test_interactive_states_follow_stylesheet_order(scheme):
         server.server_close()
 
 
+_ROLE_FACES = {
+    "browse-btn": "--neutral-bg",
+    "clear-btn": "--neutral-bg",
+    "add-btn": "--add-bg",
+    "submit-btn": "--primary-bg",
+    "load-btn": "--load-bg",
+}
+_BACKGROUND_JS = "(id) => getComputedStyle(document.getElementById(id)).backgroundColor"
+
+
+def _luminance(css_rgb):
+    def channel(v):
+        v /= 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(v) for v in css_rgb[css_rgb.index("(") + 1:css_rgb.index(")")].split(",")[:3])
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_buttons_show_the_face_of_their_role(scheme):
+    """The input bar and compare bar buttons take their role's face from
+    common.css, Analyze and Add Track have a face no other button has, hover
+    lightens a face in the dark theme, and Browse and Load JSON carry an icon."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(color_scheme=scheme, reduced_motion="reduce")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            for source in ("https://example.com/a", "/music/b.wav"):
+                page.fill("#url-input", source)
+                page.click("#add-btn")
+            page.mouse.move(0, 0)
+            faces = {}
+            for button, var in _ROLE_FACES.items():
+                face = page.evaluate(_BACKGROUND_JS, button)
+                assert face != "rgba(0, 0, 0, 0)", button
+                assert face == page.evaluate(_RESOLVE_VAR_JS, var), button
+                faces[button] = face
+            for button in ("submit-btn", "add-btn"):
+                assert list(faces.values()).count(faces[button]) == 1, button
+            for button, face in faces.items():
+                page.hover("#" + button)
+                hovered = page.evaluate(_BACKGROUND_JS, button)
+                assert hovered != face, button
+                if scheme == "dark":
+                    assert _luminance(hovered) > _luminance(face), button
+                page.mouse.move(0, 0)
+            assert page.locator("#browse-btn > svg.inline-icon").count() == 1
+            assert page.locator("#load-btn > svg.inline-icon").count() == 1
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+_OVERFLOW_JS = """() => {
+  const bar = document.getElementById("analyze-form").getBoundingClientRect();
+  let worst = -Infinity;
+  for (const el of document.querySelectorAll("#analyze-form > button, #analyze-form > input")) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const right = Math.max(el.getBoundingClientRect().right, range.getBoundingClientRect().right);
+    worst = Math.max(worst, right - Math.min(bar.right, window.innerWidth));
+  }
+  return worst;
+}"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_input_bar_controls_stay_inside_the_window_around_the_wrap_width():
+    """With two queued tracks, no input bar control or label runs past the bar
+    or the window at the widths around where the bar wraps (common.css)."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1100, "height": 700})
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            for source in ("https://example.com/a", "/music/b.wav"):
+                page.fill("#url-input", source)
+                page.click("#add-btn")
+            for width in (660, 700, 740, 780, 820, 860, 900, 901, 1100):
+                page.set_viewport_size({"width": width, "height": 700})
+                assert page.evaluate(_OVERFLOW_JS) <= 0.5, width
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+_FOCUSED_ROW_BUTTON_JS = """() => {
+  const button = document.activeElement;
+  const row = button && button.closest(".track-item");
+  return row ? [Array.from(row.parentNode.children).indexOf(row), button.dataset.action] : null;
+}"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_queue_focus_keeps_its_place_across_redraws():
+    """A focused queue row button keeps the focus at its place when the rows
+    are redrawn on a system color scheme change under the auto theme, a
+    language switch and a remove; after a move it follows its track, and at
+    the top or the bottom the row itself takes it."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(color_scheme="light")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            for source in ("/music/a.wav", "/music/b.wav", "/music/c.wav", "/music/d.wav"):
+                page.fill("#url-input", source)
+                page.click("#add-btn")
+            queue = lambda: [s.rsplit("/", 1)[1][0] for s in page.evaluate("compareSources.slice()")]
+            page.locator(".track-item").nth(3).locator('[data-action="up"]').focus()
+            page.emulate_media(color_scheme="dark")
+            page.wait_for_function("document.documentElement.getAttribute('data-theme') === 'dark'")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [3, "up"]
+            page.evaluate("window.i18n.setLang('ja')")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [3, "up"]
+            for expected_queue, expected_focus in ((list("abdc"), [2, "up"]), (list("adbc"), [1, "up"]),
+                                                   (list("dabc"), [0, None]), (list("dabc"), [0, None])):
+                page.keyboard.press("Enter")
+                assert queue() == expected_queue
+                assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == expected_focus
+            page.evaluate("window.i18n.setLang('en')")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [0, None]
+            page.locator(".track-item").nth(2).locator('[data-action="down"]').focus()
+            page.keyboard.press("Space")
+            assert queue() == list("dacb")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [3, None]
+            page.locator(".track-item").nth(3).locator('[data-action="remove"]').focus()
+            page.keyboard.press("Enter")
+            assert queue() == list("dac")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [2, "remove"]
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 class _PageUpdater:
     """Fake analyze_common.update.Updater: offers ``offer`` and fails the install
     once ``release`` is set."""

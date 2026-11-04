@@ -1,6 +1,7 @@
 """Browser input, track ordering and file operations through the app's page."""
 
 import base64
+import json
 from urllib.parse import unquote
 
 import numpy as np
@@ -121,20 +122,20 @@ def test_reordering_keeps_sources_rows_and_rendered_tracks_in_sync(page, tracks,
     page.evaluate("() => {compareSources = ['first.wav', 'second.wav']; updateCompareUI();}")
     if rendered:
         page.evaluate("data => renderCompare(data)", compare_tracks(tracks).to_dict())
-    page.locator(".track-item").first.locator(".reorder-track").nth(1).click()
+    page.locator(".track-item").first.locator(".track-btn").nth(1).click()
     assert page.evaluate("compareSources") == ["second.wav", "first.wav"]
     expect(page.locator(".track-label")).to_have_text(["second.wav", "first.wav"])
     if rendered:
         assert page.evaluate("lastData.tracks.map(track => track.label)") == ["Second", "First"]
         assert page.locator(".chart-title", has_text="Transfer Function").count() == 1
-    page.locator(".track-item").nth(1).locator(".reorder-track").first.click()
+    page.locator(".track-item").nth(1).locator(".track-btn").first.click()
     assert page.evaluate("compareSources") == ["first.wav", "second.wav"]
     expect(page.locator(".track-label")).to_have_text(["first.wav", "second.wav"])
     if rendered:
         assert page.evaluate("lastData.tracks.map(track => track.label)") == ["First", "Second"]
     page.wait_for_function("Array.from(document.querySelectorAll('.track-item')).every(el => el.style.transition === '')")
-    expect(page.locator(".track-item").first.locator(".reorder-track").first).to_be_disabled()
-    expect(page.locator(".track-item").last.locator(".reorder-track").nth(1)).to_be_disabled()
+    expect(page.locator(".track-item").first.locator(".track-btn").first).to_be_disabled()
+    expect(page.locator(".track-item").last.locator(".track-btn").nth(1)).to_be_disabled()
 
 
 def _drop(page, names):
@@ -275,3 +276,45 @@ def test_browse_preserves_the_input_unless_a_file_is_selected(page, status, body
         else:
             expect(page.locator("#status")).to_have_text("")
     assert requests == [("POST", {})]
+
+
+def test_queue_focus_keeps_its_place_while_results_are_shown(page, tracks):
+    page.evaluate("() => {compareSources = ['first.wav', 'second.wav']; updateCompareUI();}")
+    page.evaluate("data => renderCompare(data)", compare_tracks(tracks).to_dict())
+    up = page.locator(".track-item").nth(1).locator('[data-action="up"]')
+    up.focus()
+    page.emulate_media(color_scheme="dark")
+    page.wait_for_function("document.documentElement.getAttribute('data-theme') === 'dark'")
+    expect(up).to_be_focused()
+    page.evaluate("window.i18n.setLang('ja')")
+    expect(page.locator(".track-item").nth(1).locator('[data-action="up"]')).to_be_focused()
+    assert page.locator(".chart-title", has_text="Transfer Function").count() == 1
+
+
+def test_results_take_the_focus_after_an_analysis_and_a_load(page, tracks):
+    single = tracks[0].to_dict()
+    page.route("**/analyze", lambda route: route.fulfill(
+        body=json.dumps({"type": "result", "data": single}) + "\n", content_type="application/x-ndjson"))
+    page.fill("#url-input", "/music/a.wav")
+    page.locator("#submit-btn").click()
+    expect(page.locator("#results")).to_be_focused()
+
+    page.evaluate("() => {compareSources.length = 0; updateCompareUI(); clearResults();}")
+    page.fill("#url-input", "")
+    page.route("**/load", lambda route: route.fulfill(json={"loaded": True, "type": "single", "data": single}))
+    page.locator("#load-btn").click()
+    expect(page.locator("#results")).to_be_focused()
+    expect(page.locator(".chart-title", has_text="PSD Spectrum")).to_have_count(1)
+
+
+def test_redraws_keep_the_focus_in_the_results_and_leave_it_elsewhere(page, tracks):
+    page.evaluate("() => {compareSources = ['first.wav', 'second.wav']; updateCompareUI();}")
+    page.evaluate("data => renderCompare(data)", compare_tracks(tracks).to_dict())
+    page.locator("#results .save-btn").first.focus()
+    page.evaluate("window.i18n.setLang('ja')")
+    expect(page.locator("#results")).to_be_focused()
+    page.locator("#url-input").focus()
+    page.evaluate("document.querySelector('#results .chart-title').dataset.before = '1'")
+    page.set_viewport_size({"width": 900, "height": 700})
+    page.wait_for_function("!document.querySelector('#results .chart-title[data-before]')")
+    expect(page.locator("#url-input")).to_be_focused()

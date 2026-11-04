@@ -4,29 +4,29 @@
   --text-label: #767676;
   --accent: #1565C0;
   --accent-dark: #0D47A1;
-  --accent-deep: #0D47A1;
   --focus-ring: #1565C0;
   --h1-color: #1565C0;
   --label-color: #0D47A1;
-  --remove-color: #D32F2F;
   --border: #ddd;
   --border-light: #eee;
   --track-bg: #E3F2FD;
+  --track-tag-bg: #BBDEFB;
+  --track-tag-fg: #0D47A1;
+  --track-remove: #D32F2F;
   --th-bg: #BBDEFB;
   --input-border: #90CAF9;
-  --btn-disabled: #90CAF9;
   --copy-border: #ccc;
   --copy-fg: #6b6b6b;
   --chart-grid: #eee;
   --chart-grid-strong: #ddd;
   --chart-zero: #999;
   --drop-bg: rgba(25, 118, 210, 0.12);
-  --browse-bg: #546E7A;
-  --browse-bg-hover: #455A64;
-  --add-bg: #2E7D32;
-  --add-bg-hover: #1B5E20;
-  --clear-bg: #616161;
-  --clear-bg-hover: #424242;
+  --primary-bg: #1565C0;
+  --primary-bg-hover: #0D47A1;
+  --primary-fg: #fff;
+  --load-bg: #0D47A1;
+  --load-bg-hover: #1565C0;
+  --load-fg: #fff;
   --error-bg: rgba(211, 47, 47, 0.08);
 }
 
@@ -36,29 +36,29 @@
   --text-label: #777;
   --accent: #1565C0;
   --accent-dark: #0D47A1;
-  --accent-deep: #0D47A1;
   --focus-ring: #64B5F6;
   --h1-color: #64b5f6;
   --label-color: #64b5f6;
-  --remove-color: #ef5350;
   --border: #2a2a4a;
   --border-light: #252545;
   --track-bg: #1e2a4a;
+  --track-tag-bg: #1e3a5f;
+  --track-tag-fg: #BBDEFB;
+  --track-remove: #ef5350;
   --th-bg: #1e3a5f;
   --input-border: #5A8BC2;
-  --btn-disabled: #2a3a5a;
   --copy-border: #3a3a5a;
   --copy-fg: #bbb;
   --chart-grid: #2a2a4a;
   --chart-grid-strong: #333355;
   --chart-zero: #666;
   --drop-bg: rgba(66, 165, 245, 0.15);
-  --browse-bg: #78909C;
-  --browse-bg-hover: #90A4AE;
-  --add-bg: #43A047;
-  --add-bg-hover: #66BB6A;
-  --clear-bg: #78909C;
-  --clear-bg-hover: #90A4AE;
+  --primary-bg: #1565C0;
+  --primary-bg-hover: #1976D2;
+  --primary-fg: #fff;
+  --load-bg: #0D47A1;
+  --load-bg-hover: #1565C0;
+  --load-fg: #fff;
   --error-bg: rgba(239, 83, 80, 0.10);
 }
 
@@ -85,123 +85,6 @@ h1 {
 
 .input-bar input::placeholder { color: var(--text-muted); opacity: 1; }
 [data-theme="dark"] .input-bar input::placeholder { color: #a0a0b0; }
-
-.input-bar button {
-  padding: 10px 24px;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
-
-.input-bar button:hover:not(:disabled):not(.cancelling) { background: var(--accent-dark); }
-.input-bar button:disabled { background: var(--btn-disabled); cursor: not-allowed; opacity: 0.5; }
-.input-bar button.cancelling { background: var(--danger); color: var(--danger-fg); opacity: 1; }
-#browse-btn { background: var(--browse-bg); }
-#browse-btn:hover:not(:disabled) { background: var(--browse-bg-hover); }
-
-#add-btn { background: var(--add-bg); }
-#add-btn:hover:not(:disabled) { background: var(--add-bg-hover); }
-
-#load-btn { background: var(--accent-deep); }
-#load-btn:hover:not(:disabled) { background: var(--accent); }
-
-/* Track list for compare mode */
-#track-list {
-  margin-bottom: 8px;
-}
-
-.track-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  margin-bottom: 4px;
-  background: var(--track-bg);
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.track-item .track-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.track-item .reorder-track {
-  background: none;
-  border: none;
-  color: var(--text);
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
-  min-width: 36px;
-  min-height: 36px;
-  padding: 4px 6px;
-  border-radius: 4px;
-}
-.track-item .reorder-track:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
-[data-theme="dark"] .track-item .reorder-track:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
-.track-item .reorder-track:disabled {
-  color: var(--text-muted);
-  cursor: not-allowed;
-  opacity: 0.4;
-}
-.track-item .reorder-track.reorder-placeholder {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.track-item .remove-track {
-  background: none;
-  border: none;
-  color: var(--remove-color);
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  min-width: 36px;
-  min-height: 36px;
-  padding: 6px 10px;
-  border-radius: 4px;
-}
-.track-item .remove-track:hover:not(:disabled) { background: rgba(211, 47, 47, 0.12); }
-.track-item .remove-track:disabled {
-  color: var(--text-muted);
-  cursor: not-allowed;
-  opacity: 0.4;
-}
-
-.compare-bar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.compare-bar button {
-  min-height: 36px;
-  padding: 8px 20px;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  color: #fff;
-}
-
-#clear-btn { background: var(--clear-bg); }
-#clear-btn:hover:not(:disabled) { background: var(--clear-bg-hover); }
-#clear-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* In dark mode the browse/add/clear faces stay light so they read against the
-   dark page, and the label is dark ink. */
-[data-theme="dark"] #browse-btn,
-[data-theme="dark"] #add-btn,
-[data-theme="dark"] #clear-btn { color: #1a1a2e; }
 
 #status {
   text-align: center;
@@ -445,12 +328,9 @@ h1 {
 [data-theme="dark"] .u-legend td { color: var(--text-secondary) !important; }
 [data-theme="dark"] .u-series > * { color: var(--text-secondary) !important; }
 
-/* Narrow viewport: stack input bar so buttons don't overflow */
+/* Narrow viewport: tighter page padding, scrollable summary tables and stacked chart pairs */
 @media (max-width: 768px) {
   body { padding: 12px; }
-  .input-bar { flex-wrap: wrap; }
-  .input-bar input { flex: 1 1 100%; }
-  .input-bar button { flex: 1 1 auto; }
   .summary-table { scrollbar-gutter: stable; }
   .chart-pair { flex-direction: column; }
 }

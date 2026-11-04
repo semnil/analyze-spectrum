@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Spectral analysis and EQ verification tool.",
     )
     parser.add_argument("sources", nargs="+",
-                        help="Audio file paths or YouTube URLs")
+                        help="Audio file paths or URLs")
     def _positive_finite_float(v):
         f = float(v)
         if not math.isfinite(f) or f <= 0:
