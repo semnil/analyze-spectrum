@@ -328,12 +328,9 @@ h1 {
 [data-theme="dark"] .u-legend td { color: var(--text-secondary) !important; }
 [data-theme="dark"] .u-series > * { color: var(--text-secondary) !important; }
 
-/* Narrow viewport: stack input bar so buttons don't overflow */
+/* Narrow viewport: tighter page padding, scrollable summary tables and stacked chart pairs */
 @media (max-width: 768px) {
   body { padding: 12px; }
-  .input-bar { flex-wrap: wrap; }
-  .input-bar input { flex: 1 1 100%; }
-  .input-bar button { flex: 1 1 auto; }
   .summary-table { scrollbar-gutter: stable; }
   .chart-pair { flex-direction: column; }
 }

@@ -294,6 +294,42 @@ def test_buttons_show_the_face_of_their_role(scheme):
         server.server_close()
 
 
+_OVERFLOW_JS = """() => {
+  const bar = document.getElementById("analyze-form").getBoundingClientRect();
+  let worst = -Infinity;
+  for (const el of document.querySelectorAll("#analyze-form > button, #analyze-form > input")) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const right = Math.max(el.getBoundingClientRect().right, range.getBoundingClientRect().right);
+    worst = Math.max(worst, right - Math.min(bar.right, window.innerWidth));
+  }
+  return worst;
+}"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_input_bar_controls_stay_inside_the_window_around_the_wrap_width():
+    """With two queued tracks, no input bar control or label runs past the bar
+    or the window at the widths around where the bar wraps (common.css)."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1100, "height": 700})
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            for source in ("https://example.com/a", "/music/b.wav"):
+                page.fill("#url-input", source)
+                page.click("#add-btn")
+            for width in (660, 700, 740, 770, 780, 800, 801, 1100):
+                page.set_viewport_size({"width": width, "height": 700})
+                assert page.evaluate(_OVERFLOW_JS) <= 0.5, width
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 class _PageUpdater:
     """Fake analyze_common.update.Updater: offers ``offer`` and fails the install
     once ``release`` is set."""
