@@ -69,12 +69,14 @@ function _saveSetting(name, value) {
 function _reRenderCharts() {
   if (lastData) {
     var data = lastData;
-    clearResults();
-    if (data.tracks) {
-      renderCompare(data);
-    } else {
-      renderSingle(data);
-    }
+    _redrawKeepingFocus(resultsEl, function () {
+      clearResults();
+      if (data.tracks) {
+        renderCompare(data);
+      } else {
+        renderSingle(data);
+      }
+    });
   }
 }
 
@@ -440,10 +442,10 @@ function _swapTracks(i, j) {
     var tt = lastData.tracks[i];
     lastData.tracks[i] = lastData.tracks[j];
     lastData.tracks[j] = tt;
-    updateCompareUI();
+    updateCompareUI({ from: i, to: j });
     _reRenderCharts();
   } else {
-    updateCompareUI();
+    updateCompareUI({ from: i, to: j });
   }
 
   var nextItems = trackList.querySelectorAll(".track-item");
@@ -475,11 +477,12 @@ function _sourceKind(source) {
   return /^https?:\/\//.test(source) ? "url" : "file";
 }
 
-function updateCompareUI() {
-  trackList.innerHTML = "";
+// move: {from, to} after a move swapped the tracks of those rows.
+function updateCompareUI(move) {
   const colors = getThemeColors().trackColors;
+  const rows = [];
   for (let i = 0; i < compareSources.length; i++) {
-    trackList.appendChild(_createTrackRow({
+    rows.push(_createTrackRow({
       index: i, count: compareSources.length, color: colors[i % colors.length],
       kind: _sourceKind(compareSources[i]), label: compareSources[i], busy: isBusy || _updateLocked,
     }, {
@@ -492,6 +495,7 @@ function updateCompareUI() {
       },
     }));
   }
+  _replaceTrackRows(trackList, rows, move);
   compareBar.style.display = compareSources.length > 0 ? "flex" : "none";
   if (!isBusy) submitBtn.textContent = _submitLabel();
 }
@@ -576,6 +580,7 @@ form.addEventListener("submit", async (e) => {
       lastDuration = body.duration || null;
       renderSingle(data);
     }
+    resultsEl.focus({ preventScroll: true });
   } catch (err) {
     if (err.name === "AbortError") {
       statusEl.textContent = window.i18n.t("status.cancelled");
@@ -704,6 +709,7 @@ loadBtn.addEventListener("click", async () => {
         lastDuration = null;
         statusEl.textContent = "";
         renderSingle(result.data);
+        resultsEl.focus({ preventScroll: true });
       }
       return;
     }
@@ -731,6 +737,7 @@ loadBtn.addEventListener("click", async () => {
       lastDuration = null;
       statusEl.textContent = "";
       renderSingle(result.data);
+      resultsEl.focus({ preventScroll: true });
     } else {
       _loadAddToQueue(src ? [src] : []);
     }
@@ -877,7 +884,6 @@ function renderSingle(data) {
   _addCanvasChart("Mid-High Detail", "280px", renderMidHigh, [data]);
 
   _setDisplayedSources([data.meta && data.meta.source]);
-  resultsEl.focus({ preventScroll: true });
 }
 
 function renderCompare(data) {
@@ -922,7 +928,6 @@ function renderCompare(data) {
   _setDisplayedSources(data.tracks.map(function(t) {
     return t.meta && t.meta.source;
   }));
-  resultsEl.focus({ preventScroll: true });
 }
 
 function renderMeta(meta) {

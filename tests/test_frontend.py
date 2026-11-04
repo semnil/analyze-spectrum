@@ -330,6 +330,57 @@ def test_input_bar_controls_stay_inside_the_window_around_the_wrap_width():
         server.server_close()
 
 
+_FOCUSED_ROW_BUTTON_JS = """() => {
+  const button = document.activeElement;
+  const row = button && button.closest(".track-item");
+  return row ? [Array.from(row.parentNode.children).indexOf(row), button.dataset.action] : null;
+}"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_queue_focus_keeps_its_place_across_redraws():
+    """A focused queue row button keeps the focus at its place when the rows
+    are redrawn on a system color scheme change under the auto theme, a
+    language switch and a remove; after a move it follows its track, and at
+    the top or the bottom the row itself takes it."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(color_scheme="light")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            for source in ("/music/a.wav", "/music/b.wav", "/music/c.wav", "/music/d.wav"):
+                page.fill("#url-input", source)
+                page.click("#add-btn")
+            queue = lambda: [s.rsplit("/", 1)[1][0] for s in page.evaluate("compareSources.slice()")]
+            page.locator(".track-item").nth(3).locator('[data-action="up"]').focus()
+            page.emulate_media(color_scheme="dark")
+            page.wait_for_function("document.documentElement.getAttribute('data-theme') === 'dark'")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [3, "up"]
+            page.evaluate("window.i18n.setLang('ja')")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [3, "up"]
+            for expected_queue, expected_focus in ((list("abdc"), [2, "up"]), (list("adbc"), [1, "up"]),
+                                                   (list("dabc"), [0, None]), (list("dabc"), [0, None])):
+                page.keyboard.press("Enter")
+                assert queue() == expected_queue
+                assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == expected_focus
+            page.evaluate("window.i18n.setLang('en')")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [0, None]
+            page.locator(".track-item").nth(2).locator('[data-action="down"]').focus()
+            page.keyboard.press("Space")
+            assert queue() == list("dacb")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [3, None]
+            page.locator(".track-item").nth(3).locator('[data-action="remove"]').focus()
+            page.keyboard.press("Enter")
+            assert queue() == list("dac")
+            assert page.evaluate(_FOCUSED_ROW_BUTTON_JS) == [2, "remove"]
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 class _PageUpdater:
     """Fake analyze_common.update.Updater: offers ``offer`` and fails the install
     once ``release`` is set."""
