@@ -236,6 +236,64 @@ def test_interactive_states_follow_stylesheet_order(scheme):
         server.server_close()
 
 
+_ROLE_FACES = {
+    "browse-btn": "--neutral-bg",
+    "clear-btn": "--neutral-bg",
+    "add-btn": "--add-bg",
+    "submit-btn": "--primary-bg",
+    "load-btn": "--load-bg",
+}
+_BACKGROUND_JS = "(id) => getComputedStyle(document.getElementById(id)).backgroundColor"
+
+
+def _luminance(css_rgb):
+    def channel(v):
+        v /= 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(v) for v in css_rgb[css_rgb.index("(") + 1:css_rgb.index(")")].split(",")[:3])
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_buttons_show_the_face_of_their_role(scheme):
+    """The input bar and compare bar buttons take their role's face from
+    common.css, Analyze and Add Track have a face no other button has, hover
+    lightens a face in the dark theme, and Browse and Load JSON carry an icon."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(color_scheme=scheme, reduced_motion="reduce")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            for source in ("https://example.com/a", "/music/b.wav"):
+                page.fill("#url-input", source)
+                page.click("#add-btn")
+            page.mouse.move(0, 0)
+            faces = {}
+            for button, var in _ROLE_FACES.items():
+                face = page.evaluate(_BACKGROUND_JS, button)
+                assert face != "rgba(0, 0, 0, 0)", button
+                assert face == page.evaluate(_RESOLVE_VAR_JS, var), button
+                faces[button] = face
+            for button in ("submit-btn", "add-btn"):
+                assert list(faces.values()).count(faces[button]) == 1, button
+            for button, face in faces.items():
+                page.hover("#" + button)
+                hovered = page.evaluate(_BACKGROUND_JS, button)
+                assert hovered != face, button
+                if scheme == "dark":
+                    assert _luminance(hovered) > _luminance(face), button
+                page.mouse.move(0, 0)
+            assert page.locator("#browse-btn > svg.inline-icon").count() == 1
+            assert page.locator("#load-btn > svg.inline-icon").count() == 1
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 class _PageUpdater:
     """Fake analyze_common.update.Updater: offers ``offer`` and fails the install
     once ``release`` is set."""

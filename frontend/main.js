@@ -53,6 +53,7 @@ function setThemeMode(mode) {
   _themeMode = mode;
   var wasDark = isDark();
   _applyTheme();
+  updateCompareUI();
   if (isDark() !== wasDark) _reRenderCharts();
   _saveSetting("theme", mode);
 }
@@ -145,6 +146,7 @@ window.i18n.onChange(function () {
   _applyTheme();
   _applyDropText();
   if (submitBtn) _applySubmitButton();
+  updateCompareUI();
   // Re-emit the active error so "Error: " prefix and Copy button follow
   // the new language without waiting for the next failure.
   if (_lastErrorMessage != null) showError(_lastErrorMessage);
@@ -157,6 +159,7 @@ if (window.matchMedia) {
     if (_themeMode === "auto") {
       var wasDark = isDark();
       _applyTheme();
+      updateCompareUI();
       if (isDark() !== wasDark) _reRenderCharts();
     }
   });
@@ -392,15 +395,13 @@ function setBusy(busy) {
   }
   submitBtn.disabled = false;
   // Update track remove / reorder buttons (disabled during processing)
-  document.querySelectorAll(".remove-track").forEach((btn) => {
-    btn.disabled = busy;
-  });
-  document.querySelectorAll(".reorder-track").forEach((btn) => {
-    if (btn.classList.contains("reorder-placeholder")) return;
+  trackList.querySelectorAll(".track-btn:not(.placeholder)").forEach((btn) => {
     btn.disabled = busy;
   });
 }
 _applySubmitButton();
+
+_applyButtonIcons();
 
 function _reserveButtonWidths() {
   _reserveButtonWidth(submitBtn, ["btn.analyze", "btn.compare", "btn.cancel"]);
@@ -468,67 +469,28 @@ function _flipTrackRow(el, prevRect) {
   });
 }
 
+// "url" for a source that is_url in analyze_common/download.py takes as a URL,
+// "file" for any other source.
+function _sourceKind(source) {
+  return /^https?:\/\//.test(source) ? "url" : "file";
+}
+
 function updateCompareUI() {
   trackList.innerHTML = "";
+  const colors = getThemeColors().trackColors;
   for (let i = 0; i < compareSources.length; i++) {
-    const item = document.createElement("div");
-    item.className = "track-item";
-    item.setAttribute("role", "listitem");
-    const swatch = document.createElement("span");
-    swatch.className = "legend-swatch";
-    swatch.style.background = getThemeColors().trackColors[i % TRACK_COLORS.length];
-    swatch.style.width = "20px";
-    swatch.style.height = "10px";
-    swatch.style.borderRadius = "2px";
-    item.appendChild(swatch);
-    const label = document.createElement("span");
-    label.className = "track-label";
-    label.textContent = compareSources[i];
-    item.appendChild(label);
-    const upBtn = document.createElement("button");
-    upBtn.type = "button";
-    upBtn.className = "reorder-track";
-    upBtn.textContent = "\u2191";
-    upBtn.setAttribute("aria-label", window.i18n.t("track.move_up_prefix") + compareSources[i] + window.i18n.t("track.move_up_suffix"));
-    if (i === 0) {
-      upBtn.classList.add("reorder-placeholder");
-      upBtn.disabled = true;
-      upBtn.setAttribute("aria-hidden", "true");
-      upBtn.tabIndex = -1;
-    } else {
-      upBtn.disabled = isBusy;
-    }
-    upBtn.addEventListener("click", () => _swapTracks(i, i - 1));
-    item.appendChild(upBtn);
-    const downBtn = document.createElement("button");
-    downBtn.type = "button";
-    downBtn.className = "reorder-track";
-    downBtn.textContent = "\u2193";
-    downBtn.setAttribute("aria-label", window.i18n.t("track.move_down_prefix") + compareSources[i] + window.i18n.t("track.move_down_suffix"));
-    if (i === compareSources.length - 1) {
-      downBtn.classList.add("reorder-placeholder");
-      downBtn.disabled = true;
-      downBtn.setAttribute("aria-hidden", "true");
-      downBtn.tabIndex = -1;
-    } else {
-      downBtn.disabled = isBusy;
-    }
-    downBtn.addEventListener("click", () => _swapTracks(i, i + 1));
-    item.appendChild(downBtn);
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "remove-track";
-    removeBtn.textContent = "\u00d7";
-    removeBtn.tabIndex = 0;
-    removeBtn.setAttribute("aria-label", window.i18n.t("track.remove_prefix") + compareSources[i] + window.i18n.t("track.remove_suffix"));
-    removeBtn.disabled = isBusy;
-    removeBtn.addEventListener("click", () => {
-      compareSources.splice(i, 1);
-      updateCompareUI();
-      _maybeInvalidateResults();
-    });
-    item.appendChild(removeBtn);
-    trackList.appendChild(item);
+    trackList.appendChild(_createTrackRow({
+      index: i, count: compareSources.length, color: colors[i % colors.length],
+      kind: _sourceKind(compareSources[i]), label: compareSources[i], busy: isBusy || _updateLocked,
+    }, {
+      up: () => _swapTracks(i, i - 1),
+      down: () => _swapTracks(i, i + 1),
+      remove: () => {
+        compareSources.splice(i, 1);
+        updateCompareUI();
+        _maybeInvalidateResults();
+      },
+    }));
   }
   compareBar.style.display = compareSources.length > 0 ? "flex" : "none";
   if (!isBusy) submitBtn.textContent = _submitLabel();
@@ -1639,8 +1601,8 @@ var _updateLocked = false;
 function _setUpdateLock(locked) {
   _updateLocked = locked;
   [urlInput, browseBtn, submitBtn, addBtn, loadBtn, clearBtn].forEach(function (control) { control.disabled = locked; });
-  document.querySelectorAll(".remove-track, .reorder-track, .save-btn").forEach(function (button) {
-    if (!button.classList.contains("reorder-placeholder")) button.disabled = locked;
+  document.querySelectorAll(".track-btn, .save-btn").forEach(function (button) {
+    if (!button.classList.contains("placeholder")) button.disabled = locked;
   });
   statusEl.classList.toggle("loading", locked);
   if (locked) statusEl.setAttribute("aria-busy", "true");

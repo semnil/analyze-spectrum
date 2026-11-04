@@ -121,20 +121,20 @@ def test_reordering_keeps_sources_rows_and_rendered_tracks_in_sync(page, tracks,
     page.evaluate("() => {compareSources = ['first.wav', 'second.wav']; updateCompareUI();}")
     if rendered:
         page.evaluate("data => renderCompare(data)", compare_tracks(tracks).to_dict())
-    page.locator(".track-item").first.locator(".reorder-track").nth(1).click()
+    page.locator(".track-item").first.locator(".track-btn").nth(1).click()
     assert page.evaluate("compareSources") == ["second.wav", "first.wav"]
     expect(page.locator(".track-label")).to_have_text(["second.wav", "first.wav"])
     if rendered:
         assert page.evaluate("lastData.tracks.map(track => track.label)") == ["Second", "First"]
         assert page.locator(".chart-title", has_text="Transfer Function").count() == 1
-    page.locator(".track-item").nth(1).locator(".reorder-track").first.click()
+    page.locator(".track-item").nth(1).locator(".track-btn").first.click()
     assert page.evaluate("compareSources") == ["first.wav", "second.wav"]
     expect(page.locator(".track-label")).to_have_text(["first.wav", "second.wav"])
     if rendered:
         assert page.evaluate("lastData.tracks.map(track => track.label)") == ["First", "Second"]
     page.wait_for_function("Array.from(document.querySelectorAll('.track-item')).every(el => el.style.transition === '')")
-    expect(page.locator(".track-item").first.locator(".reorder-track").first).to_be_disabled()
-    expect(page.locator(".track-item").last.locator(".reorder-track").nth(1)).to_be_disabled()
+    expect(page.locator(".track-item").first.locator(".track-btn").first).to_be_disabled()
+    expect(page.locator(".track-item").last.locator(".track-btn").nth(1)).to_be_disabled()
 
 
 def _drop(page, names):

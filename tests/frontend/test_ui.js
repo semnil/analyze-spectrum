@@ -166,11 +166,38 @@ function makeNdjsonResponse(type, data) {
 
   // Remove second track — remaining track stays in compareSources (no
   // auto-collapse).  Keeps the visual track list and internal state aligned.
-  var removeBtns = document.querySelectorAll(".remove-track");
+  var removeBtns = document.querySelectorAll(".track-btn.remove");
   removeBtns[1].click();
   assertEqual(compareSources.length, 1, "After removing one of two, one track remains");
   assertEqual(compareSources[0], "file_A.wav", "Remaining track is file_A");
   assertEqual(urlInput.value, "", "URL input untouched by remove");
+
+  // ================================================
+  suite("Queue rows: number, kind, button names and colors");
+  // ================================================
+
+  resetState();
+  setThemeMode("light");
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  addBtn.click();
+  urlInput.value = "/music/b.wav";
+  addBtn.click();
+  var queueRows = document.querySelectorAll("#track-list .track-item");
+  assertEqual(queueRows[0].querySelector(".track-num").textContent, "1", "First row shows track number 1");
+  assertEqual(queueRows[1].querySelector(".track-num").textContent, "2", "Second row shows track number 2");
+  assertEqual(queueRows[0].querySelector(".track-tag").textContent, "URL", "An http(s) source is tagged URL");
+  assertEqual(queueRows[1].querySelector(".track-tag").textContent, "FILE", "A path is tagged FILE");
+  assertEqual(queueRows[1].querySelector(".track-btn.remove").getAttribute("aria-label"), "Remove track 2",
+    "Remove button names its track number");
+  var firstSwatch = function () { return document.querySelector("#track-list .track-swatch").style.background; };
+  var lightSwatch = firstSwatch();
+  setThemeMode("dark");
+  assert(firstSwatch() !== lightSwatch, "Row colors follow a theme switch");
+  setThemeMode("light");
+  window.i18n.setLang("ja");
+  assertEqual(document.querySelector("#track-list .track-btn.remove").getAttribute("aria-label"), "トラック 1 を削除",
+    "Row button names follow a language switch");
+  window.i18n.setLang("en");
 
   // ================================================
   suite("Duplicate track rejected");
@@ -386,7 +413,7 @@ function makeNdjsonResponse(type, data) {
   // Delete B (index 1) — A stays in compareSources (no auto-collapse), so
   // the post-delete state matches what "1 track added" looks like.  Load
   // single JSON below should now behave identically to that case.
-  document.querySelectorAll(".remove-track")[1].click();
+  document.querySelectorAll(".track-btn.remove")[1].click();
   assertEqual(urlInput.value, "", "Setup: urlInput stays empty after remove");
   assertEqual(compareSources.length, 1, "Setup: A remains in compareSources");
   assertEqual(compareSources[0], "A.wav", "Setup: remaining track is A");
@@ -530,7 +557,7 @@ function makeNdjsonResponse(type, data) {
   assertEqual(compareSources.length, 2, "Setup: 2 tracks");
   urlInput.value = "C.wav";  // User is typing a third source
   // Remove B — should NOT overwrite urlInput
-  document.querySelectorAll(".remove-track")[1].click();
+  document.querySelectorAll(".track-btn.remove")[1].click();
   assertEqual(compareSources.length, 1, "1 track remains in compareSources");
   assertEqual(compareSources[0], "A.wav", "A.wav stays in track list");
   assertEqual(urlInput.value, "C.wav", "urlInput value preserved");
@@ -544,7 +571,7 @@ function makeNdjsonResponse(type, data) {
   urlInput.value = "B.wav"; addBtn.click();
   // urlInput is empty after second add. Auto-collapse was removed so the
   // remaining track stays visible in the queue.
-  document.querySelectorAll(".remove-track")[1].click();
+  document.querySelectorAll(".track-btn.remove")[1].click();
   assertEqual(compareSources.length, 1, "One track remains in queue");
   assertEqual(compareSources[0], "A.wav", "Remaining track is A");
   assertEqual(urlInput.value, "", "urlInput stays empty");
