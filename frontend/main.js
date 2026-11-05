@@ -995,7 +995,11 @@ function _addRow(table, cells, isHeader) {
     }
     row.appendChild(cell);
   }
-  table.appendChild(row);
+  _tableBody(table).appendChild(row);
+}
+
+function _tableBody(table) {
+  return table.tBodies[0] || table.createTBody();
 }
 
 function _fmtHz(val) {
@@ -1067,7 +1071,7 @@ function renderCompareSummary(tracks) {
         cell.textContent = spec.rows[r][ci];
         row.appendChild(cell);
       }
-      table.appendChild(row);
+      _tableBody(table).appendChild(row);
     }
     resultsEl.appendChild(table);
   }
