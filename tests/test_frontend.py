@@ -922,8 +922,8 @@ def test_settings_file_is_in_this_tests_temp_folder(_isolated_settings):
     assert _isolated_settings in _gui_module()._settings.path.parents
 
 
-_TABLE_FILL_JS = """() => {
-  const table = document.querySelector("#results .summary-table");
+_TABLE_FILL_JS = """(index) => {
+  const table = document.querySelectorAll("#results .summary-table")[index];
   const results = document.getElementById("results");
   table.scrollLeft = 40;
   return {
@@ -945,8 +945,8 @@ _LONG_LABEL_COMPARE_JS = (
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
 def test_summary_tables_fill_the_results_and_scroll_inside():
-    """A summary table's rows fill the results' width, and with labels too long
-    for that the table keeps that width and scrolls inside it."""
+    """A summary table's rows fill the results' width, long labels wrap inside
+    that width, and a table with no more room keeps it and scrolls inside."""
     server = _app_server("analyze_spectrum.gui")
     try:
         with sync_playwright() as p:
@@ -957,16 +957,20 @@ def test_summary_tables_fill_the_results_and_scroll_inside():
             for render in (_RENDER_JS["single"], _RENDER_JS["compare"]):
                 page.evaluate("clearResults()")
                 page.evaluate(render)
-                fill = page.evaluate(_TABLE_FILL_JS)
+                fill = page.evaluate(_TABLE_FILL_JS, 0)
                 assert fill["bodies"] == 1 and fill["rowsOutside"] == 0
                 assert abs(fill["tableWidth"] - fill["resultsWidth"]) < 1
                 assert abs(fill["bodyWidth"] - fill["tableWidth"]) < 1
             page.evaluate("clearResults()")
             page.evaluate(_LONG_LABEL_COMPARE_JS)
-            long_labels = page.evaluate(_TABLE_FILL_JS)
+            long_labels = page.evaluate(_TABLE_FILL_JS, 0)
             assert abs(long_labels["tableWidth"] - long_labels["resultsWidth"]) < 1
-            assert long_labels["bodyWidth"] > long_labels["tableWidth"]
-            assert long_labels["scrolled"] > 0
+            assert abs(long_labels["bodyWidth"] - long_labels["tableWidth"]) < 1
+            page.set_viewport_size({"width": 480, "height": 800})
+            narrow = page.evaluate(_TABLE_FILL_JS, 1)
+            assert abs(narrow["tableWidth"] - narrow["resultsWidth"]) < 1
+            assert narrow["bodyWidth"] > narrow["tableWidth"]
+            assert narrow["scrolled"] > 0
             browser.close()
     finally:
         server.shutdown()

@@ -117,6 +117,8 @@ h1 {
   text-align: left;
   font-weight: 600;
   color: var(--label-color);
+  min-width: 96px;
+  overflow-wrap: anywhere;
 }
 
 .has-tip {
@@ -126,6 +128,7 @@ h1 {
 }
 /* Chart containers */
 .eq-caption {
+  overflow-wrap: anywhere;
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
