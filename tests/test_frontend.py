@@ -418,6 +418,29 @@ def test_result_title_and_buttons_take_the_common_look(scheme):
 
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_first_tab_reaches_the_url_field_before_the_toolbar():
+    """The toolbar (language, theme, settings) follows the main content in
+    the document, so the first Tab from the page lands on the URL field and
+    the toolbar comes after the results."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.keyboard.press("Tab")
+            assert page.evaluate("document.activeElement.id") == "url-input"
+            assert page.evaluate(
+                "!!(document.querySelector('main').compareDocumentPosition(document.querySelector('.toolbar'))"
+                " & Node.DOCUMENT_POSITION_FOLLOWING)")
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
 def test_input_bar_controls_stay_inside_the_window_around_the_wrap_width():
     """With two queued tracks, no input bar control or label runs past the bar
     or the window at the widths around where the bar wraps (common.css)."""

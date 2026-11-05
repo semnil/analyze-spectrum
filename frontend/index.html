@@ -15,10 +15,6 @@
 <body>
   <header>
     <h1 data-i18n="app.title">Spectrum Analyzer</h1>
-    <div class="toolbar">
-      <button id="lang-toggle" class="lang-toggle" type="button" data-i18n-aria-label="lang.aria_toggle" aria-label="Switch language"></button>
-      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme"></button>
-    </div>
   </header>
 
   <main>
@@ -39,6 +35,11 @@
     <div id="status" role="status" aria-live="polite"></div>
     <div id="results" tabindex="-1"></div>
   </main>
+
+  <div class="toolbar">
+    <button id="lang-toggle" class="lang-toggle" type="button" data-i18n-aria-label="lang.aria_toggle" aria-label="Switch language"></button>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme"></button>
+  </div>
 
   <script src="vendor/uPlot.iife.min.js"></script>
   <script src="charts/spectrum.js"></script>
