@@ -76,3 +76,45 @@ def test_transfer_curve_and_eq_are_in_the_rendered_comparison_and_export(theme, 
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_chart_text_is_drawn_in_the_font_of_the_page(monkeypatch):
+    from playwright.sync_api import sync_playwright
+    from analyze_spectrum import gui
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    samples = np.random.default_rng(7).normal(0, 0.05, 12000)
+    tracks = [analyze_track(samples, label="Reference"), analyze_track(samples * 2, label="Louder")]
+    data = compare_tracks(tracks).to_dict()
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
+                page.add_init_script("""
+                    window.__chartFonts = new Map();
+                    const fillText = CanvasRenderingContext2D.prototype.fillText;
+                    CanvasRenderingContext2D.prototype.fillText = function (...args) {
+                        const fonts = window.__chartFonts.get(this.canvas) || new Set();
+                        window.__chartFonts.set(this.canvas, fonts.add(this.font));
+                        return fillText.apply(this, args);
+                    };
+                """)
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                page.evaluate("window.i18n.setLang('en')")
+                page.evaluate("data => { clearResults(); renderCompare(data); }", data)
+                page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+                fonts = page.evaluate("""() => Object.fromEntries(chartCanvasRefs.map(
+                    ref => [ref.title, Array.from(window.__chartFonts.get(ref.canvas) || [])]))""")
+                assert {"1/3 Octave Band Analysis", "Transfer Function", "Low-End Detail", "Mid-High Detail"} <= set(fonts)
+                for title, used in fonts.items():
+                    assert used, title
+                    assert all("Segoe UI" in font for font in used), (title, used)
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()

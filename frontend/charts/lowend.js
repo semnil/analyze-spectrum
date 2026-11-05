@@ -58,7 +58,7 @@ function renderLowEnd(canvas, tracks) {
 
     // Region label
     ctx.fillStyle = theme.textMuted;
-    ctx.font = "10px sans-serif";
+    ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(region.label, (x1 + x2) / 2, pad.top + 12);
   }
@@ -124,7 +124,7 @@ function renderLowEnd(canvas, tracks) {
       ctx.setLineDash([]);
 
       ctx.fillStyle = color;
-      ctx.font = "9px sans-serif";
+      ctx.font = "9px 'Segoe UI', 'Meiryo', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText("HPF " + Math.round(hpf) + "Hz", hx, pad.top + ph + 28);
     }
@@ -132,7 +132,7 @@ function renderLowEnd(canvas, tracks) {
 
   // X tick labels
   ctx.fillStyle = theme.textSecondary;
-  ctx.font = "10px sans-serif";
+  ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   for (var i = 0; i < fTicks.length; i++) {
     var x = pad.left + ((fTicks[i] - fMin) / fRange) * pw;
@@ -148,7 +148,7 @@ function renderLowEnd(canvas, tracks) {
 
   // Axis labels
   ctx.fillStyle = theme.text;
-  ctx.font = "12px sans-serif";
+  ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("Frequency (Hz)", w / 2, h - 6);
 
@@ -160,7 +160,7 @@ function renderLowEnd(canvas, tracks) {
 
   // Legend (if multi-track)
   if (tracks.length > 1) {
-    ctx.font = "10px sans-serif";
+    ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "right";
     for (var t = 0; t < tracks.length; t++) {
       var lx = w - pad.right - 8;
