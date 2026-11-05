@@ -864,14 +864,7 @@ function renderSingle(data) {
   resultsEl.className = "visible";
   chartCanvasRefs = [];
 
-  const titleRow = document.createElement("div");
-  titleRow.className = "title-row";
-
-  const titleEl = document.createElement("div");
-  titleEl.className = "result-title";
-  titleEl.textContent = data.label || window.i18n.t("result.analysis");
-  titleRow.appendChild(titleEl);
-
+  const titleRow = _createTitleRow(data.label || window.i18n.t("result.analysis"));
   appendSaveButtons(titleRow, data);
   resultsEl.appendChild(titleRow);
 
@@ -891,13 +884,7 @@ function renderCompare(data) {
   resultsEl.className = "visible";
   chartCanvasRefs = [];
 
-  const titleRow = document.createElement("div");
-  titleRow.className = "title-row";
-
-  const titleEl = document.createElement("div");
-  titleEl.className = "result-title";
-  titleEl.textContent = window.i18n.t("result.comparison");
-  titleRow.appendChild(titleEl);
+  const titleRow = _createTitleRow(window.i18n.t("result.comparison"));
 
   // Save Image only (no JSON save for compare mode)
   const saveImgBtn = document.createElement("button");
