@@ -974,6 +974,27 @@ def test_summary_tables_fill_the_results_and_scroll_inside():
 
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("width", [480, 1100])
+def test_long_track_labels_keep_the_page_inside_the_window(width):
+    """With very long unbroken track labels the page stays as wide as the
+    window: the chart legend's labels wrap and the summary tables scroll."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": width, "height": 800}, reduced_motion="reduce")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate(_LONG_LABEL_COMPARE_JS)
+            assert page.locator(".u-legend .u-label").count() > 0
+            assert page.evaluate("document.documentElement.scrollWidth") <= width
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
 def test_status_area_reserves_one_line():
     """The status area keeps common.css's height, so the results start at the
     same place in both GUIs."""

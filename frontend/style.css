@@ -270,6 +270,9 @@ h1 {
 .ctx-menu button:disabled { color: var(--text-muted); cursor: default; }
 .ctx-menu button:disabled:hover { background: none; }
 
+/* A chart legend's track label wraps at the chart's width. */
+.u-legend .u-label { overflow-wrap: anywhere; }
+
 /* uPlot dark mode overrides */
 [data-theme="dark"] .u-wrap { background: var(--bg-card); }
 [data-theme="dark"] .u-title { color: var(--text); }
