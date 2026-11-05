@@ -920,3 +920,21 @@ def test_failed_theme_save_shows_the_cause_and_keeps_the_theme(monkeypatch):
 
 def test_settings_file_is_in_this_tests_temp_folder(_isolated_settings):
     assert _isolated_settings in _gui_module()._settings.path.parents
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_status_area_reserves_one_line():
+    """The status area keeps common.css's height, so the results start at the
+    same place in both GUIs."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            assert page.evaluate("getComputedStyle(document.getElementById('status')).minHeight") == "20px"
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()

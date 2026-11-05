@@ -80,15 +80,6 @@ h1 {
 .input-bar input::placeholder { color: var(--text-muted); opacity: 1; }
 [data-theme="dark"] .input-bar input::placeholder { color: #a0a0b0; }
 
-#status {
-  text-align: center;
-  margin-bottom: 16px;
-  font-size: 14px;
-  color: var(--text-secondary);
-  min-height: 20px;
-  overflow-wrap: anywhere;
-}
-
 /* Summary table */
 .summary-table {
   width: 100%;
