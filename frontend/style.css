@@ -266,10 +266,10 @@ h1 {
 
 /* uPlot dark mode overrides */
 [data-theme="dark"] .u-wrap { background: var(--bg-card); }
-[data-theme="dark"] .u-title { color: var(--text) !important; }
+[data-theme="dark"] .u-title { color: var(--text); }
 [data-theme="dark"] .u-legend th,
-[data-theme="dark"] .u-legend td { color: var(--text-secondary) !important; }
-[data-theme="dark"] .u-series > * { color: var(--text-secondary) !important; }
+[data-theme="dark"] .u-legend td { color: var(--text-secondary); }
+[data-theme="dark"] .u-series > * { color: var(--text-secondary); }
 
 /* Narrow viewport: tighter page padding, scrollable summary tables and stacked chart pairs */
 @media (max-width: 768px) {
