@@ -1530,6 +1530,16 @@ window.addEventListener("drop", async (e) => {
   const files = Array.from(e.dataTransfer.files);
   if (!files.length) return;
 
+  // Nothing can start or edit the queue until the files are in.
+  setBusy(true);
+  try {
+    await _uploadDropped(files);
+  } finally {
+    setBusy(false);
+  }
+}, true);
+
+async function _uploadDropped(files) {
   const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
   for (const file of files) {
@@ -1564,10 +1574,12 @@ window.addEventListener("drop", async (e) => {
           _tryAddTrack(urlInput.value.trim());
           urlInput.value = result.path;
           updateCompareUI();
+          _maybeInvalidateResults();
           urlInput.focus();
         } else {
           compareSources.push(result.path);
           updateCompareUI();
+          _maybeInvalidateResults();
         }
         statusEl.textContent = window.i18n.t("status.file_loaded") + file.name;
       } else if (result.error) {
@@ -1579,7 +1591,7 @@ window.addEventListener("drop", async (e) => {
       continue;
     }
   }
-}, true);
+}
 
 // Remembers the last showError message so language toggles can retranslate
 // the "Error: " prefix and the Copy button label in place.
