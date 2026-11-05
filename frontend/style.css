@@ -5,7 +5,6 @@
   --accent: #1565C0;
   --accent-dark: #0D47A1;
   --focus-ring: #1565C0;
-  --h1-color: #1565C0;
   --label-color: #0D47A1;
   --border: #ddd;
   --border-light: #eee;
@@ -35,7 +34,6 @@
   --accent: #1565C0;
   --accent-dark: #0D47A1;
   --focus-ring: #64B5F6;
-  --h1-color: #64b5f6;
   --label-color: #64b5f6;
   --border: #2a2a4a;
   --border-light: #252545;
@@ -64,7 +62,7 @@ h1 {
   padding: 0 120px;
   font-size: 1.6rem;
   font-weight: 700;
-  color: var(--h1-color);
+  color: var(--title-accent);
 }
 
 /* Toolbar (lang + theme toggles) */

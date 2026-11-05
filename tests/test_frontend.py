@@ -319,6 +319,27 @@ def test_style_css_defines_the_same_variables_for_both_themes():
     assert "--result-title-fg" in names(root)
 
 
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_h1_wears_the_title_color_of_common_css(scheme):
+    """The h1 takes --title-accent from common.css, and style.css does not
+    redefine it."""
+    assert "--title-accent:" not in (_PROJECT_ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(color_scheme=scheme, reduced_motion="reduce")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            color = page.evaluate("getComputedStyle(document.querySelector('h1')).color")
+            assert color == page.evaluate(_RESOLVE_VAR_JS, "--title-accent")
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 _RESULT_ROW_JS = """() => {
   const row = document.querySelector("#results .title-row");
   const title = row.firstElementChild;
