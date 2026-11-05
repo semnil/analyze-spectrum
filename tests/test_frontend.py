@@ -920,3 +920,97 @@ def test_failed_theme_save_shows_the_cause_and_keeps_the_theme(monkeypatch):
 
 def test_settings_file_is_in_this_tests_temp_folder(_isolated_settings):
     assert _isolated_settings in _gui_module()._settings.path.parents
+
+
+_TABLE_FILL_JS = """(index) => {
+  const table = document.querySelectorAll("#results .summary-table")[index];
+  const results = document.getElementById("results");
+  table.scrollLeft = 40;
+  return {
+    bodies: table.tBodies.length,
+    rowsOutside: Array.from(table.children).filter((c) => c.tagName === "TR").length,
+    tableWidth: table.getBoundingClientRect().width,
+    bodyWidth: table.tBodies[0].getBoundingClientRect().width,
+    resultsWidth: results.clientWidth,
+    scrolled: table.scrollLeft,
+  };
+}"""
+_LONG_LABEL_COMPARE_JS = (
+    "(() => { const track = (i) => Object.assign(" + _TRACK_JS + ", "
+    "{label: 'https://example.com/' + i + '/' + 'a'.repeat(150)}); "
+    "renderCompare({tracks: [0, 1, 2, 3, 4, 5].map(track), transfer_functions: [], "
+    "meta: {version: '1', analyzed_at: '2026-01-01T00:00:00Z', sources: ['a', 'b', 'c', 'd', 'e', 'f']}}); })()"
+)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_summary_tables_fill_the_results_and_scroll_inside():
+    """A summary table's rows fill the results' width, long labels wrap inside
+    that width, and a table with no more room keeps it and scrolls inside."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1100, "height": 800}, reduced_motion="reduce")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            for render in (_RENDER_JS["single"], _RENDER_JS["compare"]):
+                page.evaluate("clearResults()")
+                page.evaluate(render)
+                fill = page.evaluate(_TABLE_FILL_JS, 0)
+                assert fill["bodies"] == 1 and fill["rowsOutside"] == 0
+                assert abs(fill["tableWidth"] - fill["resultsWidth"]) < 1
+                assert abs(fill["bodyWidth"] - fill["tableWidth"]) < 1
+            page.evaluate("clearResults()")
+            page.evaluate(_LONG_LABEL_COMPARE_JS)
+            long_labels = page.evaluate(_TABLE_FILL_JS, 0)
+            assert abs(long_labels["tableWidth"] - long_labels["resultsWidth"]) < 1
+            assert abs(long_labels["bodyWidth"] - long_labels["tableWidth"]) < 1
+            page.set_viewport_size({"width": 480, "height": 800})
+            narrow = page.evaluate(_TABLE_FILL_JS, 1)
+            assert abs(narrow["tableWidth"] - narrow["resultsWidth"]) < 1
+            assert narrow["bodyWidth"] > narrow["tableWidth"]
+            assert narrow["scrolled"] > 0
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("width", [480, 1100])
+def test_long_track_labels_keep_the_page_inside_the_window(width):
+    """With very long unbroken track labels the page stays as wide as the
+    window: the chart legend's labels wrap and the summary tables scroll."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": width, "height": 800}, reduced_motion="reduce")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate(_LONG_LABEL_COMPARE_JS)
+            assert page.locator(".u-legend .u-label").count() > 0
+            assert page.evaluate("document.documentElement.scrollWidth") <= width
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_status_area_reserves_one_line():
+    """The status area keeps common.css's height, so the results start at the
+    same place in both GUIs."""
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            assert page.evaluate("getComputedStyle(document.getElementById('status')).minHeight") == "20px"
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()

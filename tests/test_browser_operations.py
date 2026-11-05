@@ -208,6 +208,76 @@ def test_file_drop_reports_upload_failures_without_adding_a_track(page, status, 
     assert page.evaluate("compareSources") == []
 
 
+_VALUE_CELLS_REACHED_JS = """() => Array.from(document.querySelectorAll('#results .summary-table tr')).flatMap((row) =>
+  Array.from(row.children).filter((cell) => !cell.classList.contains('label-cell') && cell.cellIndex > 0).map((cell) => {
+    cell.scrollIntoView({inline: 'center', block: 'center'});
+    const box = cell.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === cell;
+  }))"""
+
+
+@pytest.mark.parametrize("width", [480, 1100])
+def test_long_track_labels_leave_the_values_readable(page, width):
+    """With very long unbroken track labels and an estimated EQ the page stays as
+    wide as the window, and the label column hides no value."""
+    samples = np.random.default_rng(7).normal(0, 0.05, 48000)
+    long_label = "https://example.com/" + "a" * 200
+    data = compare_tracks([analyze_track(samples, label=long_label + "1"),
+                           analyze_track(samples * 2, label=long_label + "2")]).to_dict()
+    page.set_viewport_size({"width": width, "height": 800})
+    page.evaluate("data => renderCompare(data)", data)
+    assert page.locator(".eq-caption").count() > 0
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+    reached = page.evaluate(_VALUE_CELLS_REACHED_JS)
+    assert reached and all(reached)
+
+
+def test_track_labels_keep_a_readable_width_in_a_narrow_window(page):
+    """In a 480 px window the label column of the summary tables does not get
+    narrower than 96 px, however little room the values leave."""
+    samples = np.random.default_rng(7).normal(0, 0.05, 48000)
+    names = ["recording_final_mix_v2.wav", "master_for_streaming.flac", "vocal.wav"]
+    data = compare_tracks([analyze_track(samples * (i + 1), label=name) for i, name in enumerate(names)]).to_dict()
+    page.set_viewport_size({"width": 480, "height": 800})
+    page.evaluate("data => renderCompare(data)", data)
+    widths = page.eval_on_selector_all(".summary-table td.label-cell", "cells => cells.map(c => c.getBoundingClientRect().width)")
+    assert widths and min(widths) >= 96
+
+
+_COMPARISON_ON_SCREEN_JS = """(data) => { compareSources.push('A', 'B'); updateCompareUI(); renderCompare(data);
+  _setDisplayedSources(['A', 'B']); }"""
+
+
+def test_dropped_files_hold_the_page_and_drop_a_comparison(page, tracks):
+    """The page is busy until the files are in, and files joining the track list
+    drop the comparison on screen, whose tracks are no longer the list's."""
+    page.evaluate(_COMPARISON_ON_SCREEN_JS, compare_tracks(tracks).to_dict())
+    held = []
+    page.route("**/upload", lambda route: held.append(route))
+    with page.expect_request("**/upload"):
+        _drop(page, ["c.wav", "d.wav"])
+    assert page.evaluate("isBusy")
+    expect(page.locator("#add-btn")).to_be_disabled()
+    assert page.evaluate("lastData !== null")
+    with page.expect_request("**/upload"):
+        held.pop().fulfill(json={"uploaded": True, "path": "/tmp/up/c.wav"})
+    page.wait_for_function("compareSources.length === 3")
+    assert page.evaluate("lastData") is None
+    held.pop().fulfill(json={"uploaded": True, "path": "/tmp/up/d.wav"})
+    page.wait_for_function("!isBusy && compareSources.length === 4")
+    expect(page.locator("#add-btn")).to_be_enabled()
+
+
+def test_a_failed_upload_frees_the_page_and_keeps_the_comparison(page, tracks):
+    page.evaluate(_COMPARISON_ON_SCREEN_JS, compare_tracks(tracks).to_dict())
+    page.route("**/upload", lambda route: route.fulfill(status=400, json={"error": "Unsupported file type: .txt"}))
+    _drop(page, ["notes.txt", "more.txt"])
+    expect(page.locator("#status")).to_contain_text(".txt")
+    page.wait_for_function("!isBusy")
+    expect(page.locator("#add-btn")).to_be_enabled()
+    assert page.evaluate("lastData !== null")
+
+
 @pytest.mark.parametrize("status,body,expected", [
     (200, {"saved": True, "path": "/saved/image.png"}, "/saved/image.png"),
     (200, {"saved": False}, ""),
