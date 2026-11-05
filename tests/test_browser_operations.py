@@ -232,6 +232,29 @@ def test_long_track_labels_leave_the_values_readable(page, width):
     assert reached and all(reached)
 
 
+_LABEL_CELLS_STATE_JS = """() => {
+  const results = document.getElementById('results');
+  const box = results.getBoundingClientRect();
+  const firstCell = document.querySelector('.summary-table td.label-cell');
+  const chain = [];
+  for (let el = firstCell; el; el = el.parentElement) {
+    const style = getComputedStyle(el);
+    chain.push([el.tagName, el.className, style.display, style.visibility, Math.round(el.getBoundingClientRect().width)]);
+  }
+  return {
+    widths: Array.from(document.querySelectorAll('.summary-table td.label-cell')).map(c => c.getBoundingClientRect().width),
+    resultsClass: results.className,
+    resultsDisplay: getComputedStyle(results).display,
+    resultsBox: [box.width, box.height],
+    window: [window.innerWidth, window.innerHeight, window.devicePixelRatio],
+    visibility: document.visibilityState,
+    readyState: document.readyState,
+    sheets: Array.from(document.styleSheets).map(s => s.href && s.href.split('/').pop()),
+    chain,
+  };
+}"""
+
+
 def test_track_labels_keep_a_readable_width_in_a_narrow_window(page):
     """In a 480 px window the label column of the summary tables does not get
     narrower than 96 px, however little room the values leave."""
@@ -240,8 +263,8 @@ def test_track_labels_keep_a_readable_width_in_a_narrow_window(page):
     data = compare_tracks([analyze_track(samples * (i + 1), label=name) for i, name in enumerate(names)]).to_dict()
     page.set_viewport_size({"width": 480, "height": 800})
     page.evaluate("data => renderCompare(data)", data)
-    widths = page.eval_on_selector_all(".summary-table td.label-cell", "cells => cells.map(c => c.getBoundingClientRect().width)")
-    assert widths and min(widths) >= 96
+    state = page.evaluate(_LABEL_CELLS_STATE_JS)
+    assert state["widths"] and min(state["widths"]) >= 96, json.dumps(state)
 
 
 _COMPARISON_ON_SCREEN_JS = """(data) => { compareSources.push('A', 'B'); updateCompareUI(); renderCompare(data);
