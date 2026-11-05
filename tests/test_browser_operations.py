@@ -243,6 +243,53 @@ def test_image_save_sends_a_png_and_reports_the_outcome(page, tracks, status, bo
         expect(page.locator("#status")).to_have_text("")
 
 
+@pytest.mark.parametrize("button", [0, 1], ids=["save_json", "save_image"])
+@pytest.mark.parametrize("before", ["saved", "error"])
+def test_cancelling_a_save_empties_the_status_line(page, tracks, button, before):
+    """A cancelled file dialog leaves an empty status line that is not an error
+    and stays empty across a language switch, whatever the line said before; an
+    error reply still shows the error."""
+    page.evaluate("data => renderSingle(data)", tracks[0].to_dict())
+    reply = {"saved": True, "path": "/saved/result"}
+    for path in ("/save", "/save-image"):
+        page.route("**" + path, lambda route: route.fulfill(json=reply))
+    save = page.locator(".save-btn").nth(button)
+    status = page.locator("#status")
+    if before == "saved":
+        save.click()
+        expect(status).to_contain_text("/saved/result")
+    else:
+        page.evaluate("showError('HTTP Error 403: Forbidden')")
+        expect(status.locator(".copy-btn")).to_have_count(1)
+    reply.clear()
+    reply["saved"] = False
+    save.click()
+    expect(status).to_have_text("")
+    expect(status).to_have_attribute("role", "status")
+    assert not page.evaluate("document.getElementById('status').classList.contains('error')")
+    page.evaluate("window.i18n.setLang('ja')")
+    expect(status).to_have_text("")
+    reply["error"] = "disk full"
+    save.click()
+    expect(status).to_contain_text("disk full")
+    expect(status).to_have_attribute("role", "alert")
+
+
+def test_cancelling_a_running_save_keeps_the_update_line(page, tracks):
+    """When an update began while a save's file dialog was open, cancelling the
+    dialog leaves the update's status line."""
+    data = tracks[0].to_dict()
+    page.evaluate("data => renderSingle(data)", data)
+    held = []
+    page.route("**/save", lambda route: held.append(route))
+    with page.expect_request("**/save"):
+        page.evaluate("data => { window.running = saveResult(data); }", data)
+    page.evaluate("_setUpdateLock(true); statusEl.textContent = 'Downloading';")
+    held[0].fulfill(json={"saved": False})
+    page.evaluate("window.running")
+    expect(page.locator("#status")).to_have_text("Downloading")
+
+
 @pytest.mark.parametrize("status,body,expected", [
     (200, {"selected": True, "path": "/selected/audio.wav"}, "/selected/audio.wav"),
     (200, {"selected": False}, None),
