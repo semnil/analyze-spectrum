@@ -275,19 +275,32 @@ def test_cancelling_a_save_empties_the_status_line(page, tracks, button, before)
     expect(status).to_have_attribute("role", "alert")
 
 
-def test_cancelling_a_running_save_keeps_the_update_line(page, tracks):
-    """When an update began while a save's file dialog was open, cancelling the
-    dialog leaves the update's status line."""
+@pytest.mark.parametrize("save", ["saveResult", "saveImage"])
+@pytest.mark.parametrize("write,line,error", [
+    ("_setUpdateLock(true); statusEl.textContent = 'Downloading';", "Downloading", False),
+    ("showError('Settings could not be saved');", "Settings could not be saved", True),
+], ids=["update", "error"])
+def test_cancelling_a_save_keeps_a_line_written_after_it_began(page, tracks, save, write, line, error):
+    """When another line reaches the status while a save's file dialog is open,
+    cancelling the dialog leaves that line; an error stays an error, also across
+    a language switch."""
     data = tracks[0].to_dict()
     page.evaluate("data => renderSingle(data)", data)
     held = []
-    page.route("**/save", lambda route: held.append(route))
-    with page.expect_request("**/save"):
-        page.evaluate("data => { window.running = saveResult(data); }", data)
-    page.evaluate("_setUpdateLock(true); statusEl.textContent = 'Downloading';")
+    for path in ("/save", "/save-image"):
+        page.route("**" + path, lambda route: held.append(route))
+    with page.expect_request(lambda request: "/save" in request.url):
+        page.evaluate("([name, data]) => { window.running = window[name](data); }", [save, data])
+    page.evaluate(write)
     held[0].fulfill(json={"saved": False})
     page.evaluate("window.running")
-    expect(page.locator("#status")).to_have_text("Downloading")
+    status = page.locator("#status")
+    expect(status).to_contain_text(line)
+    if error:
+        expect(status).to_have_attribute("role", "alert")
+        expect(status.locator(".copy-btn")).to_have_count(1)
+        page.evaluate("window.i18n.setLang('ja')")
+        expect(status).to_contain_text(line)
 
 
 @pytest.mark.parametrize("status,body,expected", [
