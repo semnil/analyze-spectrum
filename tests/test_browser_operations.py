@@ -243,6 +243,89 @@ def test_image_save_sends_a_png_and_reports_the_outcome(page, tracks, status, bo
         expect(page.locator("#status")).to_have_text("")
 
 
+@pytest.mark.parametrize("button", [0, 1], ids=["save_json", "save_image"])
+@pytest.mark.parametrize("before", ["saved", "error"])
+def test_cancelling_a_save_empties_the_status_line(page, tracks, button, before):
+    """A cancelled file dialog leaves an empty status line that is not an error
+    and stays empty across a language switch, whatever the line said before; an
+    error reply still shows the error."""
+    page.evaluate("data => renderSingle(data)", tracks[0].to_dict())
+    reply = {"saved": True, "path": "/saved/result"}
+    for path in ("/save", "/save-image"):
+        page.route("**" + path, lambda route: route.fulfill(json=reply))
+    save = page.locator(".save-btn").nth(button)
+    status = page.locator("#status")
+    if before == "saved":
+        save.click()
+        expect(status).to_contain_text("/saved/result")
+    else:
+        page.evaluate("showError('HTTP Error 403: Forbidden')")
+        expect(status.locator(".copy-btn")).to_have_count(1)
+    reply.clear()
+    reply["saved"] = False
+    save.click()
+    expect(status).to_have_text("")
+    expect(status).to_have_attribute("role", "status")
+    assert not page.evaluate("document.getElementById('status').classList.contains('error')")
+    page.evaluate("window.i18n.setLang('ja')")
+    expect(status).to_have_text("")
+    reply["error"] = "disk full"
+    save.click()
+    expect(status).to_contain_text("disk full")
+    expect(status).to_have_attribute("role", "alert")
+
+
+@pytest.mark.parametrize("save", ["saveResult", "saveImage"])
+@pytest.mark.parametrize("before,write,line,error", [
+    ("", "_setUpdateLock(true); statusEl.textContent = 'Downloading';", "Downloading", False),
+    ("", "showError('Settings could not be saved');", "Settings could not be saved", True),
+    ("showError('Settings could not be saved');", "showError('Settings could not be saved');",
+     "Settings could not be saved", True),
+], ids=["update", "error", "same_error"])
+def test_cancelling_a_save_keeps_a_line_written_after_it_began(page, tracks, save, before, write, line, error):
+    """When another line reaches the status while a save's file dialog is open,
+    cancelling the dialog leaves that line; an error stays an error, also across
+    a language switch."""
+    data = tracks[0].to_dict()
+    page.evaluate("data => renderSingle(data)", data)
+    if before:
+        page.evaluate(before)
+    held = []
+    for path in ("/save", "/save-image"):
+        page.route("**" + path, lambda route: held.append(route))
+    with page.expect_request(lambda request: "/save" in request.url):
+        page.evaluate("([name, data]) => { window.running = window[name](data); }", [save, data])
+    page.evaluate(write)
+    held[0].fulfill(json={"saved": False})
+    page.evaluate("window.running")
+    status = page.locator("#status")
+    expect(status).to_contain_text(line)
+    if error:
+        expect(status).to_have_attribute("role", "alert")
+        expect(status.locator(".copy-btn")).to_have_count(1)
+        page.evaluate("window.i18n.setLang('ja')")
+        expect(status).to_contain_text(line)
+
+
+def test_cancelling_a_save_empties_an_error_whose_copy_label_came_back(page, tracks):
+    """The Copy label changing back while a save's file dialog is open is not a
+    new line: cancelling the dialog empties the error."""
+    _clipboard(page)
+    page.evaluate("data => renderSingle(data)", tracks[0].to_dict())
+    page.evaluate("showError('HTTP Error 403: Forbidden')")
+    copy = page.locator("#status .copy-btn")
+    label = copy.text_content()
+    copy.click()
+    expect(copy).not_to_have_text(label)
+    held = []
+    page.route("**/save", lambda route: held.append(route))
+    with page.expect_request("**/save"):
+        page.locator(".save-btn").nth(0).click()
+    expect(copy).to_have_text(label)
+    held[0].fulfill(json={"saved": False})
+    expect(page.locator("#status")).to_have_text("")
+
+
 @pytest.mark.parametrize("status,body,expected", [
     (200, {"selected": True, "path": "/selected/audio.wav"}, "/selected/audio.wav"),
     (200, {"selected": False}, None),
