@@ -118,25 +118,33 @@ def test_context_menu_disables_unavailable_actions(page, clipboard):
     expect(items.nth(3)).to_be_enabled()
 
 
-@pytest.mark.parametrize("rendered", [True, False])
-def test_reordering_keeps_sources_rows_and_rendered_tracks_in_sync(page, tracks, rendered):
+def test_reordering_keeps_sources_and_rows_in_sync(page):
     page.evaluate("() => {compareSources = ['first.wav', 'second.wav']; updateCompareUI();}")
-    if rendered:
-        page.evaluate("data => renderCompare(data)", compare_tracks(tracks).to_dict())
     page.locator(".track-item").first.locator(".track-btn").nth(1).click()
     assert page.evaluate("compareSources") == ["second.wav", "first.wav"]
     expect(page.locator(".track-label")).to_have_text(["second.wav", "first.wav"])
-    if rendered:
-        assert page.evaluate("lastData.tracks.map(track => track.label)") == ["Second", "First"]
-        assert page.locator(".chart-title", has_text="Transfer Function").count() == 1
     page.locator(".track-item").nth(1).locator(".track-btn").first.click()
     assert page.evaluate("compareSources") == ["first.wav", "second.wav"]
     expect(page.locator(".track-label")).to_have_text(["first.wav", "second.wav"])
-    if rendered:
-        assert page.evaluate("lastData.tracks.map(track => track.label)") == ["First", "Second"]
     page.wait_for_function("Array.from(document.querySelectorAll('.track-item')).every(el => el.style.transition === '')")
     expect(page.locator(".track-item").first.locator(".track-btn").first).to_be_disabled()
     expect(page.locator(".track-item").last.locator(".track-btn").nth(1)).to_be_disabled()
+
+
+def test_moving_a_track_clears_the_comparison_on_screen(page, tracks):
+    page.evaluate("() => {compareSources = ['first.wav', 'second.wav']; updateCompareUI();}")
+    data = compare_tracks(tracks).to_dict()
+    data["tracks"][0]["meta"] = {"source": "first.wav"}
+    data["tracks"][1]["meta"] = {"source": "second.wav"}
+    page.evaluate("data => renderCompare(data)", data)
+    # The comparison stays while the queue holds its tracks in its order.
+    page.evaluate("_maybeInvalidateResults()")
+    assert page.locator(".chart-title", has_text="Transfer Function").count() == 1
+    page.locator(".track-item").first.locator(".track-btn").nth(1).click()
+    assert page.evaluate("compareSources") == ["second.wav", "first.wav"]
+    expect(page.locator(".track-label")).to_have_text(["second.wav", "first.wav"])
+    assert page.evaluate("lastData") is None
+    assert page.evaluate("resultsEl.childElementCount") == 0
 
 
 def _drop(page, names):
