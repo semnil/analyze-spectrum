@@ -292,3 +292,78 @@ def test_truncated_text_keeps_whole_characters(monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_marker_labels_take_a_second_row_and_are_left_out_when_they_do_not_fit(monkeypatch):
+    from playwright.sync_api import sync_playwright
+    from analyze_spectrum import gui
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    samples = np.random.default_rng(7).normal(0, 0.05, 12000)
+    base = compare_tracks([analyze_track(samples, label=name) for name in "ABCD"]).to_dict()
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 1200, "height": 900}, locale="en-US")
+                page.add_init_script(_TEXT_RECORDER)
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                page.evaluate("window.i18n.setLang('en')")
+
+                def draw(hf, hpf):
+                    return page.evaluate("""({data, hf, hpf}) => {
+                        data.tracks.forEach((track, i) => {
+                            track.summary.hf_rolloff_hz = hf[i] ?? null;
+                            track.summary.hpf_3db_hz = hpf[i] ?? null;
+                        });
+                        window.__texts.length = 0;
+                        window.__lines.length = 0;
+                        clearResults();
+                        renderCompare(data);
+                        const rows = {};
+                        for (const ref of chartCanvasRefs) {
+                            const texts = window.__texts.filter(t => t.canvas === ref.canvas);
+                            const labels = texts.filter(t => /^(HF|HPF) /.test(t.text));
+                            if (labels.length) rows[ref.title] = {
+                                labels: labels.map(t => ({text: t.text, y: t.y, x0: t.x0, x1: t.x1, y0: t.y0, y1: t.y1})),
+                                others: texts.filter(t => !/^(HF|HPF) /.test(t.text)).map(t => ({x0: t.x0, x1: t.x1, y0: t.y0, y1: t.y1})),
+                                bottom: ref.canvas.clientHeight,
+                            };
+                        }
+                        return rows;
+                    }""", {"data": base, "hf": hf, "hpf": hpf})
+
+                def assert_clear(row):
+                    every = row["labels"] + row["others"]
+                    for label in row["labels"]:
+                        assert label["y1"] <= row["bottom"]
+                        for other in every:
+                            if other is not label:
+                                assert not (min(label["x1"], other["x1"]) > max(label["x0"], other["x0"])
+                                            and min(label["y1"], other["y1"]) > max(label["y0"], other["y0"])), (label, other)
+
+                apart = draw([13000, 16800], [59, 117])
+                assert [label["text"] for label in apart["Mid-High Detail"]["labels"]] == ["HF 13.0kHz", "HF 16.8kHz"]
+                assert len({label["y"] for label in apart["Mid-High Detail"]["labels"]}) == 1
+                assert [label["text"] for label in apart["Low-End Detail"]["labels"]] == ["HPF 59Hz", "HPF 117Hz"]
+                assert len({label["y"] for label in apart["Low-End Detail"]["labels"]}) == 1
+
+                near = draw([16800, 18700, 17000, 17500], [82, 94, 88, 90])
+                for title, count in (("Mid-High Detail", 2), ("Low-End Detail", 2)):
+                    row = near[title]
+                    assert len(row["labels"]) == count, row["labels"]
+                    assert len({label["y"] for label in row["labels"]}) == 2
+                    assert_clear(row)
+
+                # At the middle of Mid-High Detail's log axis the second row would reach the axis title.
+                at_title = draw([3100, 3200], [])["Mid-High Detail"]
+                assert [label["text"] for label in at_title["labels"]] == ["HF 3.1kHz"]
+                assert_clear(at_title)
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()

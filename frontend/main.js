@@ -1271,6 +1271,23 @@ function _calcColWidths(header, w) {
   return Array(header.length).fill(colW);
 }
 
+// Marker labels below a chart's x axis, in the markers' order: on the first row, or on the second row when they would
+// come within 4 px of a label there. A label that fits on neither, or would reach the axis title on the second row, is
+// not drawn; its marker line and the summary table still show the value.
+function _drawMarkerLabels(ctx, markers, y, titleSpan) {
+  const rows = [[], [titleSpan]];
+  ctx.textAlign = "center";
+  for (const marker of markers) {
+    const half = ctx.measureText(marker.text).width / 2;
+    const span = [marker.x - half, marker.x + half];
+    const row = rows.findIndex(taken => taken.every(other => span[1] + 4 <= other[0] || other[1] + 4 <= span[0]));
+    if (row < 0) continue;
+    rows[row].push(span);
+    ctx.fillStyle = marker.color;
+    ctx.fillText(marker.text, marker.x, y + row * 11);
+  }
+}
+
 function _truncText(ctx, text, maxW) {
   if (ctx.measureText(text).width <= maxW) return text;
   var t = text;

@@ -92,6 +92,7 @@ function renderMidHigh(canvas, tracks) {
   }
 
   // Plot each track
+  var markers = [];
   for (var t = 0; t < tracks.length; t++) {
     var freqs = tracks[t].spectrum.freqs;
     var psd = tracks[t].spectrum.psd_db;
@@ -129,11 +130,8 @@ function renderMidHigh(canvas, tracks) {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = color;
-      ctx.font = "9px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
-      ctx.textAlign = "center";
       var label = hfr >= 1000 ? (hfr / 1000).toFixed(1) + "kHz" : Math.round(hfr) + "Hz";
-      ctx.fillText("HF " + label, hx, pad.top + ph + 28);
+      markers.push({ text: "HF " + label, x: hx, color: color });
     }
   }
 
@@ -158,12 +156,16 @@ function renderMidHigh(canvas, tracks) {
   ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("Frequency (Hz)", w / 2, h - 6);
+  var titleHalf = ctx.measureText("Frequency (Hz)").width / 2;
 
   ctx.save();
   ctx.translate(14, pad.top + ph / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.fillText("Power (dB)", 0, 0);
   ctx.restore();
+
+  ctx.font = "9px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  _drawMarkerLabels(ctx, markers, pad.top + ph + 28, [w / 2 - titleHalf, w / 2 + titleHalf]);
 
   // Legend (if multi-track)
   if (tracks.length > 1) {
