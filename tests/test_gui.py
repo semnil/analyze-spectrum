@@ -681,6 +681,13 @@ class TestUiSettingsEndpoints:
         _mock_webview.main()
         assert shown == [_mock_webview.webview.create_window.return_value]
 
+    def test_quit_runs_the_atexit_cleanup(self, _mock_webview, monkeypatch):
+        watch = MagicMock()
+        monkeypatch.setattr(_mock_webview, "hold_instance_mutex", lambda name: None)
+        monkeypatch.setattr(_mock_webview, "run_atexit_on_app_quit", watch)
+        _mock_webview.main()
+        watch.assert_called_once_with()
+
 
 class TestUpdateConfig:
     def test_public_key_is_a_raw_ed25519_key(self):
