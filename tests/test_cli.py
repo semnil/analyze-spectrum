@@ -54,9 +54,20 @@ class TestCliRun:
         assert json.loads((out / "analysis_2.json").read_text()) == data
         assert data["meta"]["schema_version"] == SCHEMA_VERSION
         assert data["meta"]["source"] == wav_file
+        assert data["meta"]["duration_min"] == 0.005
         assert data["duration_sec"] == pytest.approx(0.3, abs=0.001)
         assert data["label"] == "test_440hz"
         assert all((out / name).read_text() == "keep" for name in ("analysis.json", "analysis_1.json"))
+
+    def test_full_length_json_records_no_duration(self, wav_file, capsys):
+        import json
+        from analyze_spectrum.cli import main
+
+        assert main([wav_file, "--json"]) == 0
+        printed = capsys.readouterr()
+        data = json.loads(printed.out[printed.out.index("{"):])
+        assert data["duration_sec"] == pytest.approx(0.5, abs=0.001)
+        assert "duration_min" not in data["meta"]
 
     @pytest.mark.parametrize("duration", ["0", "-1", "nan", "inf", "-inf", "abc"])
     def test_invalid_duration_starts_no_work(self, duration):

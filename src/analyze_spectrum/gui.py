@@ -480,7 +480,7 @@ class AnalyzeHandler(GuiHandler):
             del stereo
 
         result_dict = result.to_dict()
-        result_dict["meta"] = _make_meta(source)
+        result_dict["meta"] = _make_meta(source, duration_min)
         _cache_put(source, duration_min, result_dict)
         self._send_event("result", data=result_dict)
 
@@ -522,7 +522,7 @@ class AnalyzeHandler(GuiHandler):
                     del stereo
 
                     rd = result.to_dict()
-                    rd["meta"] = _make_meta(source)
+                    rd["meta"] = _make_meta(source, duration_min)
                     _cache_put(source, duration_min, rd)
                     track_dicts[i] = rd
 
@@ -705,11 +705,16 @@ class AnalyzeHandler(GuiHandler):
         it, but is NOT written to _cache_dir — we do not want to persist
         user-supplied payloads (which may be large or out-of-spec) across
         app restarts or pollute disk as the user browses files.
+
+        A result that records meta.duration_min stays out: the key has no
+        duration, and a lookup under it asks for the whole source.
         """
         if "spectrum" not in data:
             return
         meta = data.get("meta")
         if not isinstance(meta, dict):
+            return
+        if meta.get("duration_min") is not None:
             return
         src = meta.get("source")
         if not isinstance(src, str) or not src:

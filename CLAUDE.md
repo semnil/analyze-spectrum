@@ -224,7 +224,7 @@ With `--js-coverage=PATH`, `tests/js_coverage.py` starts V8's precise coverage o
 | `/compare` | POST | Multi-track comparison analysis. NDJSON stream. Each track is cached individually, and only the uncached ones are analyzed. The transfer functions are recomputed with `_transfer_functions_from_dicts()` |
 | `/save` | POST | Saves the single-analysis result JSON through a native dialog. With the `source` + `duration` parameters, copies directly from the cache file (no re-serialization needed). No JSON save in comparison mode (image only) |
 | `/save-image` | POST | Saves the composite PNG (base64) of the charts |
-| `/load` | POST | Loads single-analysis JSON (compare JSON is rejected). Supports selecting multiple files (`allow_multiple=True`). A single file missing fields needed for drawing (`missing_result_fields()`) returns the `schema_outdated` flag. Only the ones with all fields present are registered in the cache. 400 if `meta.schema_version` is not an integer |
+| `/load` | POST | Loads single-analysis JSON (compare JSON is rejected). Supports selecting multiple files (`allow_multiple=True`). A single file missing fields needed for drawing (`missing_result_fields()`) returns the `schema_outdated` flag. Only the ones with all fields present and no `meta.duration_min` are registered in the cache. 400 if `meta.schema_version` is not an integer |
 | `/browse` | POST | Selects a local audio file through a native dialog |
 | `/upload` | POST | Temporarily saves a dragged-and-dropped file (octet-stream, up to 500MB) |
 | `/common/settings.js` | GET | Returns py-analyze-common's `settings.js` preceded by the theme and language saved in the settings file (`window.analyzeSettingsStored`). Reads the settings file on every load (`Cache-Control: no-store`) |
@@ -405,7 +405,7 @@ A session-scoped cache avoids re-analyzing the same source.
 - **Single analysis**: the `/analyze` result is saved as a temp JSON. A repeated request is answered from the cache
 - **Comparison analysis**: `/compare` looks up the cache per track. Only the uncached ones are analyzed, and the transfer functions are recomputed from all tracks' dicts with `_transfer_functions_from_dicts()`
 - **Save optimization**: when `/save` receives `source` + `duration` from the frontend, it copies the cache file directly (avoiding re-serialization)
-- **Load → cache registration**: data loaded with `/load` (only the ones with all the fields needed for drawing) is registered in the cache, in memory, and reused by a later analysis or Compare, at its own length unless the session has already analyzed the source. Save does not read it
+- **Load → cache registration**: data loaded with `/load` (only the ones with all the fields needed for drawing and no `meta.duration_min`) is registered in the cache, in memory, and reused by a later analysis or Compare, at its own length unless the session has already analyzed the source. Save does not read it
 - **Frontend state tracking**: `lastSource` and `lastDuration` keep the most recent analysis context, used for the cache lookup on Save
 
 ### White-flash prevention
@@ -430,6 +430,7 @@ The single source of truth is `SCHEMA_VERSION` (an integer) in `src/analyze_spec
 
 - `meta.version`: the app version (for display)
 - `meta.schema_version`: the schema version. `/load` only validates that it is an integer (it may be absent), and does not judge compatibility by its value
+- `meta.duration_min`: the minutes `--duration` asked for. Absent on a full-length analysis. `/load` keeps a result that has it out of the cache ([Result cache (GUI)](#result-cache-gui))
 - Compatibility is **judged by whether fields exist, not by the version number**. The single source of truth for the list of fields needed for drawing is `missing_result_fields()` in `analysis.py`, which looks at `spectrum.freqs` / `spectrum.psd_db` / `bands.centers` / `bands.energy_db` / each band of `summary.band_energy`. Missing numeric metrics are not covered (the screen shows them as `?`)
 - A single file with missing fields returns the `schema_outdated` flag and is not registered in the cache (re-analysis gets the latest format). In a multiple-file load too, the ones with missing fields are not registered in the cache
 - Saving and loading Compare JSON has been removed (single analysis results only)

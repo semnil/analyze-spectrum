@@ -14,12 +14,19 @@ __version__ = "1.5.0"
 SCHEMA_VERSION = 1
 
 
-def make_meta(source: str) -> dict:
-    """Build the shared meta payload attached to single/compare JSON output."""
+def make_meta(source: str, duration_min: float | None = None) -> dict:
+    """Build the shared meta payload attached to single/compare JSON output.
+
+    duration_min is the length in minutes the analysis was asked to cut out of
+    the middle of the source; a full-length analysis has no such field.
+    """
     from datetime import datetime, timezone
-    return {
+    meta = {
         "schema_version": SCHEMA_VERSION,
         "version": __version__,
         "analyzed_at": datetime.now(timezone.utc).isoformat(),
         "source": source,
     }
+    if duration_min is not None:
+        meta["duration_min"] = duration_min
+    return meta

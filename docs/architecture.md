@@ -221,7 +221,7 @@ sequenceDiagram
 A session-scoped cache avoids re-analyzing the same source.
 The cache is created with `tempfile.mkdtemp()` and deleted when the process exits (session-only).
 
-A JSON read with Load JSON joins the cache in memory under its source with no duration, whatever its `duration_sec` (`_cache_loaded()`), and results the session analyzed itself are looked up first. So a JSON the CLI saved with `--duration` answers a later analysis of that source, and its track in a comparison, with that shorter range, unless the session has already analyzed the source.
+A JSON read with Load JSON joins the cache in memory under its source with no duration (`_cache_loaded()`), and results the session analyzed itself are looked up first. A JSON that records `meta.duration_min` (the CLI's `--duration`) stays out of the cache, so a later analysis of its source, and its track in a comparison, are of the full length. A JSON saved by a version that did not record it joins the cache whatever its `duration_sec`, and answers them with its shorter range unless the session has already analyzed the source.
 
 ```mermaid
 flowchart TD

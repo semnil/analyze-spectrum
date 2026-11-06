@@ -221,7 +221,7 @@ sequenceDiagram
 セッション内キャッシュにより同一ソースの再解析を回避する。
 キャッシュは `tempfile.mkdtemp()` に作成し、プロセス終了時に削除 (session-only)。
 
-Load JSON で読んだ JSON は、`duration_sec` によらず、音源をキーに、長さの指定なしでメモリ上のキャッシュに入る (`_cache_loaded()`)。同じ起動の間に自分で分析した結果を先に探す。そのため、CLI が `--duration` で保存した JSON は、その音源をまだ分析していなければ、あとの分析と比較のトラックに、短い範囲のまま答える。
+Load JSON で読んだ JSON は、音源をキーに、長さの指定なしでメモリ上のキャッシュに入る (`_cache_loaded()`)。同じ起動の間に自分で分析した結果を先に探す。`meta.duration_min` (CLI の `--duration`) を記録した JSON はキャッシュに入らないので、あとの分析と比較のトラックは全尺になる。これを記録しない版で保存した JSON は、`duration_sec` によらずキャッシュに入り、その音源をまだ分析していなければ、短い範囲のまま答える。
 
 ```mermaid
 flowchart TD
