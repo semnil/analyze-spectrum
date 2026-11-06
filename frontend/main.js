@@ -1282,11 +1282,28 @@ function _calcColWidths(header, w) {
   return Array(header.length).fill(colW);
 }
 
+// Marker labels below a chart's x axis, in the markers' order: on the first row, or on the second row when they would
+// come within 4 px of a label there. A label that fits on neither, or would reach the axis title on the second row, is
+// not drawn; its marker line and the summary table still show the value.
+function _drawMarkerLabels(ctx, markers, y, titleSpan) {
+  const rows = [[], [titleSpan]];
+  ctx.textAlign = "center";
+  for (const marker of markers) {
+    const half = ctx.measureText(marker.text).width / 2;
+    const span = [marker.x - half, marker.x + half];
+    const row = rows.findIndex(taken => taken.every(other => span[1] + 4 <= other[0] || other[1] + 4 <= span[0]));
+    if (row < 0) continue;
+    rows[row].push(span);
+    ctx.fillStyle = marker.color;
+    ctx.fillText(marker.text, marker.x, y + row * 11);
+  }
+}
+
 function _truncText(ctx, text, maxW) {
   if (ctx.measureText(text).width <= maxW) return text;
   var t = text;
   while (t.length > 0 && ctx.measureText(t + "...").width > maxW) {
-    t = t.slice(0, -1);
+    t = Array.from(t).slice(0, -1).join("");
   }
   return t + "...";
 }
@@ -1295,7 +1312,7 @@ function _drawTable(ctx, x0, y, w, header, rows, dark) {
   const colWidths = _calcColWidths(header, w);
   const ROW_H = 26;
   const CELL_PAD = 6;
-  const FONT = "13px 'Segoe UI', 'Meiryo', sans-serif";
+  const FONT = "13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   const BOLD = "bold " + FONT;
   const lineColor = dark ? "#2a4a6a" : "#90CAF9";
   const totalH = ROW_H * (1 + rows.length);
@@ -1423,7 +1440,7 @@ function captureImage(data) {
 
   const title = data.label || (data.tracks ? window.i18n.t("result.comparison") : window.i18n.t("result.analysis"));
   ctx.fillStyle = dark ? "#64b5f6" : "#1565C0";
-  ctx.font = "bold 18px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "bold 18px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(title, W / 2, y + 18);
 
@@ -1431,7 +1448,7 @@ function captureImage(data) {
   var ver = (data.meta && data.meta.version) || "";
   if (ver) {
     ctx.fillStyle = dark ? "#555" : "#bbb";
-    ctx.font = "11px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "11px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "right";
     ctx.fillText("analyze-spectrum v" + ver, W - PAD, y + 14);
   }
@@ -1446,7 +1463,7 @@ function captureImage(data) {
   for (const { canvas, w, h, title } of chartSizes) {
     // Draw chart title
     ctx.fillStyle = dark ? "#e0e0e0" : "#333";
-    ctx.font = "bold 14px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "bold 14px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(window.i18n.t(title), W / 2, y + 16);
     y += TITLE_H;
@@ -1459,20 +1476,20 @@ function captureImage(data) {
 
     if (title === "Transfer Function" && eqTables.length > 0) {
       ctx.fillStyle = dark ? "#e0e0e0" : "#333";
-      ctx.font = "bold 14px 'Segoe UI', 'Meiryo', sans-serif";
+      ctx.font = "bold 14px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(window.i18n.t("Estimated EQ"), W / 2, y + 16);
       y += 24;
       for (const spec of eqTables) {
         ctx.fillStyle = dark ? "#e0e0e0" : "#333";
-        ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.font = "bold 13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
         ctx.fillText(spec.caption, PAD, y + 16);
         y += EQ_CAPTION_H;
         if (spec.header) y = _drawTable(ctx, PAD, y, W - PAD * 2, spec.header, spec.rows, dark);
         ctx.fillStyle = dark ? "#aaa" : "#707070";
-        ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
         ctx.fillText(spec.note, PAD, y + 15);

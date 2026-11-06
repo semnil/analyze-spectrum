@@ -58,7 +58,7 @@ function renderLowEnd(canvas, tracks) {
 
     // Region label
     ctx.fillStyle = theme.textMuted;
-    ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(region.label, (x1 + x2) / 2, pad.top + 12);
   }
@@ -86,6 +86,7 @@ function renderLowEnd(canvas, tracks) {
   }
 
   // Plot each track
+  var markers = [];
   for (var t = 0; t < tracks.length; t++) {
     var freqs = tracks[t].spectrum.freqs;
     var psd = tracks[t].spectrum.psd_db;
@@ -123,16 +124,13 @@ function renderLowEnd(canvas, tracks) {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = color;
-      ctx.font = "9px 'Segoe UI', 'Meiryo', sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("HPF " + Math.round(hpf) + "Hz", hx, pad.top + ph + 28);
+      markers.push({ text: "HPF " + Math.round(hpf) + "Hz", x: hx, color: color });
     }
   }
 
   // X tick labels
   ctx.fillStyle = theme.textSecondary;
-  ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   for (var i = 0; i < fTicks.length; i++) {
     var x = pad.left + ((fTicks[i] - fMin) / fRange) * pw;
@@ -148,9 +146,10 @@ function renderLowEnd(canvas, tracks) {
 
   // Axis labels
   ctx.fillStyle = theme.text;
-  ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("Frequency (Hz)", w / 2, h - 6);
+  var titleHalf = ctx.measureText("Frequency (Hz)").width / 2;
 
   ctx.save();
   ctx.translate(14, pad.top + ph / 2);
@@ -158,13 +157,16 @@ function renderLowEnd(canvas, tracks) {
   ctx.fillText("Power (dB)", 0, 0);
   ctx.restore();
 
+  ctx.font = "9px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  _drawMarkerLabels(ctx, markers, pad.top + ph + 28, [w / 2 - titleHalf, w / 2 + titleHalf]);
+
   // Legend (if multi-track)
   if (tracks.length > 1) {
-    ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "right";
     for (var t = 0; t < tracks.length; t++) {
       var lx = w - pad.right - 8;
-      var ly = pad.top + 14 + t * 14;
+      var ly = pad.top + 28 + t * 14;
       ctx.strokeStyle = theme.trackColors[t % theme.trackColors.length];
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -172,7 +174,7 @@ function renderLowEnd(canvas, tracks) {
       ctx.lineTo(lx, ly - 4);
       ctx.stroke();
       ctx.fillStyle = theme.text;
-      ctx.fillText(tracks[t].label, lx - 16, ly);
+      ctx.fillText(_truncText(ctx, tracks[t].label, pw - 32), lx - 16, ly);
     }
   }
 }
