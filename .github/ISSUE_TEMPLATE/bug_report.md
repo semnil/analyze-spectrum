@@ -27,7 +27,7 @@ If applicable, add screenshots to help explain your problem.
 **Environment**  
  - OS: [e.g. Windows 11, macOS 26]
  - Form: [GUI app or CLI]
- - Version: [the application version in the settings dialog of the GUI app]
+ - Version: [the application version in the settings dialog of the GUI app, or `analyze-spectrum --version`]
 
 **Additional context**  
 Add any other context about the problem here.

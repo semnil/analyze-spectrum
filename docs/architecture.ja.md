@@ -295,6 +295,7 @@ stateDiagram-v2
     Idle --> Analyzing : Submit (実効トラック数 = 1)
     Idle --> Comparing : Submit (実効トラック数 >= 2)
     Idle --> Loading : Load JSON
+    Idle --> Uploading : ファイルをドロップ
 
     Analyzing --> Idle : 結果を受信
     Analyzing --> Idle : ユーザーがキャンセル (AbortController)
@@ -310,12 +311,14 @@ stateDiagram-v2
     Loading --> Idle : 旧スキーマ (ソースが無い、エラーを表示)
     Loading --> Error : 読み込みに失敗
 
+    Uploading --> Idle : アップロードが終わった、または失敗した
+
     Error --> Idle : ユーザーの操作
 
     state Idle {
         [*] --> NoResults
         NoResults --> HasResults : 結果を描画
-        HasResults --> NoResults : Clear All
+        HasResults --> NoResults : Clear All、または待ち行列と合わなくなった
     }
 
     note right of Idle : Submit 時に urlInput pending を compareSources に統合してモード判定
@@ -325,7 +328,7 @@ stateDiagram-v2
 
 ### キャンセル
 
-処理中にユーザーが Cancel ボタンをクリックすると:
+分析または比較の間にユーザーが Cancel ボタンをクリックすると:
 
 1. **フロントエンド**: `AbortController.abort()` が fetch の `signal` 経由でストリーム読み取りを中断
 2. **バックエンド**: 次の `_send_event()` 呼び出しが `BrokenPipeError` か別の `OSError` を受けて `_ClientDisconnected` を上げ、処理が終わる
@@ -596,7 +599,7 @@ graph LR
 ### ビルド・配布
 
 - ビルド時アセット: uPlot と macOS の ffmpeg / ffprobe はリポジトリの SHA-256 (`build_assets/checksums.json`、`build_assets/ffmpeg.json`) と照合する。Windows の ffmpeg / ffprobe (BtbN の `latest` にある固定した系列のビルド) と deno (最新リリース) は固定しない
-- リリースのジョブは Python パッケージをハッシュで固定した `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg は `.github/workflows/release.yaml` の SHA-256 と照合したアーカイブから入れる
+- リリースのジョブは Python パッケージをハッシュで固定した `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg は `.github/workflows/release.yaml` の SHA-256 と照合したダウンロードから入れる
 - Frozen build は `_MEIPASS/bin` を `PATH` の先頭に置く
 - 自動更新の取得物は Ed25519 の署名をアプリに組み込んだ公開鍵で検証してから適用する ([自動更新](#自動更新))
 
@@ -643,10 +646,10 @@ scipy.signal.welch は内部でセグメント数 × 周波数ビンの中間配
 | `tests/test_ffmpeg_binary.py` | integration | PATH の ffmpeg / ffprobe をアプリの PCM 変換と ffprobe の読み取りで確かめる (`EXPECT_FFMPEG_DIR` で同梱バイナリを指定) |
 | `tests/test_release_workflow.py` | unit | `.github/workflows/release.yaml` が配布物に入った ffmpeg / ffprobe に `tests/test_ffmpeg_binary.py` を通すこと、書き込めるのは `create-release` だけでそこでは Python を動かさないこと、更新用の署名鍵を持つジョブは読み取り権限だけでハッシュで固定した yt-dlp だけを入れること、Developer ID の署名 ID を codesign の直前に取り込み、codesign の終わりに消すこと、リリースのジョブがパッケージを `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg を SHA-256 を照合してから入れること、`requirements/release.txt` が `pyproject.toml` を満たすこと、各 `requirements/*.txt` を自分の固定値を制約にして解き直すと、ちょうどそのファイルが固定しているパッケージに、同じ環境マーカー (どの OS で入れるかの条件) でなること (テストは py-analyze-common の `analyze_common.testing.release_workflow`) |
 | `tests/test_third_party_licenses.py` | unit | `THIRD_PARTY_LICENSES.txt` が指す GNU General Public License (GPL) の全文と、それを同梱する spec / `installer.iss` (`analyze_common.testing.third_party_licenses`) |
-| `tests/test_yt_dlp_ejs.py` | unit | 入っている yt-dlp-ejs の版 (major.minor) と台本のハッシュが、入っている yt-dlp の受け付けるものであること (`analyze_common.testing.yt_dlp_ejs`) |
-| `tests/test_frontend.py` | end-to-end (e2e) | Playwright headless Chromium runner。実際の `frontend/index.html` で更新の確認・承認・失敗・設定の保存と、テーマと言語の保存・次の起動での復元を通す |
+| `tests/test_yt_dlp_ejs.py` | unit | 入っている yt-dlp-ejs の版 (major.minor) とスクリプトのハッシュが、入っている yt-dlp の受け付けるものであること (`analyze_common.testing.yt_dlp_ejs`) |
+| `tests/test_frontend.py` | end-to-end (e2e) | Playwright headless Chromium runner。実際の `frontend/index.html` で更新の確認・承認・失敗・設定の保存と、テーマと言語の保存・次の起動での復元を通す。`h1` の色、結果のタイトル行、最初の Tab、集計表の幅、長いトラック名、ステータス行も確かめる |
 | `tests/test_chart_rendering.py` | e2e | 実際のブラウザーのスクリプトでの比較チャートと Portable Network Graphics (PNG) の書き出し |
-| `tests/test_browser_operations.py` | e2e | アプリのページを通したコンテキストメニューの編集とキーボード操作、トラックの並べ替え、ファイルのドロップ、画像の保存、ファイルの選択 |
+| `tests/test_browser_operations.py` | e2e | アプリのページを通したコンテキストメニューの編集とキーボード操作、トラックの並べ替え、ファイルのドロップ、結果の保存、ファイルの選択 |
 | `tests/frontend/test_ui.js` | browser | フロントエンド UI 状態テスト |
 | `tests/js_coverage.py` | tool | `--js-coverage=PATH` を付けたとき、Playwright のテストが動かした `frontend/*.js` の V8 のカバレッジを LCOV で書き出す |
 | `tests/test_js_coverage.py` | unit | `tests/js_coverage.py` が V8 の範囲を行に対応させる方法と、書き出す LCOV |

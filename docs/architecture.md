@@ -295,6 +295,7 @@ stateDiagram-v2
     Idle --> Analyzing : Submit (effective tracks = 1)
     Idle --> Comparing : Submit (effective tracks >= 2)
     Idle --> Loading : Load JSON
+    Idle --> Uploading : Drop files
 
     Analyzing --> Idle : Result received
     Analyzing --> Idle : User cancels (AbortController)
@@ -310,12 +311,14 @@ stateDiagram-v2
     Loading --> Idle : Schema outdated (source unavailable, error shown)
     Loading --> Error : Load failed
 
+    Uploading --> Idle : Upload finished or failed
+
     Error --> Idle : User action
 
     state Idle {
         [*] --> NoResults
         NoResults --> HasResults : Result rendered
-        HasResults --> NoResults : Clear All
+        HasResults --> NoResults : Clear All, or the queue no longer matches
     }
 
     note right of Idle : On Submit, merge the pending urlInput into compareSources and decide the mode
@@ -325,7 +328,7 @@ stateDiagram-v2
 
 ### Cancel
 
-When the user clicks the Cancel button during processing:
+When the user clicks the Cancel button during an analysis or a comparison:
 
 1. **Frontend**: `AbortController.abort()` aborts the stream read through fetch's `signal`
 2. **Backend**: the next `_send_event()` call gets `BrokenPipeError` or another `OSError`, raises `_ClientDisconnected`, and the processing ends
@@ -596,7 +599,7 @@ graph LR
 ### Build and distribution
 
 - Build-time assets: uPlot and the macOS ffmpeg / ffprobe are checked against SHA-256 values in the repository (`build_assets/checksums.json`, `build_assets/ffmpeg.json`). The Windows ffmpeg / ffprobe (the pinned series' build in BtbN's `latest`) and deno (its latest release) are not pinned
-- The release jobs install Python packages only from the hash-pinned `requirements/*.txt`, and Inno Setup / create-dmg from archives checked against SHA-256 in `.github/workflows/release.yaml`
+- The release jobs install Python packages only from the hash-pinned `requirements/*.txt`, and Inno Setup / create-dmg from downloads checked against SHA-256 in `.github/workflows/release.yaml`
 - The frozen build puts `_MEIPASS/bin` at the front of `PATH`
 - What auto-update fetches is applied only after its Ed25519 signature is verified with the public key built into the app ([Auto-update](#auto-update))
 
@@ -644,9 +647,9 @@ are averaged into the final result. The frequency resolution does not change.
 | `tests/test_release_workflow.py` | unit | That `.github/workflows/release.yaml` runs `tests/test_ffmpeg_binary.py` on the ffmpeg / ffprobe in the distributed files, that only `create-release` can write and it runs no Python, that the job holding the update signing key has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity is imported right before codesign and deleted when codesign ends, that the release jobs install packages only from `requirements/*.txt` and Inno Setup / create-dmg only after a SHA-256 check, that `requirements/release.txt` satisfies `pyproject.toml`, and that every `requirements/*.txt` resolves, with its own pins as constraints, to exactly the packages it pins under the same environment markers (the tests are py-analyze-common's `analyze_common.testing.release_workflow`) |
 | `tests/test_third_party_licenses.py` | unit | The full GNU General Public License (GPL) texts that `THIRD_PARTY_LICENSES.txt` points at, and the spec / `installer.iss` that bundle them (`analyze_common.testing.third_party_licenses`) |
 | `tests/test_yt_dlp_ejs.py` | unit | That the installed yt-dlp-ejs has the version (major.minor) and the script hashes the installed yt-dlp accepts (`analyze_common.testing.yt_dlp_ejs`) |
-| `tests/test_frontend.py` | end-to-end (e2e) | Playwright headless Chromium runner. Runs the update check, approval, failure and settings save, and saving the theme and language and restoring them on the next launch, on the actual `frontend/index.html` |
+| `tests/test_frontend.py` | end-to-end (e2e) | Playwright headless Chromium runner. Runs the update check, approval, failure and settings save, and saving the theme and language and restoring them on the next launch, on the actual `frontend/index.html`, and the `h1` color, the result title row, the first Tab, the summary tables' width, long track labels and the status line |
 | `tests/test_chart_rendering.py` | e2e | The comparison charts and their Portable Network Graphics (PNG) export with the real browser scripts |
-| `tests/test_browser_operations.py` | e2e | Context menu editing and keyboard navigation, track ordering, file drops, image saving and file selection through the app's page |
+| `tests/test_browser_operations.py` | e2e | Context menu editing and keyboard navigation, track ordering, file drops, saving results and file selection through the app's page |
 | `tests/frontend/test_ui.js` | browser | Frontend UI state tests |
 | `tests/js_coverage.py` | tool | With `--js-coverage=PATH`, the V8 coverage of `frontend/*.js` that the Playwright tests run, written as LCOV |
 | `tests/test_js_coverage.py` | unit | `tests/js_coverage.py`: matching V8 ranges to lines, and the LCOV it writes |

@@ -133,7 +133,7 @@ graph LR
     root --> r_gpl["licenses/<br>the full texts of GPL v2 / v3 (pointed at by the FFmpeg section of THIRD_PARTY_LICENSES.txt.<br>The spec bundles them at the same level)"]
     root --> ba_pin["build_assets/ffmpeg.json<br>the series of the bundled ffmpeg / ffprobe, and the URL and SHA256 of the macOS builds"]
     root --> ba_sum["build_assets/checksums.json<br>the version and SHA256 of the bundled uPlot files"]
-    root --> ba_icon["build_assets/icon_draft.svg<br>the source of icon.ico / icon.png / icon.iconset (python -m analyze_common.icons)"]
+    root --> ba_icon["build_assets/icon_draft.svg<br>the source of icon.ico / icon.png / icon.iconset (PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.icons build_assets)"]
     root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (not tracked by git)"]
 ```
 
