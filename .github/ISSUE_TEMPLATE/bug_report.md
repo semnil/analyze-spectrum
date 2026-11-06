@@ -1,5 +1,5 @@
 ---
-name: Bug report / バグレポート
+name: Bug report
 about: Create a report to help us improve
 title: ''
 labels: ''
@@ -7,26 +7,27 @@ assignees: ''
 
 ---
 
-**Describe the bug / バグの詳細**  
+<!-- 日本語で構いません。 -->
+
+**Describe the bug**  
 A clear and concise description of what the bug is.
 
-**To Reproduce / 再現手順**  
+**To reproduce**  
 Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+1. Enter or open '...'
+2. Press '...'
+3. See the error
 
-**Expected behavior / 期待する動作**  
+**Expected behavior**  
 A clear and concise description of what you expected to happen.
 
-**Screenshots / スクリーンショット**  
+**Screenshots**  
 If applicable, add screenshots to help explain your problem.
 
-**Environment / 動作環境 (please complete the following information):**  
- - OS: [e.g. Windows, macOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+**Environment**  
+ - OS: [e.g. Windows 11, macOS 26]
+ - Form: [GUI app or CLI]
+ - Version: [the application version in the settings dialog of the GUI app, or `analyze-spectrum --version`]
 
-**Additional context / 追加の情報**  
+**Additional context**  
 Add any other context about the problem here.

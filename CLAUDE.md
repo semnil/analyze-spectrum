@@ -27,7 +27,7 @@ The analysis pipeline:
 
 1. **PCM extraction**: mono (`pan=mono|c0=0.5*c0+0.5*c1`, level-preserving) + stereo (for True Peak)
 2. **Welch PSD**: `scipy.signal.welch(data, fs=48000, nperseg=4096, noverlap=2048)`
-3. **1/3-octave band analysis**: 25Hz-10kHz (27 bands); the low-frequency bands (25-40Hz) are estimated by PSD interpolation
+3. **1/3-octave band analysis**: 25Hz-10kHz (27 bands); a band with no FFT bin (40Hz with these parameters) is estimated by PSD interpolation
 4. **Band energy**: Sub (20-80Hz), Low (80-200Hz), Low-Mid (200-500Hz), Mid (500-2kHz), Presence (2-5kHz), Air (5-10kHz)
 5. **Level metrics**: RMS (dBFS), True Peak (dBTP, ITU-R BS.1770 4x oversampling), Crest Factor
 6. **Low/Intelligibility ratio**: `10*log10(E[20-200Hz] / E[1-5kHz])`
@@ -71,8 +71,8 @@ graph LR
     ght --> ght_sh["workflow-checks-test.sh<br>a test that runs workflow-checks.yml with a fake gh and fixture git trees"]
     ght --> ght_am["dependabot-auto-merge-test.sh<br>a test that dependabot-auto-merge.yml runs on every PR, with only its stages limited to Dependabot PRs,<br>and of which updates and commits (their authors, how many, whether the last is the head, who committed it, whether its signature is verified)<br>its stage schedules or turns off an auto-merge for, with a fake gh"]
     ght --> ght_tag["tag-release-test.sh<br>a test that runs tag-release.yml's check and tag stages with a fake gh and a fixture repository"]
-    root --> r_dep[".github/dependabot.yml<br>version updates every day at 00:00 JST of the GitHub Actions, the py-analyze-common submodule<br>(without Dependabot's default three-day cooldown) and the Python dependencies (uv;<br>yt-dlp and yt-dlp-ejs in one pull request, pyobjc-core and pyobjc-framework-* in another)"]
     ght --> ght_land["ffmpeg-watch-land-test.sh<br>a test that runs ffmpeg-watch.yml's land stage with a fake gh that answers by the token of each call and a fixture repository"]
+    root --> r_dep[".github/dependabot.yml<br>version updates every day at 00:00 JST of the GitHub Actions, the py-analyze-common submodule<br>(without Dependabot's default three-day cooldown) and the Python dependencies (uv;<br>yt-dlp and yt-dlp-ejs in one pull request, pyobjc-core and pyobjc-framework-* in another)"]
     root --> r_claude["CLAUDE.md"]
     root --> r_readme["README.md"]
     root --> r_readme_ja["README.ja.md"]
@@ -107,12 +107,14 @@ graph LR
     t --> t_cli["test_cli.py"]
     t --> t_gui["test_gui.py"]
     t --> t_int["test_integration.py<br>HTTP integration tests (real HTTPServer, no pywebview)"]
+    t --> t_cache["test_cache_failures.py<br>cache fallback and failed analyses through the real HTTP handler"]
     t --> t_dlg["test_dialog_busy.py<br>mutual exclusion of native dialogs (_dialog_lock)"]
     t --> t_ffb["test_ffmpeg_binary.py<br>checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading<br>(EXPECT_FFMPEG_DIR selects the bundled binaries)"]
     t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe in the distributed files,<br>that only create-release can write and it runs no Python, that the job holding the update signing key<br>has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity<br>is imported right before codesign and deleted when codesign ends, that the release jobs install<br>packages only from requirements/*.txt and build tools only after a SHA256 check,<br>that requirements/release.txt satisfies pyproject.toml, and that every requirements/*.txt resolves, with its own pins as constraints,<br>to exactly the packages it pins under the same environment markers<br>(runs py-analyze-common's analyze_common.testing.release_workflow)"]
     t --> t_tpl["test_third_party_licenses.py<br>the full GPL texts that THIRD_PARTY_LICENSES.txt points at,<br>and the spec / installer.iss that bundle them (runs analyze_common.testing.third_party_licenses)"]
     t --> t_ejs["test_yt_dlp_ejs.py<br>the installed yt-dlp-ejs has the version (major.minor) and script hashes<br>the installed yt-dlp accepts (runs analyze_common.testing.yt_dlp_ejs)"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
+    t --> t_chart["test_chart_rendering.py<br>renders the comparison charts and their PNG export with the real browser scripts"]
     t --> t_ops["test_browser_operations.py<br>context menu editing and keyboard navigation, track ordering, file drops, saving results and file selection<br>through the app's page, with clipboard and HTTP responses controlled by the tests"]
     t --> t_jsc["js_coverage.py<br>with --js-coverage, the V8 coverage of frontend/*.js that the Playwright tests run,<br>written as LCOV (the same file as analyze-loudness's)"]
     t --> t_jsct["test_js_coverage.py<br>js_coverage.py: matching V8 ranges to lines, and the LCOV it writes<br>(the same file as analyze-loudness's)"]
@@ -130,6 +132,8 @@ graph LR
     root --> r_lic["THIRD_PARTY_LICENSES.txt"]
     root --> r_gpl["licenses/<br>the full texts of GPL v2 / v3 (pointed at by the FFmpeg section of THIRD_PARTY_LICENSES.txt.<br>The spec bundles them at the same level)"]
     root --> ba_pin["build_assets/ffmpeg.json<br>the series of the bundled ffmpeg / ffprobe, and the URL and SHA256 of the macOS builds"]
+    root --> ba_sum["build_assets/checksums.json<br>the version and SHA256 of the bundled uPlot files"]
+    root --> ba_icon["build_assets/icon_draft.svg<br>the source of icon.ico / icon.png / icon.iconset (PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.icons build_assets)"]
     root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (not tracked by git)"]
 ```
 
@@ -184,7 +188,7 @@ analyze-spectrum-gui
 
 Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip PyInstaller; assumes `dist/` exists) / `--update-checksums` (fetch the assets and update `checksums.json`) / `--ffmpeg-only` (fetch only ffmpeg / ffprobe into `build_assets/bin/` and stop).
 
-> **Note**: always run it with the python of the project's own venv (`.venv/bin/python` / `.venv/Scripts/python`) (the global rules' 「開発環境」 section).
+> **Note**: run it with the python of this project's venv: `.venv/bin/python` (macOS) / `.venv/Scripts/python` (Windows).
 
 ### GUI dependencies
 
@@ -401,7 +405,7 @@ A session-scoped cache avoids re-analyzing the same source.
 - **Single analysis**: the `/analyze` result is saved as a temp JSON. A repeated request is answered from the cache
 - **Comparison analysis**: `/compare` looks up the cache per track. Only the uncached ones are analyzed, and the transfer functions are recomputed from all tracks' dicts with `_transfer_functions_from_dicts()`
 - **Save optimization**: when `/save` receives `source` + `duration` from the frontend, it copies the cache file directly (avoiding re-serialization)
-- **Load → cache registration**: data loaded with `/load` (only the ones with all the fields needed for drawing) is registered in the cache and reused by a later Save or Compare
+- **Load → cache registration**: data loaded with `/load` (only the ones with all the fields needed for drawing) is registered in the cache, in memory, and reused by a later analysis or Compare, at its own length unless the session has already analyzed the source. Save does not read it
 - **Frontend state tracking**: `lastSource` and `lastDuration` keep the most recent analysis context, used for the cache lookup on Save
 
 ### White-flash prevention
@@ -557,5 +561,5 @@ On a version bump, change only `__version__` in `__init__.py`.
 
 ## Known constraints
 
-- Comparison is limited to 6 tracks (chart readability)
+- The GUI's comparison is limited to 6 tracks (chart readability); the CLI has no limit
 - Real-time input (microphone) is out of scope
