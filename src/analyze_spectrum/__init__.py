@@ -11,7 +11,7 @@ from analyze_common.ffmpeg import ffmpeg_kwargs as _ffmpeg_kwargs  # noqa: E402,
 
 __version__ = "1.5.0"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def recorded_minutes(duration_min: float | None, start_sec: float | None) -> float | None:

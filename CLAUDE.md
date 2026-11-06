@@ -246,7 +246,7 @@ After the Host validation, POST checks the Content-Type and returns 415 unless i
   "data": {
     "meta": {
       "version": "X.Y.Z",
-      "schema_version": 1,
+      "schema_version": 2,
       "analyzed_at": "2026-04-03T12:34:56+00:00",
       "source": "recording.m4a"
     },
@@ -426,7 +426,12 @@ Before `/load` runs, the value of `urlInput` is saved into `compareSources`, so 
 
 ### Schema versioning
 
-The single source of truth is `SCHEMA_VERSION` (an integer) in `src/analyze_spectrum/__init__.py`. `meta` is assembled by `make_meta()` (a single result) and `make_compare_meta()` (a comparison) in the same file.
+The single source of truth is `SCHEMA_VERSION` (an integer) in `src/analyze_spectrum/__init__.py`. It is raised independently of `__version__` (the app version). `meta` is assembled by `make_meta()` (a single result) and `make_compare_meta()` (a comparison) in the same file.
+
+| ver | Added |
+|-----|------|
+| 1 | Initial version |
+| 2 | `meta.duration_min` |
 
 - `meta.version`: the app version (for display)
 - `meta.schema_version`: the schema version. `/load` only validates that it is an integer (it may be absent), and does not judge compatibility by its value
