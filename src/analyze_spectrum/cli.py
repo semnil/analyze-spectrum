@@ -14,6 +14,7 @@ from analyze_spectrum import SCHEMA_VERSION, __version__, make_meta
 from analyze_spectrum.analysis import EQ_BANDS_DEFAULT, analyze_track, compare_tracks
 from analyze_spectrum.download import compute_middle, is_url, resolve_source
 from analyze_spectrum.pcm import extract_audio, probe_info
+from analyze_common.tempdirs import InstanceLock
 
 
 def _print_summary(result) -> None:
@@ -69,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     results = []
-    with tempfile.TemporaryDirectory(prefix="spectrum_") as workdir:
+    with InstanceLock("spectrum_"), tempfile.TemporaryDirectory(prefix="spectrum_") as workdir:
         for i, source in enumerate(args.sources):
             print(f"[{i + 1}/{len(args.sources)}] Processing: {source}", file=sys.stderr)
 

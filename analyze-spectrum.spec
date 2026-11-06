@@ -59,6 +59,7 @@ a = Analysis(
         "analyze_common.ed25519",
         "analyze_common.server",
         "analyze_common.settings",
+        "analyze_common.tempdirs",
         "analyze_common.ui_settings",
         "analyze_common.update",
         "analyze_common.web",

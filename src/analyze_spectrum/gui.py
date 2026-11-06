@@ -1,7 +1,6 @@
 """GUI application: pywebview window + local HTTP server for spectral analysis."""
 
 import atexit
-import glob
 import json
 import math
 import os
@@ -10,7 +9,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 import traceback
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -28,9 +26,13 @@ from analyze_spectrum.update import UPDATE_CONFIG
 from analyze_common.server import ClientDisconnected as _ClientDisconnected
 from analyze_common.server import GuiHandler
 from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
+from analyze_common.tempdirs import InstanceLock, sweep_orphan_tempdirs
 from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
 from analyze_common.update import Updater, hold_instance_mutex
 from analyze_common.window import set_app_user_model_id
+
+_instance_lock = InstanceLock("spectrum_")
+atexit.register(_instance_lock.release)
 
 # Temporary directory for uploaded (drag & drop) files, cleaned up on exit
 _upload_dir = tempfile.mkdtemp(prefix="spectrum_uploads_")
@@ -49,26 +51,10 @@ def _cleanup_orphan_tempdirs() -> None:
     TemporaryDirectory's `with` block cleans up on normal exit, but if the
     webview window is force-closed while a worker is inside PCM extraction
     the directory can survive across sessions.  Sweep them once at shutdown,
-    excluding the current process's own tmpdirs.  An mtime threshold of
-    1 hour guards against deleting tmpdirs owned by a parallel running
-    instance whose files are still fresh.
+    excluding the current process's own tmpdirs.  While another instance
+    runs, the sweep removes nothing.
     """
-    own = {_upload_dir, _cache_dir}
-    seen = set()
-    now = time.time()
-    for prefix in ("spectrum_", "spectrum_cache_", "spectrum_uploads_"):
-        for path in glob.glob(os.path.join(tempfile.gettempdir(), prefix + "*")):
-            if path in own or path in seen:
-                continue
-            seen.add(path)
-            try:
-                if os.path.islink(path) or not os.path.isdir(path):
-                    continue
-                if now - os.path.getmtime(path) <= 3600:
-                    continue
-                shutil.rmtree(path, ignore_errors=True)
-            except OSError:
-                pass
+    sweep_orphan_tempdirs("spectrum_", _instance_lock, keep={_upload_dir, _cache_dir})
 
 
 atexit.register(_cleanup_orphan_tempdirs)
@@ -810,6 +796,7 @@ def _exit_for_update(exit_mode: str) -> None:
     if exit_mode == "immediate":
         for path in (_upload_dir, _cache_dir):
             shutil.rmtree(path, ignore_errors=True)
+        _instance_lock.release()
         os._exit(0)
     else:
         _window.destroy()
