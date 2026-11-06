@@ -3,6 +3,15 @@
  * Shows PSD difference between tracks and the reference.
  */
 
+// The smallest step (dB) whose tick labels sit at least 14 px apart, the legend's row height.
+function _transferTickStep(yRange, ph) {
+  var steps = [5, 10, 20, 50];
+  for (var i = 0; i < steps.length; i++) {
+    if ((steps[i] / yRange) * ph >= 14) return steps[i];
+  }
+  return 100;
+}
+
 function renderTransfer(canvas, transferFunctions) {
   var theme = getThemeColors();
   var ctx = canvas.getContext("2d");
@@ -33,6 +42,8 @@ function renderTransfer(canvas, transferFunctions) {
   yMin = Math.floor(yMin / 5) * 5 - 5;
   yMax = Math.ceil(yMax / 5) * 5 + 5;
   var yRange = yMax - yMin || 1;
+  var yStep = _transferTickStep(yRange, ph);
+  var yFirstTick = Math.ceil(yMin / yStep) * yStep;
 
   var fMin = Math.log10(20), fMax = Math.log10(20000);
   var fRange = fMax - fMin;
@@ -40,7 +51,7 @@ function renderTransfer(canvas, transferFunctions) {
   // Grid lines
   ctx.strokeStyle = theme.grid;
   ctx.lineWidth = 1;
-  for (var db = yMin; db <= yMax; db += 5) {
+  for (var db = yFirstTick; db <= yMax; db += yStep) {
     var gy = pad.top + ph - ((db - yMin) / yRange) * ph;
     ctx.beginPath();
     ctx.moveTo(pad.left, gy);
@@ -110,7 +121,7 @@ function renderTransfer(canvas, transferFunctions) {
 
   // Y tick labels
   ctx.textAlign = "right";
-  for (var db = yMin; db <= yMax; db += 5) {
+  for (var db = yFirstTick; db <= yMax; db += yStep) {
     var gy = pad.top + ph - ((db - yMin) / yRange) * ph;
     var label = (db > 0 ? "+" : "") + db;
     ctx.fillText(label, pad.left - 6, gy + 3);
@@ -141,6 +152,6 @@ function renderTransfer(canvas, transferFunctions) {
     ctx.lineTo(lx + 12, ly - 4);
     ctx.stroke();
     ctx.fillStyle = theme.text;
-    ctx.fillText(transferFunctions[t].label, lx + 16, ly);
+    ctx.fillText(_truncText(ctx, transferFunctions[t].label, pw - 32), lx + 16, ly);
   }
 }

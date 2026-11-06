@@ -1275,7 +1275,7 @@ function _truncText(ctx, text, maxW) {
   if (ctx.measureText(text).width <= maxW) return text;
   var t = text;
   while (t.length > 0 && ctx.measureText(t + "...").width > maxW) {
-    t = t.slice(0, -1);
+    t = Array.from(t).slice(0, -1).join("");
   }
   return t + "...";
 }

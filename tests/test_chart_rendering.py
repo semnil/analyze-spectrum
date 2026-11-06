@@ -129,3 +129,166 @@ def test_chart_text_is_drawn_in_the_font_of_the_page(monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+_TEXT_RECORDER = """
+    window.__texts = [];
+    window.__lines = [];
+    const fillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
+        const size = this.measureText(String(text));
+        const left = this.textAlign === 'center' ? x - size.width / 2 : this.textAlign === 'right' ? x - size.width : x;
+        const m = this.getTransform();
+        const corners = [
+            [left, y - size.actualBoundingBoxAscent], [left + size.width, y - size.actualBoundingBoxAscent],
+            [left, y + size.actualBoundingBoxDescent], [left + size.width, y + size.actualBoundingBoxDescent],
+        ].map(([cx, cy]) => [m.a * cx + m.c * cy + m.e, m.b * cx + m.d * cy + m.f]);
+        window.__texts.push({
+            text: String(text), canvas: this.canvas, align: this.textAlign, y,
+            x0: Math.min(...corners.map(c => c[0])), x1: Math.max(...corners.map(c => c[0])),
+            y0: Math.min(...corners.map(c => c[1])), y1: Math.max(...corners.map(c => c[1])),
+        });
+        return fillText.call(this, text, x, y, ...rest);
+    };
+    const moveTo = CanvasRenderingContext2D.prototype.moveTo;
+    const lineTo = CanvasRenderingContext2D.prototype.lineTo;
+    CanvasRenderingContext2D.prototype.moveTo = function (x, y) { this.__from = [x, y]; return moveTo.call(this, x, y); };
+    CanvasRenderingContext2D.prototype.lineTo = function (x, y) {
+        if (this.__from && this.__from[1] === y) window.__lines.push({y, length: Math.abs(x - this.__from[0])});
+        return lineTo.call(this, x, y);
+    };
+"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("low, high, step", [(-10, 10, 5), (-25, 25, 5), (-60, 30, 10), (-110, 95, 20), (-210, 210, 50)])
+def test_transfer_tick_labels_stay_apart_on_any_range(low, high, step, monkeypatch):
+    from playwright.sync_api import sync_playwright
+    from analyze_spectrum import gui
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
+                page.add_init_script(_TEXT_RECORDER)
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                ticks = page.evaluate("""([low, high]) => {
+                    const canvas = document.createElement('canvas');
+                    canvas.style.cssText = 'display:block;width:1000px;height:280px';
+                    document.body.appendChild(canvas);
+                    window.__texts.length = 0;
+                    window.__lines.length = 0;
+                    renderTransfer(canvas, [{label: 'A', freqs: [20, 1000, 20000], delta_db: [low, 0, high]}]);
+                    return {
+                        labels: window.__texts.filter(t => t.align === 'right').map(t => ({db: Number(t.text), y: t.y})),
+                        lines: window.__lines.slice(),
+                    };
+                }""", [low, high])
+                values = [tick["db"] for tick in ticks["labels"]]
+                assert 0 in values
+                assert all(value % step == 0 for value in values)
+                assert all(b - a == step for a, b in zip(values, values[1:]))
+                gaps = [a["y"] - b["y"] for a, b in zip(ticks["labels"], ticks["labels"][1:])]
+                assert min(gaps) >= 14
+                # Each label sits 3 px below its grid line, which spans the plot; the legend's swatches are short.
+                grid = {round(line["y"], 3) for line in ticks["lines"] if line["length"] > 100}
+                assert {round(tick["y"] - 3, 3) for tick in ticks["labels"]} == grid
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("names", [
+    ["A", "B", "C", "D", "E", "F"],
+    ["ノイズ一", "ノイズ二", "ノイズ三", "ノイズ四", "ノイズ五", "ノイズ六"],
+    [f"Track {i} Official Audio Remaster Live At Some Very Long Venue Name" for i in range(6)],
+    [f"とても長い日本語の題名がついた動画の音声トラック番号{i}を比較するための試料です" * 2 for i in range(6)],
+], ids=["short", "short_ja", "long", "long_ja"])
+def test_legend_stays_clear_of_other_chart_text_and_on_the_canvas(names, monkeypatch):
+    from playwright.sync_api import sync_playwright
+    from analyze_spectrum import gui
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    samples = np.random.default_rng(7).normal(0, 0.05, 12000)
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                for width in (1100, 900, 500):
+                    page = browser.new_page(viewport={"width": width, "height": 800}, locale="en-US")
+                    page.add_init_script(_TEXT_RECORDER)
+                    page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                    page.evaluate("window.analyzeUpdate.ready")
+                    page.evaluate("window.i18n.setLang('en')")
+                    for count in (2, 6):
+                        tracks = [analyze_track(samples * (i + 1), label=names[i]) for i in range(count)]
+                        data = compare_tracks(tracks).to_dict()
+                        problems = page.evaluate("""data => {
+                            window.__texts.length = 0;
+                            clearResults();
+                            renderCompare(data);
+                            const labels = data.tracks.map(t => t.label).concat(data.transfer_functions.map(t => t.label));
+                            const isLegend = text => labels.includes(text) ||
+                                (text.endsWith('...') && labels.some(label => label.startsWith(text.slice(0, -3))));
+                            const problems = [];
+                            let legends = 0;
+                            for (const ref of chartCanvasRefs) {
+                                const texts = window.__texts.filter(t => t.canvas === ref.canvas);
+                                for (const a of texts.filter(t => isLegend(t.text))) {
+                                    legends++;
+                                    if (a.x0 < 0 || a.x1 > ref.canvas.clientWidth) problems.push([ref.title, 'off the canvas', a.text]);
+                                    for (const b of texts) {
+                                        if (a === b) continue;
+                                        if (Math.min(a.x1, b.x1) > Math.max(a.x0, b.x0) && Math.min(a.y1, b.y1) > Math.max(a.y0, b.y0))
+                                            problems.push([ref.title, a.text, b.text]);
+                                    }
+                                }
+                            }
+                            return {legends, problems};
+                        }""", data)
+                        assert problems["legends"] >= 3 * count, (width, count)
+                        assert problems["problems"] == [], (width, count)
+                    page.close()
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_truncated_text_keeps_whole_characters(monkeypatch):
+    from playwright.sync_api import sync_playwright
+    from analyze_spectrum import gui
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                results = page.evaluate(r"""() => {
+                    const ctx = document.createElement('canvas').getContext('2d');
+                    const text = '\u{1F3B5}'.repeat(40);
+                    const full = ctx.measureText(text).width;
+                    const rows = [];
+                    for (let maxW = 20; maxW < full; maxW += 3) rows.push(_truncText(ctx, text, maxW));
+                    return {rows, lone: rows.filter(row => /[\uD800-\uDBFF]\.\.\.$/.test(row)).length};
+                }""")
+                assert results["rows"]
+                assert results["lone"] == 0
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()

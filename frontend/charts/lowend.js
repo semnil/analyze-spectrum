@@ -164,7 +164,7 @@ function renderLowEnd(canvas, tracks) {
     ctx.textAlign = "right";
     for (var t = 0; t < tracks.length; t++) {
       var lx = w - pad.right - 8;
-      var ly = pad.top + 14 + t * 14;
+      var ly = pad.top + 28 + t * 14;
       ctx.strokeStyle = theme.trackColors[t % theme.trackColors.length];
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -172,7 +172,7 @@ function renderLowEnd(canvas, tracks) {
       ctx.lineTo(lx, ly - 4);
       ctx.stroke();
       ctx.fillStyle = theme.text;
-      ctx.fillText(tracks[t].label, lx - 16, ly);
+      ctx.fillText(_truncText(ctx, tracks[t].label, pw - 32), lx - 16, ly);
     }
   }
 }

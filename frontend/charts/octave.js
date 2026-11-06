@@ -117,7 +117,7 @@ function renderOctave(canvas, tracks) {
       ctx.fillStyle = theme.trackColors[t % theme.trackColors.length];
       ctx.fillRect(lx, ly - 8, 12, 8);
       ctx.fillStyle = theme.text;
-      ctx.fillText(tracks[t].label, lx + 16, ly);
+      ctx.fillText(_truncText(ctx, tracks[t].label, pw - 32), lx + 16, ly);
     }
   }
 }
