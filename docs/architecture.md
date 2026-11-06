@@ -323,6 +323,7 @@ stateDiagram-v2
         HasResults --> NoResults : Clear All, or the queue no longer matches
     }
 
+    note right of Loading : During Load JSON and a drop, the Analyze / Compare button shows Loading and is disabled
     note right of Idle : On Submit, merge the pending urlInput into compareSources and decide the mode
     note right of Analyzing : The Analyze button becomes Cancel (red)
     note right of Comparing : The Compare button becomes Cancel (red)

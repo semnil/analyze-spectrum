@@ -2,6 +2,7 @@
 
 import base64
 import json
+import re
 from urllib.parse import unquote
 
 import numpy as np
@@ -289,6 +290,9 @@ def test_dropped_files_hold_the_page_and_drop_a_comparison(page, tracks):
         _drop(page, ["c.wav", "d.wav"])
     assert page.evaluate("isBusy")
     expect(page.locator("#add-btn")).to_be_disabled()
+    expect(page.locator("#submit-btn")).to_be_disabled()
+    expect(page.locator("#submit-btn")).to_have_text(page.evaluate("window.i18n.t('btn.loading')"))
+    expect(page.locator("#submit-btn")).not_to_have_class(re.compile("cancelling"))
     assert page.evaluate("lastData !== null")
     with page.expect_request("**/upload"):
         held.pop().fulfill(json={"uploaded": True, "path": "/tmp/up/c.wav"})
@@ -297,6 +301,20 @@ def test_dropped_files_hold_the_page_and_drop_a_comparison(page, tracks):
     held.pop().fulfill(json={"uploaded": True, "path": "/tmp/up/d.wav"})
     page.wait_for_function("!isBusy && compareSources.length === 4")
     expect(page.locator("#add-btn")).to_be_enabled()
+    expect(page.locator("#submit-btn")).to_be_enabled()
+    expect(page.locator("#submit-btn")).to_have_text(page.evaluate("window.i18n.t('btn.compare')"))
+
+
+def test_the_submit_button_reserves_the_width_of_its_loading_label(page):
+    width = "document.getElementById('submit-btn').getBoundingClientRect().width"
+    before = page.evaluate(width)
+    page.evaluate("""() => {
+      const tr = window.i18n.tr;
+      window.i18n.tr = (key, lang) => key === "btn.loading" ? "W".repeat(40) : tr(key, lang);
+      _reserveButtonWidths();
+      window.i18n.tr = tr;
+    }""")
+    assert page.evaluate(width) > before
 
 
 def test_a_failed_upload_frees_the_page_and_keeps_the_comparison(page, tracks):
