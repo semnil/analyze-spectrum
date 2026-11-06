@@ -1,12 +1,11 @@
 """Extract mono float32 PCM from audio files via ffmpeg."""
 
-import subprocess
+import os
 import tempfile
-from pathlib import Path
 
 import numpy as np
 
-from analyze_common.ffmpeg import ffmpeg_kwargs, probe_info  # noqa: F401
+from analyze_common.ffmpeg import ffmpeg_kwargs, probe_info, run_ffmpeg  # noqa: F401
 from analyze_common.platform import find_executable
 from analyze_spectrum.analysis import SAMPLE_RATE
 
@@ -40,10 +39,9 @@ def extract_audio(
     ffmpeg = find_executable("ffmpeg")
     if ffmpeg is None:
         raise FileNotFoundError("ffmpeg was not found on PATH")
-    with tempfile.NamedTemporaryFile(suffix=".pcm", delete=False) as tmp:
-        tmp_path = tmp.name
-
-    try:
+    # A folder the orphan sweep and TemporaryDirectory's finalizer both remove when the app ends during the extraction.
+    with tempfile.TemporaryDirectory(prefix="spectrum_pcm_") as tmp_dir:
+        tmp_path = os.path.join(tmp_dir, "audio.pcm")
         cmd = [ffmpeg, "-y"]
         if ss is not None:
             cmd += ["-ss", str(ss)]
@@ -52,14 +50,12 @@ def extract_audio(
             cmd += ["-t", str(duration)]
         cmd += ["-ar", str(sr), "-ac", str(channels), "-f", "f32le", tmp_path]
 
-        subprocess.run(
+        run_ffmpeg(
             cmd, check=True, capture_output=True,
             timeout=600, **ffmpeg_kwargs(),
         )
 
         raw = np.fromfile(tmp_path, dtype=np.float32)
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
 
     if len(raw) == 0:
         raise RuntimeError(f"ffmpeg produced empty PCM output for: {path}")

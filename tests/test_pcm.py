@@ -19,7 +19,7 @@ class TestExtractAudio:
         import analyze_spectrum.pcm as pcm_mod
 
         with patch("analyze_spectrum.pcm.find_executable", return_value=None), \
-             patch("analyze_spectrum.pcm.subprocess.run") as mock_run:
+             patch("analyze_spectrum.pcm.run_ffmpeg") as mock_run:
             with pytest.raises(FileNotFoundError, match="ffmpeg"):
                 pcm_mod.extract_audio("input.m4a")
         mock_run.assert_not_called()
@@ -29,22 +29,13 @@ class TestExtractAudio:
         import analyze_spectrum.pcm as pcm_mod
 
         with patch("analyze_spectrum.pcm.find_executable", return_value=FFMPEG), \
-             patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
-             patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile, \
-             patch("analyze_spectrum.pcm.Path") as mock_path:
+             patch("analyze_spectrum.pcm.run_ffmpeg") as mock_run, \
+             patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile:
             mock_run.return_value = MagicMock(returncode=0)
             # Return mono data (1 channel)
             mock_fromfile.return_value = np.array([0.1, 0.2], dtype=np.float32)
-            mock_path.return_value.unlink = MagicMock()
 
-            with patch("analyze_spectrum.pcm.tempfile.NamedTemporaryFile") as mock_tmp:
-                mock_tmp.return_value.__enter__ = MagicMock(
-                    return_value=MagicMock(name="/tmp/test.pcm")
-                )
-                mock_tmp.return_value.__exit__ = MagicMock(return_value=False)
-                mock_tmp.return_value.name = "/tmp/test.pcm"
-
-                mono, stereo = pcm_mod.extract_audio("input.m4a", channels=1)
+            mono, stereo = pcm_mod.extract_audio("input.m4a", channels=1)
 
             assert mock_run.called
             cmd = mock_run.call_args[0][0]
@@ -60,21 +51,14 @@ class TestExtractAudio:
         import analyze_spectrum.pcm as pcm_mod
 
         with patch("analyze_spectrum.pcm.find_executable", return_value=FFMPEG), \
-             patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
-             patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile, \
-             patch("analyze_spectrum.pcm.Path") as mock_path:
+             patch("analyze_spectrum.pcm.run_ffmpeg") as mock_run, \
+             patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile:
             mock_run.return_value = MagicMock(returncode=0)
             mock_fromfile.return_value = np.array([0.1], dtype=np.float32)
-            mock_path.return_value.unlink = MagicMock()
 
-            with patch("analyze_spectrum.pcm.tempfile.NamedTemporaryFile") as mock_tmp:
-                mock_tmp.return_value.__enter__ = MagicMock()
-                mock_tmp.return_value.__exit__ = MagicMock(return_value=False)
-                mock_tmp.return_value.name = "/tmp/test.pcm"
-
-                mono, stereo = pcm_mod.extract_audio(
-                    "input.m4a", ss=30.0, duration=60.0, channels=1
-                )
+            mono, stereo = pcm_mod.extract_audio(
+                "input.m4a", ss=30.0, duration=60.0, channels=1
+            )
 
             cmd = mock_run.call_args[0][0]
             assert "-ss" in cmd
@@ -90,19 +74,12 @@ class TestExtractAudio:
         raw = np.array([1.0, 0.5, 1.0, 0.5], dtype=np.float32)
 
         with patch("analyze_spectrum.pcm.find_executable", return_value=FFMPEG), \
-             patch("analyze_spectrum.pcm.subprocess.run") as mock_run, \
-             patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile, \
-             patch("analyze_spectrum.pcm.Path") as mock_path:
+             patch("analyze_spectrum.pcm.run_ffmpeg") as mock_run, \
+             patch("analyze_spectrum.pcm.np.fromfile") as mock_fromfile:
             mock_run.return_value = MagicMock(returncode=0)
             mock_fromfile.return_value = raw
-            mock_path.return_value.unlink = MagicMock()
 
-            with patch("analyze_spectrum.pcm.tempfile.NamedTemporaryFile") as mock_tmp:
-                mock_tmp.return_value.__enter__ = MagicMock()
-                mock_tmp.return_value.__exit__ = MagicMock(return_value=False)
-                mock_tmp.return_value.name = "/tmp/test.pcm"
-
-                mono, stereo = pcm_mod.extract_audio("input.m4a", channels=2)
+            mono, stereo = pcm_mod.extract_audio("input.m4a", channels=2)
 
         assert stereo.shape == (2, 2)
         np.testing.assert_allclose(mono, [0.75, 0.75])
@@ -113,8 +90,8 @@ def pcm_output(tmp_path, monkeypatch):
     from pathlib import Path
     from analyze_spectrum import pcm
 
-    make_temp = pcm.tempfile.NamedTemporaryFile
-    monkeypatch.setattr(pcm.tempfile, "NamedTemporaryFile", lambda **kwargs: make_temp(dir=tmp_path, **kwargs))
+    make_temp = pcm.tempfile.TemporaryDirectory
+    monkeypatch.setattr(pcm.tempfile, "TemporaryDirectory", lambda **kwargs: make_temp(dir=tmp_path, **kwargs))
     monkeypatch.setattr(pcm, "find_executable", lambda name: FFMPEG)
     state = {"raw": np.array([], dtype=np.float32), "error": None, "calls": []}
 
@@ -124,7 +101,7 @@ def pcm_output(tmp_path, monkeypatch):
         if state["error"]:
             raise state["error"]
 
-    monkeypatch.setattr(pcm.subprocess, "run", run)
+    monkeypatch.setattr(pcm, "run_ffmpeg", run)
     state["files"] = lambda: list(Path(tmp_path).iterdir())
     return state
 
@@ -159,6 +136,16 @@ def test_pcm_failure_removes_partial_file(pcm_output, failure):
     with pytest.raises(error_type):
         extract_audio("input.wav", channels=1)
     assert pcm_output["files"]() == []
+
+
+def test_pcm_file_is_in_a_folder_the_orphan_sweep_removes(pcm_output):
+    from pathlib import Path
+    from analyze_spectrum.pcm import extract_audio
+
+    pcm_output["raw"] = np.array([0.2], dtype=np.float32)
+    extract_audio("input.wav", channels=1)
+    # gui._cleanup_orphan_tempdirs removes spectrum_* directories.
+    assert Path(pcm_output["calls"][0][0][-1]).parent.name.startswith("spectrum_")
 
 
 @pytest.mark.parametrize("channels", [0, -1])

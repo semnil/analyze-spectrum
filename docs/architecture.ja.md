@@ -339,8 +339,9 @@ sequenceDiagram
 すなわち以下のような長時間ブロックする同期処理は、キャンセル後も
 **そのステージが完了するまで継続**する:
 
-- `ffmpeg` / `ffprobe` の子プロセス (`subprocess.run`) — プロセスに
-  シグナルを送らないため、PCM 抽出・長さの取得が最後まで走る
+- `ffmpeg` / `ffprobe` の子プロセス (py-analyze-common の `analyze_common/ffmpeg.py` の
+  `run_ffmpeg()` / `subprocess.run`) — キャンセルではプロセスにシグナルを送らないため、
+  PCM 抽出・長さの取得が最後まで走る。アプリを終えると、走っている `ffmpeg` は止まる
 - `scipy.signal.welch` / `resample_poly` — NumPy/SciPy の C ループは
   Python シグナルを受け取らない
 - `yt_dlp.YoutubeDL.extract_info(download=True)` — 現在ダウンロード中の

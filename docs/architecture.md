@@ -339,8 +339,9 @@ A cancel is detected only when the next NDJSON event is sent.
 That is, long-blocking synchronous work like the following
 **keeps running until that stage finishes** even after a cancel:
 
-- `ffmpeg` / `ffprobe` child processes (`subprocess.run`) — no signal is
-  sent to the process, so PCM extraction and getting the duration run to the end
+- `ffmpeg` / `ffprobe` child processes (`run_ffmpeg()` of py-analyze-common's
+  `analyze_common/ffmpeg.py` / `subprocess.run`) — a cancel sends no signal to the process, so
+  PCM extraction and getting the duration run to the end. Ending the app kills a running `ffmpeg`
 - `scipy.signal.welch` / `resample_poly` — NumPy/SciPy's C loops do not
   receive Python signals
 - `yt_dlp.YoutubeDL.extract_info(download=True)` — continues up to the
