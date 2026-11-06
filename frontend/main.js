@@ -3,6 +3,7 @@ let chartCanvasRefs = []; // [{canvas, title}]
 let compareSources = [];
 let lastData = null;
 let isBusy = false;
+let _busyCancelable = true;
 let activeAbort = null;
 let lastSource = null;
 let lastDuration = null;
@@ -369,33 +370,43 @@ function _submitLabel() {
 // is their only writer: the button carries no data-i18n attribute, so the
 // language switch does not reset them.
 function _applySubmitButton() {
-  if (isBusy) {
+  if (isBusy && _busyCancelable) {
     submitBtn.textContent = window.i18n.t("btn.cancel");
     submitBtn.setAttribute("aria-label", window.i18n.t("btn.cancel.aria"));
+  } else if (isBusy) {
+    submitBtn.textContent = window.i18n.t("btn.loading");
+    submitBtn.removeAttribute("aria-label");
   } else {
     submitBtn.textContent = _submitLabel();
     submitBtn.removeAttribute("aria-label");
   }
 }
 
-function setBusy(busy) {
+function setBusy(busy, cancelable = true) {
   isBusy = busy;
+  _busyCancelable = cancelable;
   browseBtn.disabled = busy;
   loadBtn.disabled = busy;
   addBtn.disabled = busy;
   clearBtn.disabled = busy;
   _applySubmitButton();
   if (busy) {
-    submitBtn.classList.add("cancelling");
+    if (cancelable) {
+      submitBtn.classList.add("cancelling");
+      submitBtn.disabled = false;
+    } else {
+      submitBtn.classList.remove("cancelling");
+      submitBtn.disabled = true;
+    }
     statusEl.classList.add("loading");
     statusEl.setAttribute("aria-busy", "true");
   } else {
     submitBtn.classList.remove("cancelling");
+    submitBtn.disabled = false;
     statusEl.classList.remove("loading");
     statusEl.removeAttribute("aria-busy");
     activeAbort = null;
   }
-  submitBtn.disabled = false;
   // Update track remove / reorder buttons (disabled during processing)
   trackList.querySelectorAll(".track-btn:not(.placeholder)").forEach((btn) => {
     btn.disabled = busy;
@@ -406,7 +417,7 @@ _applySubmitButton();
 _applyButtonIcons();
 
 function _reserveButtonWidths() {
-  _reserveButtonWidth(submitBtn, ["btn.analyze", "btn.compare", "btn.cancel"]);
+  _reserveButtonWidth(submitBtn, ["btn.analyze", "btn.compare", "btn.cancel", "btn.loading"]);
   _reserveButtonWidth(browseBtn, ["btn.browse"], "span");
   _reserveButtonWidth(addBtn, ["btn.add"]);
   _reserveButtonWidth(loadBtn, ["btn.load_json"], "span");
@@ -647,7 +658,7 @@ clearBtn.addEventListener("click", () => {
 // Load JSON
 loadBtn.addEventListener("click", async () => {
   if (isBusy) return;
-  setBusy(true);
+  setBusy(true, false);
   statusEl.textContent = window.i18n.t("status.opening_file");
   _setStatusNormal();
 
@@ -1531,7 +1542,7 @@ window.addEventListener("drop", async (e) => {
   if (!files.length) return;
 
   // Nothing can start or edit the queue until the files are in.
-  setBusy(true);
+  setBusy(true, false);
   try {
     await _uploadDropped(files);
   } finally {
