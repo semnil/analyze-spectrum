@@ -301,10 +301,10 @@ stateDiagram-v2
         HasResults --> NoResults : Clear All
     }
 
+    note right of Loading : During Load JSON and a drop, the Analyze / Compare button shows Loading and is disabled
     note right of Idle : On Submit, merge the pending urlInput into compareSources and decide the mode
     note right of Analyzing : Analyze button → Cancel (red)
     note right of Comparing : Compare button → Cancel (red)
-    note right of Loading : Analyze / Compare button shows Loading and is disabled
 ```
 
 ### 4.6 Cancel (Abort) Mechanism

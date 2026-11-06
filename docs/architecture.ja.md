@@ -301,10 +301,10 @@ stateDiagram-v2
         HasResults --> NoResults : Clear All
     }
 
+    note right of Loading : Load JSON とドロップの間、Analyze / Compare ボタンは読込中の表示で押せない
     note right of Idle : Submit 時に urlInput pending を compareSources に統合してモード判定
     note right of Analyzing : Analyze ボタン → Cancel (赤)
     note right of Comparing : Compare ボタン → Cancel (赤)
-    note right of Loading : Analyze / Compare ボタンは読込中の表示で押せない
 ```
 
 ### 4.6 キャンセル (中断) の仕組み
