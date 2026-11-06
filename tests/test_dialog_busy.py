@@ -12,6 +12,7 @@ if "webview" not in sys.modules:
     sys.modules["webview"] = MagicMock()
 
 import analyze_spectrum.gui as _gui_mod  # noqa: E402
+from analyze_spectrum import SCHEMA_VERSION  # noqa: E402
 
 
 @pytest.fixture()
@@ -122,11 +123,11 @@ class TestDialogBusyRejection:
     def test_load_multi_file_still_works(self, _server, _mock_window, tmp_path):
         """Multi-file load still works correctly after the try-lock change."""
         data_a = {
-            "meta": {"source": "a.wav", "schema_version": _gui_mod._SCHEMA_VERSION},
+            "meta": {"source": "a.wav", "schema_version": SCHEMA_VERSION},
             "spectrum": {"freqs": [100], "psd_db": [-20]},
         }
         data_b = {
-            "meta": {"source": "b.wav", "schema_version": _gui_mod._SCHEMA_VERSION},
+            "meta": {"source": "b.wav", "schema_version": SCHEMA_VERSION},
             "spectrum": {"freqs": [100], "psd_db": [-25]},
         }
         file_a = tmp_path / "a.json"

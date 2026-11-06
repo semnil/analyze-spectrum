@@ -11,14 +11,13 @@ import tempfile
 import threading
 import traceback
 from collections import OrderedDict
-from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
 import webview
 
-from analyze_spectrum import SCHEMA_VERSION as _SCHEMA_VERSION, __version__, make_meta as _make_meta
+from analyze_spectrum import make_compare_meta, make_meta as _make_meta, recorded_minutes
 from analyze_spectrum.analysis import analyze_track, estimate_parametric_eq, missing_result_fields
 from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
@@ -466,7 +465,7 @@ class AnalyzeHandler(GuiHandler):
             del stereo
 
         result_dict = result.to_dict()
-        result_dict["meta"] = _make_meta(source, duration_min)
+        result_dict["meta"] = _make_meta(source, recorded_minutes(duration_min, ss))
         _cache_put(source, duration_min, result_dict)
         self._send_event("result", data=result_dict)
 
@@ -508,7 +507,7 @@ class AnalyzeHandler(GuiHandler):
                     del stereo
 
                     rd = result.to_dict()
-                    rd["meta"] = _make_meta(source, duration_min)
+                    rd["meta"] = _make_meta(source, recorded_minutes(duration_min, ss))
                     _cache_put(source, duration_min, rd)
                     track_dicts[i] = rd
 
@@ -518,12 +517,8 @@ class AnalyzeHandler(GuiHandler):
         compare_dict = {
             "tracks": track_dicts,
             "transfer_functions": tfs,
-            "meta": {
-                "schema_version": _SCHEMA_VERSION,
-                "version": __version__,
-                "analyzed_at": datetime.now(timezone.utc).isoformat(),
-                "sources": sources,
-            },
+            "meta": make_compare_meta(sources, duration_min if any(
+                track["meta"].get("duration_min") is not None for track in track_dicts) else None),
         }
         self._send_event("compare_result", data=compare_dict)
 

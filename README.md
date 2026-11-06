@@ -57,7 +57,7 @@ The summary goes to standard output and the progress to standard error. `--outpu
 
 | Option | Default | Description |
 |---|---|---|
-| `--duration` | none (full length) | Length to analyze in minutes, cut out of the middle of the source. A single analysis records it in the JSON as `meta.duration_min` |
+| `--duration` | none (full length) | Length to analyze in minutes, cut out of the middle of the source. The JSON records it as `meta.duration_min` when the source was cut |
 | `--output-dir` | none (writes no file) | Output directory of the result JSON |
 | `--eq-bands` | `5` | Maximum number of peaking bands in the estimated EQ per Transfer Function (0 or greater) |
 | `--json` | off | Prints the result JSON to standard output |
@@ -242,7 +242,7 @@ graph LR
     root --> r_pyproj["pyproject.toml<br>package, dependencies, commands"]
     root --> req["requirements/<br>hash-pinned packages the release jobs install"]
     root --> src["src/analyze_spectrum/<br>Python package"]
-    src --> src_init["__init__.py<br>sys.path injection of vendor/, SCHEMA_VERSION, make_meta()"]
+    src --> src_init["__init__.py<br>sys.path injection of vendor/, SCHEMA_VERSION, make_meta(), make_compare_meta()"]
     src --> src_main["__main__.py"]
     src --> src_cli["cli.py<br>CLI entry point"]
     src --> src_gui["gui.py<br>pywebview + local HTTP server (GUI)"]

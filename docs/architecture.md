@@ -40,7 +40,7 @@ graph LR
 ```mermaid
 graph TD
     subgraph "src/analyze_spectrum/"
-        INIT["__init__.py<br>sys.path injection into vendor, SCHEMA_VERSION, make_meta()"]
+        INIT["__init__.py<br>sys.path injection into vendor, SCHEMA_VERSION, make_meta(), make_compare_meta()"]
         MAIN["__main__.py"]
         CLI["cli.py<br>argparse + orchestration"]
         GUI["gui.py<br>pywebview + HTTPServer"]
@@ -221,7 +221,7 @@ sequenceDiagram
 A session-scoped cache avoids re-analyzing the same source.
 The cache is created with `tempfile.mkdtemp()` and deleted when the process exits (session-only).
 
-A JSON read with Load JSON joins the cache in memory under its source with no duration (`_cache_loaded()`), and results the session analyzed itself are looked up first. A JSON that records `meta.duration_min` (the CLI's `--duration`) stays out of the cache, so a later analysis of its source, and its track in a comparison, are of the full length. A JSON saved by a version that did not record it joins the cache whatever its `duration_sec`, and answers them with its shorter range unless the session has already analyzed the source.
+A JSON read with Load JSON joins the cache in memory under its source with no duration (`_cache_loaded()`), and results the session analyzed itself are looked up first. A JSON that records `meta.duration_min` (the CLI's `--duration`) stays out of the cache, so a later analysis of its source, and its track in a comparison, are of the full length. A source no longer than `--duration` is analyzed whole and records nothing, so its JSON joins the cache. A JSON saved by a version that did not record it joins the cache whatever its `duration_sec`, and answers them with its shorter range unless the session has already analyzed the source.
 
 ```mermaid
 flowchart TD

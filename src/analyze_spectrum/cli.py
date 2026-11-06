@@ -5,12 +5,11 @@ import json
 import math
 import sys
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 
-from analyze_spectrum import SCHEMA_VERSION, __version__, make_meta
+from analyze_spectrum import __version__, make_compare_meta, make_meta, recorded_minutes
 from analyze_spectrum.analysis import EQ_BANDS_DEFAULT, analyze_track, compare_tracks
 from analyze_spectrum.download import compute_middle, is_url, resolve_source
 from analyze_spectrum.pcm import extract_audio, probe_info
@@ -70,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     results = []
+    cut_minutes = None
     with InstanceLock("spectrum_"), tempfile.TemporaryDirectory(prefix="spectrum_") as workdir:
         for i, source in enumerate(args.sources):
             print(f"[{i + 1}/{len(args.sources)}] Processing: {source}", file=sys.stderr)
@@ -85,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.duration is not None:
                 ss, dur, msg = compute_middle(total_sec, args.duration)
                 print(f"  {msg}", file=sys.stderr)
+            cut_minutes = recorded_minutes(args.duration, ss) or cut_minutes
 
             print(f"  Extracting PCM...", file=sys.stderr)
             try:
@@ -125,15 +126,10 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"      Peak {b['freq_hz']:8.1f} Hz  {b['gain_db']:+5.1f} dB  Q {b['q']:.2f}")
 
         output_data = comparison.to_dict()
-        output_data["meta"] = {
-            "schema_version": SCHEMA_VERSION,
-            "version": __version__,
-            "analyzed_at": datetime.now(timezone.utc).isoformat(),
-            "sources": list(args.sources),
-        }
+        output_data["meta"] = make_compare_meta(args.sources, cut_minutes)
     else:
         output_data = results[0].to_dict()
-        output_data["meta"] = make_meta(args.sources[0], args.duration)
+        output_data["meta"] = make_meta(args.sources[0], cut_minutes)
 
     if args.json:
         print(json.dumps(output_data, ensure_ascii=False, allow_nan=False))
