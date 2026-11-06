@@ -29,7 +29,7 @@ from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
 from analyze_common.tempdirs import InstanceLock, sweep_orphan_tempdirs
 from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
 from analyze_common.update import Updater, hold_instance_mutex
-from analyze_common.window import set_app_user_model_id
+from analyze_common.window import run_atexit_on_app_quit, set_app_user_model_id
 
 _instance_lock = InstanceLock("spectrum_")
 atexit.register(_instance_lock.release)
@@ -817,6 +817,7 @@ class _HTTPServer(ThreadingHTTPServer):
 def main():
     set_app_user_model_id("com.semnil.spectrum-analyzer")
     hold_instance_mutex(UPDATE_CONFIG.mutex_name)
+    run_atexit_on_app_quit()
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):
         bin_dir = str(Path(sys._MEIPASS) / "bin")
