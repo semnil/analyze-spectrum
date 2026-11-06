@@ -442,6 +442,7 @@ On Submit, the pending value of `urlInput` and `compareSources` are merged to de
 - `_effectiveTrackCount()`: the effective track count, including compareSources + the pending urlInput
 - The Submit button label is updated dynamically on `urlInput`'s `input` event
 - On Remove Track, it does not collapse when urlInput already has a value (the value is kept)
+- Moving a row while a comparison is on screen runs `/compare` again in the new order (`_swapTracks()`, `_runAnalysis()`), because the first track is the reference of the transfer functions. The field's value is not added. The results stay until the new ones replace them, a failed or cancelled run clears them, and the focus and the scroll position stay. The rows are disabled during the run. A move with a single result on screen clears it, and a move with nothing on screen runs nothing
 
 ### Dark mode
 
