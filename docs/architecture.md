@@ -221,6 +221,8 @@ sequenceDiagram
 A session-scoped cache avoids re-analyzing the same source.
 The cache is created with `tempfile.mkdtemp()` and deleted when the process exits (session-only).
 
+A JSON read with Load JSON joins the cache in memory under its source with no duration (`_cache_loaded()`). The JSON does not record the length it was analyzed at, so one the CLI saved with `--duration` answers a later analysis of that source in the session, and its track in a comparison, with that shorter range.
+
 ```mermaid
 flowchart TD
     REQ["POST /analyze or /compare"]
@@ -712,7 +714,7 @@ With `--js-coverage=PATH`, `tests/js_coverage.py` records the line coverage of `
 - The GUI's comparison is limited to 6 tracks (chart readability); the CLI has no limit
 - Real-time input (microphone) is out of scope
 - 48kHz mono float32 = 192 KB/s, about 115 MB for 10 minutes (memory constraint)
-- Long files are handled by extracting the middle with `--duration` of the CLI (the GUI always analyzes the full length)
+- Long files are handled by extracting the middle with `--duration` of the CLI (a new analysis in the GUI is always of the full length; a loaded JSON keeps its own length, [Result cache](#result-cache))
 - A cancel does not stop the stage that is running ([Cancel](#cancel))
 - Avoiding upload file name collisions in `/upload` is a time-of-check to time-of-use (TOCTOU) pattern (accepted for a single-user app)
 

@@ -221,6 +221,8 @@ sequenceDiagram
 セッション内キャッシュにより同一ソースの再解析を回避する。
 キャッシュは `tempfile.mkdtemp()` に作成し、プロセス終了時に削除 (session-only)。
 
+Load JSON で読んだ JSON は、音源をキーに、長さの指定なしでメモリ上のキャッシュに入る (`_cache_loaded()`)。JSON は解析した長さを記録しないので、CLI が `--duration` で保存した JSON は、同じ起動の間のその音源のあとの分析と比較のトラックに、短い範囲のまま答える。
+
 ```mermaid
 flowchart TD
     REQ["POST /analyze か /compare"]
@@ -712,7 +714,7 @@ flowchart TD
 - GUI の比較は最大 6 トラック (チャートの可読性)。CLI に上限は無い
 - リアルタイム入力 (マイク) は対象外
 - 48kHz mono float32 = 192 KB/s で、10 分で約 115 MB (メモリ制約)
-- 長尺は CLI の `--duration` で中盤抽出で対処 (GUI は常に全尺を分析)
+- 長尺は CLI の `--duration` で中盤抽出で対処 (GUI の新しい分析は常に全尺。読み込んだ JSON は自分の長さのまま。[結果キャッシュ](#結果キャッシュ))
 - キャンセルは動いているステージを止めない ([キャンセル](#キャンセル))
 - `/upload` のファイル名衝突回避は検査から使用までの間に競合が起こりうるパターン (time-of-check to time-of-use、TOCTOU) (単一ユーザーアプリとして許容)
 
