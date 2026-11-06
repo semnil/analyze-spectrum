@@ -204,6 +204,41 @@ def test_running_analysis_keeps_its_cancel_button_across_a_language_switch():
         server.server_close()
 
 
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_opening_a_json_file_keeps_its_loading_button_across_a_language_switch():
+    server = _app_server("analyze_spectrum.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(locale="en-US")
+            held = []
+            page.route("**/load", lambda route: held.append(route))
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            try:
+                page.click("#load-btn")
+                page.wait_for_function("isBusy")
+                loading_en = page.inner_text("#submit-btn")
+                assert loading_en == page.evaluate("window.i18n.t('btn.loading')")
+                page.click("#lang-toggle")
+                assert page.evaluate("window.i18n.lang()") == "ja"
+                assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.loading')")
+                assert page.inner_text("#submit-btn") != loading_en
+                assert page.get_attribute("#submit-btn", "aria-label") is None
+                assert page.is_disabled("#submit-btn")
+            finally:
+                for route in held:
+                    route.abort()
+            page.wait_for_function("!isBusy")
+            assert "Failed to fetch" in page.inner_text("#status.error")
+            assert page.is_enabled("#submit-btn")
+            assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.analyze')")
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 _RESOLVE_VAR_JS = """(name) => {
   const probe = document.createElement("div");
   probe.style.background = "var(" + name + ")";
