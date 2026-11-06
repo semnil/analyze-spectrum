@@ -706,6 +706,7 @@ loadBtn.addEventListener("click", async () => {
         // Best-effort display of legacy fields. compareSources / urlInput
         // are left intact; the user remains in whatever state they were in.
         clearResults();
+        lastSource = null;
         lastDuration = null;
         statusEl.textContent = "";
         renderSingle(result.data);
@@ -730,10 +731,8 @@ loadBtn.addEventListener("click", async () => {
     var initiallyEmpty = compareSources.length === 0 && !urlInput.value.trim();
     if (initiallyEmpty) {
       clearResults();
-      if (src) {
-        urlInput.value = src;
-        lastSource = src;
-      }
+      if (src) urlInput.value = src;
+      lastSource = null;
       lastDuration = null;
       statusEl.textContent = "";
       renderSingle(result.data);

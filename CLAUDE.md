@@ -406,7 +406,7 @@ A session-scoped cache avoids re-analyzing the same source.
 - **Comparison analysis**: `/compare` looks up the cache per track. Only the uncached ones are analyzed, and the transfer functions are recomputed from all tracks' dicts with `_transfer_functions_from_dicts()`
 - **Save optimization**: when `/save` receives `source` + `duration` from the frontend, it copies the cache file directly (avoiding re-serialization)
 - **Load → cache registration**: data loaded with `/load` (only the ones with all the fields needed for drawing and no `meta.duration_min`) is registered in the cache, in memory, and reused by a later analysis or Compare, at its own length unless the session has already analyzed the source. Save does not read it
-- **Frontend state tracking**: `lastSource` and `lastDuration` keep the most recent analysis context, used for the cache lookup on Save
+- **Frontend state tracking**: `lastSource` and `lastDuration` keep the most recent analysis context, used for the cache lookup on Save. Showing a JSON from Load JSON empties them, so Save writes the JSON on screen
 
 ### White-flash prevention
 
