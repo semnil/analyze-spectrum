@@ -323,6 +323,7 @@ stateDiagram-v2
         HasResults --> NoResults : Clear All、または待ち行列と合わなくなった
     }
 
+    note right of Loading : Load JSON とドロップの間、Analyze / Compare ボタンは読込中の表示で押せない
     note right of Idle : Submit 時に urlInput pending を compareSources に統合してモード判定
     note right of Analyzing : Analyze ボタンが Cancel (赤) になる
     note right of Comparing : Compare ボタンが Cancel (赤) になる

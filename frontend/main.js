@@ -3,6 +3,7 @@ let chartCanvasRefs = []; // [{canvas, title}]
 let compareSources = [];
 let lastData = null;
 let isBusy = false;
+let _busyCancelable = true;
 let activeAbort = null;
 let lastSource = null;
 let lastDuration = null;
@@ -369,33 +370,43 @@ function _submitLabel() {
 // is their only writer: the button carries no data-i18n attribute, so the
 // language switch does not reset them.
 function _applySubmitButton() {
-  if (isBusy) {
+  if (isBusy && _busyCancelable) {
     submitBtn.textContent = window.i18n.t("btn.cancel");
     submitBtn.setAttribute("aria-label", window.i18n.t("btn.cancel.aria"));
+  } else if (isBusy) {
+    submitBtn.textContent = window.i18n.t("btn.loading");
+    submitBtn.removeAttribute("aria-label");
   } else {
     submitBtn.textContent = _submitLabel();
     submitBtn.removeAttribute("aria-label");
   }
 }
 
-function setBusy(busy) {
+function setBusy(busy, cancelable = true) {
   isBusy = busy;
+  _busyCancelable = cancelable;
   browseBtn.disabled = busy;
   loadBtn.disabled = busy;
   addBtn.disabled = busy;
   clearBtn.disabled = busy;
   _applySubmitButton();
   if (busy) {
-    submitBtn.classList.add("cancelling");
+    if (cancelable) {
+      submitBtn.classList.add("cancelling");
+      submitBtn.disabled = false;
+    } else {
+      submitBtn.classList.remove("cancelling");
+      submitBtn.disabled = true;
+    }
     statusEl.classList.add("loading");
     statusEl.setAttribute("aria-busy", "true");
   } else {
     submitBtn.classList.remove("cancelling");
+    submitBtn.disabled = false;
     statusEl.classList.remove("loading");
     statusEl.removeAttribute("aria-busy");
     activeAbort = null;
   }
-  submitBtn.disabled = false;
   // Update track remove / reorder buttons (disabled during processing)
   trackList.querySelectorAll(".track-btn:not(.placeholder)").forEach((btn) => {
     btn.disabled = busy;
@@ -406,7 +417,7 @@ _applySubmitButton();
 _applyButtonIcons();
 
 function _reserveButtonWidths() {
-  _reserveButtonWidth(submitBtn, ["btn.analyze", "btn.compare", "btn.cancel"]);
+  _reserveButtonWidth(submitBtn, ["btn.analyze", "btn.compare", "btn.cancel", "btn.loading"]);
   _reserveButtonWidth(browseBtn, ["btn.browse"], "span");
   _reserveButtonWidth(addBtn, ["btn.add"]);
   _reserveButtonWidth(loadBtn, ["btn.load_json"], "span");
@@ -647,7 +658,7 @@ clearBtn.addEventListener("click", () => {
 // Load JSON
 loadBtn.addEventListener("click", async () => {
   if (isBusy) return;
-  setBusy(true);
+  setBusy(true, false);
   statusEl.textContent = window.i18n.t("status.opening_file");
   _setStatusNormal();
 
@@ -1270,11 +1281,28 @@ function _calcColWidths(header, w) {
   return Array(header.length).fill(colW);
 }
 
+// Marker labels below a chart's x axis, in the markers' order: on the first row, or on the second row when they would
+// come within 4 px of a label there. A label that fits on neither, or would reach the axis title on the second row, is
+// not drawn; its marker line and the summary table still show the value.
+function _drawMarkerLabels(ctx, markers, y, titleSpan) {
+  const rows = [[], [titleSpan]];
+  ctx.textAlign = "center";
+  for (const marker of markers) {
+    const half = ctx.measureText(marker.text).width / 2;
+    const span = [marker.x - half, marker.x + half];
+    const row = rows.findIndex(taken => taken.every(other => span[1] + 4 <= other[0] || other[1] + 4 <= span[0]));
+    if (row < 0) continue;
+    rows[row].push(span);
+    ctx.fillStyle = marker.color;
+    ctx.fillText(marker.text, marker.x, y + row * 11);
+  }
+}
+
 function _truncText(ctx, text, maxW) {
   if (ctx.measureText(text).width <= maxW) return text;
   var t = text;
   while (t.length > 0 && ctx.measureText(t + "...").width > maxW) {
-    t = t.slice(0, -1);
+    t = Array.from(t).slice(0, -1).join("");
   }
   return t + "...";
 }
@@ -1283,7 +1311,7 @@ function _drawTable(ctx, x0, y, w, header, rows, dark) {
   const colWidths = _calcColWidths(header, w);
   const ROW_H = 26;
   const CELL_PAD = 6;
-  const FONT = "13px 'Segoe UI', 'Meiryo', sans-serif";
+  const FONT = "13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   const BOLD = "bold " + FONT;
   const lineColor = dark ? "#2a4a6a" : "#90CAF9";
   const totalH = ROW_H * (1 + rows.length);
@@ -1411,7 +1439,7 @@ function captureImage(data) {
 
   const title = data.label || (data.tracks ? window.i18n.t("result.comparison") : window.i18n.t("result.analysis"));
   ctx.fillStyle = dark ? "#64b5f6" : "#1565C0";
-  ctx.font = "bold 18px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "bold 18px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(title, W / 2, y + 18);
 
@@ -1419,7 +1447,7 @@ function captureImage(data) {
   var ver = (data.meta && data.meta.version) || "";
   if (ver) {
     ctx.fillStyle = dark ? "#555" : "#bbb";
-    ctx.font = "11px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "11px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "right";
     ctx.fillText("analyze-spectrum v" + ver, W - PAD, y + 14);
   }
@@ -1434,7 +1462,7 @@ function captureImage(data) {
   for (const { canvas, w, h, title } of chartSizes) {
     // Draw chart title
     ctx.fillStyle = dark ? "#e0e0e0" : "#333";
-    ctx.font = "bold 14px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "bold 14px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(window.i18n.t(title), W / 2, y + 16);
     y += TITLE_H;
@@ -1447,20 +1475,20 @@ function captureImage(data) {
 
     if (title === "Transfer Function" && eqTables.length > 0) {
       ctx.fillStyle = dark ? "#e0e0e0" : "#333";
-      ctx.font = "bold 14px 'Segoe UI', 'Meiryo', sans-serif";
+      ctx.font = "bold 14px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(window.i18n.t("Estimated EQ"), W / 2, y + 16);
       y += 24;
       for (const spec of eqTables) {
         ctx.fillStyle = dark ? "#e0e0e0" : "#333";
-        ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.font = "bold 13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
         ctx.fillText(spec.caption, PAD, y + 16);
         y += EQ_CAPTION_H;
         if (spec.header) y = _drawTable(ctx, PAD, y, W - PAD * 2, spec.header, spec.rows, dark);
         ctx.fillStyle = dark ? "#aaa" : "#707070";
-        ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
         ctx.fillText(spec.note, PAD, y + 15);
@@ -1530,7 +1558,7 @@ window.addEventListener("drop", async (e) => {
   if (!files.length) return;
 
   // Nothing can start or edit the queue until the files are in.
-  setBusy(true);
+  setBusy(true, false);
   try {
     await _uploadDropped(files);
   } finally {

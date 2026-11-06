@@ -52,7 +52,7 @@ function renderOctave(canvas, tracks) {
 
   // Y axis labels
   ctx.fillStyle = theme.textSecondary;
-  ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "right";
   for (var db = yMin; db <= yMax; db += 10) {
     var gy = pad.top + ph - ((db - yMin) / yRange) * ph;
@@ -81,7 +81,7 @@ function renderOctave(canvas, tracks) {
   // X axis labels (select subset for readability)
   var labelCenters = [25, 63, 125, 250, 500, 1000, 2000, 4000, 8000];
   ctx.fillStyle = theme.textSecondary;
-  ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   for (var i = 0; i < nBands; i++) {
     var fc = centers[i];
@@ -97,7 +97,7 @@ function renderOctave(canvas, tracks) {
 
   // Axis labels
   ctx.fillStyle = theme.text;
-  ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("1/3 Octave Band Center (Hz)", w / 2, h - 6);
 
@@ -109,7 +109,7 @@ function renderOctave(canvas, tracks) {
 
   // Legend (if multi-track)
   if (nTracks > 1) {
-    ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "left";
     var lx = pad.left + 8;
     for (var t = 0; t < nTracks; t++) {
@@ -117,7 +117,7 @@ function renderOctave(canvas, tracks) {
       ctx.fillStyle = theme.trackColors[t % theme.trackColors.length];
       ctx.fillRect(lx, ly - 8, 12, 8);
       ctx.fillStyle = theme.text;
-      ctx.fillText(tracks[t].label, lx + 16, ly);
+      ctx.fillText(_truncText(ctx, tracks[t].label, pw - 32), lx + 16, ly);
     }
   }
 }
