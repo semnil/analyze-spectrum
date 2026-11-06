@@ -165,6 +165,26 @@ class TestAnalyzeEndpoint:
         assert r1["spectrum"] == r2["spectrum"]
 
 
+class TestDurationRecord:
+    def test_analysis_with_a_duration_records_it(self, _server, wav_file):
+        base, _ = _server
+        _, raw = _post(base, "/analyze", {"url": wav_file, "duration": 0.01})
+        data = [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
+        assert data["meta"]["duration_min"] == 0.01
+
+    def test_full_length_analysis_records_none(self, _server, wav_file):
+        base, _ = _server
+        _, raw = _post(base, "/analyze", {"url": wav_file})
+        data = [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
+        assert "duration_min" not in data["meta"]
+
+    def test_comparison_with_a_duration_records_it_on_each_track(self, _server, wav_file, wav_file_b):
+        base, _ = _server
+        _, raw = _post(base, "/compare", {"sources": [wav_file, wav_file_b], "duration": 0.01})
+        data = [e for e in _parse_ndjson(raw) if e["type"] == "compare_result"][0]["data"]
+        assert [track["meta"]["duration_min"] for track in data["tracks"]] == [0.01, 0.01]
+
+
 class TestCompareEndpoint:
     def test_compare_needs_two_sources(self, _server, wav_file):
         base, _ = _server
@@ -318,6 +338,38 @@ class TestLoadEndpoint:
         status, raw = _post(base, "/load", {})
         assert status == 400
         assert "compare" in json.loads(raw)["error"].lower()
+
+    @pytest.mark.parametrize("files", [1, 2], ids=["single", "multi"])
+    @pytest.mark.parametrize("path, recorded", [
+        ("/analyze", True), ("/analyze", False), ("/compare", True), ("/compare", False),
+    ], ids=["analyze_recorded", "analyze_unrecorded", "compare_recorded", "compare_unrecorded"])
+    def test_cli_json_answers_a_later_analysis_only_without_a_recorded_duration(
+            self, _server, wav_file, wav_file_b, tmp_path, capsys, path, recorded, files):
+        from analyze_spectrum.cli import main
+
+        base, gui_mod = _server
+        assert main([wav_file, "--duration", "0.005", "--json"]) == 0
+        printed = capsys.readouterr().out
+        data = json.loads(printed[printed.index("{"):])
+        if not recorded:
+            del data["meta"]["duration_min"]
+        saved = tmp_path / "short.json"
+        saved.write_text(json.dumps(data), encoding="utf-8")
+        gui_mod._window = MagicMock()
+        gui_mod._window.create_file_dialog.return_value = [str(saved)] * files
+        status, raw = _post(base, "/load", {})
+        assert status == 200
+        assert json.loads(raw)["loaded"] is True
+
+        if path == "/analyze":
+            _, raw = _post(base, path, {"url": wav_file})
+            events = _parse_ndjson(raw)
+            track = [e for e in events if e["type"] == "result"][0]["data"]
+        else:
+            _, raw = _post(base, path, {"sources": [wav_file, wav_file_b]})
+            events = _parse_ndjson(raw)
+            track = [e for e in events if e["type"] == "compare_result"][0]["data"]["tracks"][0]
+        assert track["duration_sec"] == pytest.approx(0.5 if recorded else 0.3, abs=0.001)
 
     def _load_one(self, base, gui_mod, tmp_path, data, name):
         json_path = str(tmp_path / name)

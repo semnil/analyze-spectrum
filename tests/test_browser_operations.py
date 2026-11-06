@@ -354,6 +354,33 @@ def test_image_save_sends_a_png_and_reports_the_outcome(page, tracks, status, bo
         expect(page.locator("#status")).to_have_text("")
 
 
+@pytest.mark.parametrize("outdated", [False, True], ids=["current", "outdated"])
+def test_saving_a_loaded_json_sends_no_source_of_an_earlier_analysis(page, tracks, outdated):
+    """The save of a JSON Load JSON shows carries the JSON and no source, so the
+    server writes that JSON and not the session's analysis of the same source."""
+    page.evaluate("lastSource = 'analyzed.wav'")
+    data = tracks[0].to_dict()
+    data["meta"] = {"source": "analyzed.wav"}
+    reply = {"loaded": True, "type": "single", "data": data}
+    if outdated:
+        reply.update(schema_outdated=True, source="analyzed.wav", source_available=True)
+    page.route("**/load", lambda route: route.fulfill(json=reply))
+    bodies = []
+
+    def save(route):
+        bodies.append(json.loads(route.request.post_data))
+        route.fulfill(json={"saved": True, "path": "/saved/result"})
+
+    page.route("**/save", save)
+    page.locator("#load-btn").click()
+    if outdated:
+        page.locator(".modal-cancel").click()
+    page.locator(".save-btn").first.click()
+    expect(page.locator("#status")).to_contain_text("/saved/result")
+    assert bodies[0]["data"]["label"] == "First"
+    assert "source" not in bodies[0]
+
+
 @pytest.mark.parametrize("button", [0, 1], ids=["save_json", "save_image"])
 @pytest.mark.parametrize("before", ["saved", "error"])
 def test_cancelling_a_save_empties_the_status_line(page, tracks, button, before):

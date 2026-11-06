@@ -133,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         }
     else:
         output_data = results[0].to_dict()
-        output_data["meta"] = make_meta(args.sources[0])
+        output_data["meta"] = make_meta(args.sources[0], args.duration)
 
     if args.json:
         print(json.dumps(output_data, ensure_ascii=False, allow_nan=False))

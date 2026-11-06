@@ -57,7 +57,7 @@ The summary goes to standard output and the progress to standard error. `--outpu
 
 | Option | Default | Description |
 |---|---|---|
-| `--duration` | none (full length) | Length to analyze in minutes, cut out of the middle of the source |
+| `--duration` | none (full length) | Length to analyze in minutes, cut out of the middle of the source. A single analysis records it in the JSON as `meta.duration_min` |
 | `--output-dir` | none (writes no file) | Output directory of the result JSON |
 | `--eq-bands` | `5` | Maximum number of peaking bands in the estimated EQ per Transfer Function (0 or greater) |
 | `--json` | off | Prints the result JSON to standard output |
@@ -115,7 +115,7 @@ In the GUI, enter a URL or a local file path, or load a local file with "Browse"
 
 To compare, enter the next URL or local file path and press "Compare" (the button reads "Compare" while the queue and the field hold two or more sources), or queue sources first with "+ Add Track". To analyze another source on its own, press "Clear All" first. "Clear All" also clears the result on screen, and adding or removing a track clears it while tracks stay in the queue. Moving a track reorders a comparison on screen and puts the reference mark on the new first track; the Transfer Function chart and the EQ tables stay as they were computed, against the track that was first then, until "Compare" is pressed again. A source already in the queue is not added twice. With one row in the queue, "Analyze" analyzes that row.
 
-"Load JSON" opens saved single-analysis JSON (several files can be chosen at once): one file, with the queue and the field empty, is shown as saved, and otherwise the sources of the files join the queue. A later analysis of a loaded JSON's source reuses that JSON, at the length it was saved with, unless the app has already analyzed the source since it started ([Result cache](docs/architecture.md#result-cache)). A single analysis is saved with "Save JSON" and "Save Image", a comparison with "Save Image".
+"Load JSON" opens saved single-analysis JSON (several files can be chosen at once): one file, with the queue and the field empty, is shown as saved, and otherwise the sources of the files join the queue. A later analysis of a loaded JSON's source reuses that JSON, unless the app has already analyzed the source since it started. A JSON that records the CLI's `--duration` is not reused; one saved by a version that did not record it is, at its shorter length ([Result cache](docs/architecture.md#result-cache)). A single analysis is saved with "Save JSON" and "Save Image", a comparison with "Save Image".
 
 Dark mode is supported (a 3-way switch Light / Dark / Auto; the default follows the OS setting). The chosen theme and display language (EN / JA) are kept when the app is restarted.
 
