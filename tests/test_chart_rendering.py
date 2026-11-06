@@ -110,9 +110,20 @@ def test_chart_text_is_drawn_in_the_font_of_the_page(monkeypatch):
                 fonts = page.evaluate("""() => Object.fromEntries(chartCanvasRefs.map(
                     ref => [ref.title, Array.from(window.__chartFonts.get(ref.canvas) || [])]))""")
                 assert {"1/3 Octave Band Analysis", "Transfer Function", "Low-End Detail", "Mid-High Detail"} <= set(fonts)
+                # The families the page names, in the page's order; the generic families after them can differ.
+                page_families = page.evaluate("getComputedStyle(document.body).fontFamily").split(", ")[:3]
                 for title, used in fonts.items():
                     assert used, title
-                    assert all("Segoe UI" in font for font in used), (title, used)
+                    # uPlot draws its own axes in its default font, which starts with system-ui.
+                    ours = [font for font in used if not font.split("px ", 1)[1].startswith("system-ui")]
+                    assert all(font.split("px ", 1)[1].split(", ")[:3] == page_families for font in ours), (title, used)
+                exported = page.evaluate("""data => {
+                    window.__chartFonts.clear();
+                    captureImage(data);
+                    return Array.from(window.__chartFonts.values()).flatMap(fonts => Array.from(fonts));
+                }""", data)
+                assert exported
+                assert all(font.split("px ", 1)[1].split(", ")[:3] == page_families for font in exported), exported
             finally:
                 browser.close()
     finally:

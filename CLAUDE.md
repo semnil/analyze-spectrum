@@ -390,7 +390,7 @@ The comparison feature, which analyze-loudness did not have, is taken in as a co
 ### Frontend charts
 
 uPlot (the log-frequency PSD overlay) + our own Canvas drawing (the 1/3-octave bar chart, the transfer function,
-the low-end detail, the mid-high detail). The same vendor layout as analyze-loudness. The text of our own Canvas drawing uses `'Segoe UI', 'Meiryo', sans-serif`, as the PNG export in `frontend/main.js` and analyze-loudness's charts do.
+the low-end detail, the mid-high detail). The same vendor layout as analyze-loudness. The text of our own Canvas drawing uses `-apple-system, 'Segoe UI', 'Meiryo', sans-serif`, the same order as the page's font in py-analyze-common's `common.css`, as the PNG export in `frontend/main.js` and analyze-loudness's charts do.
 
 ### Result cache (GUI)
 
