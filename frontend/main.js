@@ -438,15 +438,8 @@ function _swapTracks(i, j) {
   var tmp = compareSources[i];
   compareSources[i] = compareSources[j];
   compareSources[j] = tmp;
-  if (lastData && lastData.tracks && i < lastData.tracks.length && j < lastData.tracks.length) {
-    var tt = lastData.tracks[i];
-    lastData.tracks[i] = lastData.tracks[j];
-    lastData.tracks[j] = tt;
-    updateCompareUI({ from: i, to: j });
-    _reRenderCharts();
-  } else {
-    updateCompareUI({ from: i, to: j });
-  }
+  updateCompareUI({ from: i, to: j });
+  _maybeInvalidateResults();
 
   var nextItems = trackList.querySelectorAll(".track-item");
   _flipTrackRow(nextItems[j], prevRectI);
