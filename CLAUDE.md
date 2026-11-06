@@ -459,6 +459,10 @@ The theme and language choices are kept in the same settings file as auto-update
 - The page receives the saved values through `/common/settings.js`. `main.js` saves to `/settings` with `window.analyzeSettings.save()` every time the theme or language is switched. Saves are sent one at a time in order, so even when switching quickly, the last chosen value is what remains
 - When a save fails, the chosen theme / language stays in effect until the app is closed, and the status line shows the cause (`err.setting_save_failed`)
 
+### Temp folders of a killed run
+
+`gui.py` holds py-analyze-common's `InstanceLock` while it runs, and the CLI holds one while its work folder exists. When the GUI ends, `_cleanup_orphan_tempdirs()` removes the `spectrum_*` temp folders a killed run left behind, unless another instance runs (the "Temp folders a killed process left behind" section of `vendor/py-analyze-common/CLAUDE.md`).
+
 ### Window icon
 
 PyInstaller's `EXE(icon=...)` is only the icon of the EXE file itself (for display in Explorer). pywebview's window icon (title bar, taskbar) has to be set explicitly with `webview.start(icon=...)` (moved from `create_window` to `start` in pywebview 6.x). `build_assets/icon.ico` is bundled with PyInstaller's `datas` and resolved with `_ICON_PATH`.

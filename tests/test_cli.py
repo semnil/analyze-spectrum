@@ -103,3 +103,23 @@ class TestCliRun:
         if stage == "resolve_source":
             workdirs.append(Path(source.call_args.args[1]))
         assert workdirs and all(not workdir.exists() for workdir in workdirs)
+
+
+def test_the_cli_holds_the_instance_lock_while_its_work_folder_exists(wav_file, tmp_path, monkeypatch):
+    import glob
+    import tempfile
+    from analyze_spectrum import cli
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    pattern = str(tmp_path / "spectrum_instance_*.lock")
+    seen = []
+    resolve = cli.resolve_source
+
+    def watching(source, workdir):
+        seen.extend(glob.glob(pattern))
+        return resolve(source, workdir)
+
+    monkeypatch.setattr(cli, "resolve_source", watching)
+    assert cli.main([wav_file]) == 0
+    assert len(seen) == 1
+    assert glob.glob(pattern) == []

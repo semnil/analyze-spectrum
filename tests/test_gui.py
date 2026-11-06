@@ -583,9 +583,11 @@ class TestUpdateEndpoints:
         monkeypatch.setattr(_mock_webview, "_window", window)
         codes = []
         monkeypatch.setattr(_mock_webview.os, "_exit", codes.append)
+        lock_file = _mock_webview._instance_lock.path
         _mock_webview._exit_for_update("immediate")
         assert codes == [0]
         assert not upload.exists() and not cache.exists()
+        assert not os.path.exists(lock_file)
         window.destroy.assert_not_called()
 
     def test_main_holds_the_instance_mutex(self, _mock_webview, monkeypatch):
@@ -719,3 +721,60 @@ class TestUpdateConfig:
         from analyze_common import build
         from analyze_spectrum.update import UPDATE_CONFIG
         assert build._read_mutex_name(self._load_build().APP) == UPDATE_CONFIG.mutex_name
+
+
+_RUNNING_INSTANCE = """
+import json, os, sys, time
+from unittest.mock import MagicMock
+sys.modules["webview"] = MagicMock()
+from analyze_spectrum import gui
+then = time.time() - 3601
+for path in (gui._instance_lock.path, gui._cache_dir, gui._upload_dir):
+    os.utime(path, (then, then))
+print(json.dumps([gui._cache_dir, gui._upload_dir]), flush=True)
+sys.stdin.readline()
+"""
+
+
+class TestOrphanSweep:
+    def test_the_end_of_the_app_leaves_a_running_instance_alone(self, _mock_webview, tmp_path, monkeypatch):
+        import subprocess
+        import sys
+        import tempfile
+        import time
+        gui_mod = _mock_webview
+        monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+        own = tmp_path / "spectrum_cache_own"
+        own.mkdir()
+        os.utime(own, (time.time() - 3601, time.time() - 3601))
+        monkeypatch.setattr(gui_mod, "_cache_dir", str(own))
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path),
+               "TMPDIR": str(tmp_path), "TEMP": str(tmp_path), "TMP": str(tmp_path)}
+        other = subprocess.Popen([sys.executable, "-c", _RUNNING_INSTANCE],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=env)
+        try:
+            folders = json.loads(other.stdout.readline())
+            gui_mod._cleanup_orphan_tempdirs()
+            assert all(os.path.isdir(path) for path in folders)
+        finally:
+            other.kill()
+            other.wait()
+            other.stdin.close()
+            other.stdout.close()
+        deadline = time.monotonic() + 15
+        while any(os.path.isdir(path) for path in folders) and time.monotonic() < deadline:
+            gui_mod._cleanup_orphan_tempdirs()
+            time.sleep(0.1)
+        assert not any(os.path.isdir(path) for path in folders)
+        assert own.is_dir()
+
+    def test_a_normal_end_leaves_nothing_in_the_temp_folder(self, tmp_path):
+        import subprocess
+        import sys
+        code = ("import sys; from unittest.mock import MagicMock; sys.modules['webview'] = MagicMock(); "
+                "from analyze_spectrum import gui; print(gui._instance_lock.path)")
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path),
+               "TMPDIR": str(tmp_path), "TEMP": str(tmp_path), "TMP": str(tmp_path)}
+        done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True)
+        assert os.path.basename(done.stdout.strip()).startswith("spectrum_instance_")
+        assert list(tmp_path.iterdir()) == []
