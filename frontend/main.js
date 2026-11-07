@@ -557,12 +557,12 @@ form.addEventListener("submit", async (e) => {
 });
 
 // moved: a comparison on screen runs again after a move of its tracks. Its results stay until the new ones replace them
-// or the run ends without them, and the focus and the scroll position stay where they are.
+// or the run ends without them. The focus goes back to where it was unless it went elsewhere during the run, and the
+// scroll position stays through the replacement.
 async function _runAnalysis(isCompare, singleSource, moved = false) {
   statusEl.textContent = isCompare ? window.i18n.t("status.starting_comparison") : window.i18n.t("status.starting");
   _setStatusNormal();
   const focused = document.activeElement;
-  const scrollY = window.scrollY;
   setBusy(true);
   if (!moved) clearResults();
 
@@ -588,6 +588,7 @@ async function _runAnalysis(isCompare, singleSource, moved = false) {
 
     const data = await readNdjsonStream(resp, resultType, activeAbort.signal);
     statusEl.textContent = "";
+    const scrollY = window.scrollY;
     if (moved) clearResults();
     if (isCompare) {
       lastDuration = body.duration || null;
@@ -613,7 +614,9 @@ async function _runAnalysis(isCompare, singleSource, moved = false) {
     }
   } finally {
     setBusy(false);
-    if (moved) focused.focus({ preventScroll: true });
+    if (moved && (document.activeElement === focused || document.activeElement === document.body)) {
+      focused.focus({ preventScroll: true });
+    }
   }
 }
 

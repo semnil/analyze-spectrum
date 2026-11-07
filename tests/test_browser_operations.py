@@ -217,6 +217,28 @@ def test_moving_a_track_keeps_the_focus_the_scroll_and_the_pending_source(page, 
     assert page.evaluate("compareSources") == ["second.wav", "third.wav", "first.wav"]
 
 
+@pytest.mark.parametrize("answer", ["result", "failure"])
+def test_a_run_after_a_move_leaves_what_the_user_changed_while_it_ran(page, tracks_by_source, answer):
+    held = []
+    page.route("**/compare", lambda route: held.append(route))
+    page.set_viewport_size({"width": 1100, "height": 1000})
+    _show_comparison(page, tracks_by_source, ["first.wav", "second.wav", "third.wav"])
+    _track_button(page, 0, "down").focus()
+    page.keyboard.press("Enter")
+    route = _first_held(page, held)
+    field = page.locator("#url-input")
+    field.focus()
+    page.evaluate("window.scrollTo(0, 200)")
+    if answer == "result":
+        _answer_comparison(route, tracks_by_source)
+    else:
+        route.fulfill(status=500, json={"error": "the source is gone"})
+    page.wait_for_function("!isBusy")
+    expect(field).to_be_focused()
+    if answer == "result":
+        assert page.evaluate("window.scrollY") == 200
+
+
 def test_a_failed_comparison_after_a_move_clears_the_results(page, tracks_by_source):
     page.route("**/compare", lambda route: route.fulfill(status=500, json={"error": "the source is gone"}))
     _show_comparison(page, tracks_by_source, ["first.wav", "second.wav"])
