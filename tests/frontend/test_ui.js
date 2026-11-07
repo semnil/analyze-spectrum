@@ -301,6 +301,9 @@ function makeNdjsonResponse(type, data) {
   assertEqual(compareSources.length, 2, "Duplicate not added in multi load");
   assertIncludes(compareSources, "dup.wav", "Original dup preserved");
   assertIncludes(compareSources, "new.wav", "New track added");
+  assertEqual(document.getElementById("status").textContent,
+    "2 tracks ready for comparison (1 skipped: already added)",
+    "Status says the duplicate was already added");
 
   // ================================================
   suite("Load JSON — tracks past the limit name the limit");
@@ -325,6 +328,52 @@ function makeNdjsonResponse(type, data) {
   assertEqual(compareSources.length, 3, "Queue fills to MAX_TRACKS");
   assert(document.getElementById("status").textContent.indexOf("(2 skipped: max 3 tracks)") !== -1,
     "Status names the skipped tracks and MAX_TRACKS");
+
+  // ================================================
+  suite("Load JSON — duplicates and tracks past the limit are counted apart");
+  // ================================================
+
+  resetState();
+  window.MAX_TRACKS = 3;
+  compareSources.push("held_1.wav", "held_2.wav");
+  updateCompareUI();
+  mockFetch(function() {
+    return makeJsonResponse({
+      loaded: true,
+      type: "multi",
+      items: [fakeResult("held_1.wav"), fakeResult("over_1.wav"), fakeResult("over_2.wav")],
+    });
+  });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 200); });
+  window.MAX_TRACKS = savedMaxTracks;
+
+  assertEqual(compareSources.length, 3, "One new track fills the queue to MAX_TRACKS");
+  assertEqual(document.getElementById("status").textContent,
+    "3 tracks ready for comparison (1 skipped: already added, 1 skipped: max 3 tracks)",
+    "Status counts the duplicate and the track past MAX_TRACKS apart");
+
+  resetState();
+  window.i18n.setLang("ja");
+  window.MAX_TRACKS = 3;
+  compareSources.push("held_1.wav", "held_2.wav");
+  updateCompareUI();
+  mockFetch(function() {
+    return makeJsonResponse({
+      loaded: true,
+      type: "multi",
+      items: [fakeResult("held_1.wav"), fakeResult("over_1.wav"), fakeResult("over_2.wav")],
+    });
+  });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 200); });
+  window.MAX_TRACKS = savedMaxTracks;
+  var jaStatus = document.getElementById("status").textContent;
+  window.i18n.setLang("en");
+
+  assertEqual(jaStatus,
+    "3 件のトラックを比較できます (1 件スキップ: 追加済み、1 件スキップ: 最大 3 トラック)",
+    "The Japanese status counts them apart too");
 
   // ================================================
   suite("Load JSON — schema_outdated accepted adds source as track");
