@@ -435,7 +435,7 @@ The single source of truth is `SCHEMA_VERSION` (an integer) in `src/analyze_spec
 
 - `meta.version`: the app version (for display)
 - `meta.schema_version`: the schema version. `/load` only validates that it is an integer (it may be absent), and does not judge compatibility by its value
-- `meta.duration_min`: the minutes `--duration` cut out of the middle. Absent when the whole source was analyzed, which includes a source no longer than those minutes. A comparison has it when any of its tracks was cut. `/load` keeps a result that has it out of the cache ([Result cache (GUI)](#result-cache-gui))
+- `meta.duration_min`: the minutes `--duration` cut out of the middle. Absent when the whole source was analyzed, which includes a source ffprobe estimates to be no longer than those minutes; ffmpeg then reads to the end of the source (`middle_of()` in `download.py`). A comparison has it when any of its tracks was cut. `/load` keeps a result that has it out of the cache ([Result cache (GUI)](#result-cache-gui))
 - Compatibility is **judged by whether fields exist, not by the version number**. The single source of truth for the list of fields needed for drawing is `missing_result_fields()` in `analysis.py`, which looks at `spectrum.freqs` / `spectrum.psd_db` / `bands.centers` / `bands.energy_db` / each band of `summary.band_energy`. Missing numeric metrics are not covered (the screen shows them as `?`)
 - A single file with missing fields returns the `schema_outdated` flag and is not registered in the cache (re-analysis gets the latest format). In a multiple-file load too, the ones with missing fields are not registered in the cache
 - Saving and loading Compare JSON has been removed (single analysis results only)

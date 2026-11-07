@@ -209,6 +209,19 @@ class TestDurationRecord:
         assert ["duration_min" in track["meta"] for track in data["tracks"]] == [False, False]
         assert "duration_min" not in data["meta"]
 
+    @pytest.mark.parametrize("path, body, kind", [
+        ("/analyze", lambda wav, other: {"url": wav}, "result"),
+        ("/compare", lambda wav, other: {"sources": [wav, other]}, "compare_result"),
+    ], ids=["analyze", "compare"])
+    def test_source_estimated_too_short_is_analyzed_to_its_end(self, _server, wav_file, wav_file_b, monkeypatch, path, body, kind):
+        base, gui_mod = _server
+        monkeypatch.setattr(gui_mod, "probe_info", lambda source: (1, 0.2))
+        _, raw = _post(base, path, {**body(wav_file, wav_file_b), "duration": 0.01})
+        data = [e for e in _parse_ndjson(raw) if e["type"] == kind][0]["data"]
+        track = data["tracks"][0] if kind == "compare_result" else data
+        assert track["duration_sec"] == pytest.approx(0.5, abs=0.001)
+        assert "duration_min" not in track["meta"]
+
     def test_comparison_that_cut_only_one_track_records_it(self, _server, wav_file, tmp_path):
         from tests.conftest import _make_wav_bytes
 

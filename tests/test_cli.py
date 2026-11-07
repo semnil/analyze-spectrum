@@ -79,6 +79,17 @@ class TestCliRun:
         assert data["duration_sec"] == pytest.approx(0.5, abs=0.001)
         assert "duration_min" not in data["meta"]
 
+    def test_source_estimated_too_short_is_analyzed_to_its_end(self, wav_file, capsys, monkeypatch):
+        import json
+        from analyze_spectrum import cli
+
+        monkeypatch.setattr(cli, "probe_info", lambda path: (1, 0.2))
+        assert cli.main([wav_file, "--duration", "1", "--json"]) == 0
+        printed = capsys.readouterr()
+        data = json.loads(printed.out[printed.out.index("{"):])
+        assert data["duration_sec"] == pytest.approx(0.5, abs=0.001)
+        assert "duration_min" not in data["meta"]
+
     @pytest.mark.parametrize("duration, recorded", [("0.005", 0.005), ("1", None)], ids=["cut", "shorter"])
     def test_comparison_records_a_duration_that_cut_its_tracks(self, wav_file, wav_file_b, capsys, duration, recorded):
         import json

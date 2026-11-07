@@ -19,7 +19,7 @@ import webview
 
 from analyze_spectrum import make_compare_meta, make_meta as _make_meta, recorded_minutes
 from analyze_spectrum.analysis import analyze_track, estimate_parametric_eq, missing_result_fields
-from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
+from analyze_spectrum.download import is_url, middle_of, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
 from analyze_spectrum.update import UPDATE_CONFIG
 from analyze_common.server import ClientDisconnected as _ClientDisconnected
@@ -451,7 +451,7 @@ class AnalyzeHandler(GuiHandler):
 
             ss, dur = None, None
             if duration_min is not None:
-                ss, dur, _ = compute_middle(total_sec, duration_min)
+                ss, dur, _ = middle_of(total_sec, duration_min)
 
             # Stage 2: PCM extraction
             self._send_event("progress", stage="pcm",
@@ -495,7 +495,7 @@ class AnalyzeHandler(GuiHandler):
 
                     ss, dur = None, None
                     if duration_min is not None:
-                        ss, dur, _ = compute_middle(total_sec, duration_min)
+                        ss, dur, _ = middle_of(total_sec, duration_min)
 
                     self._send_event("progress", stage="pcm",
                                      message=f"[{i+1}/{n}] Extracting PCM: {label}")

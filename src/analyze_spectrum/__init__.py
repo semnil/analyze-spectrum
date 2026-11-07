@@ -17,7 +17,7 @@ SCHEMA_VERSION = 2
 def recorded_minutes(duration_min: float | None, start_sec: float | None) -> float | None:
     """The minutes to record for an analysis asked for duration_min that started at start_sec.
 
-    None when it started at the beginning of the source, where the whole source was analyzed.
+    None when it has no start, which is an analysis of the whole source.
     """
     return duration_min if start_sec else None
 
