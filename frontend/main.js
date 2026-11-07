@@ -84,16 +84,14 @@ function _reRenderCharts() {
 // Resize uPlot + Canvas charts on window resize.  uPlot needs an explicit
 // setSize; Canvas charts (octave / lowend / midhigh / transfer) render once
 // at a fixed width so we re-run the full renderer against lastData.
-let _resizeTimer = null;
 window.addEventListener("resize", function() {
-  clearTimeout(_resizeTimer);
-  _resizeTimer = setTimeout(function() {
+  _afterResize(function() {
     activeUPlots.forEach(function(u) {
       var wrap = u.root.parentElement;
       if (wrap) u.setSize({width: wrap.clientWidth, height: u.height});
     });
     if (lastData) _reRenderCharts();
-  }, 200);
+  });
 });
 
 // Init theme
