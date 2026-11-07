@@ -303,6 +303,30 @@ function makeNdjsonResponse(type, data) {
   assertIncludes(compareSources, "new.wav", "New track added");
 
   // ================================================
+  suite("Load JSON — tracks past the limit name the limit");
+  // ================================================
+
+  resetState();
+  var savedMaxTracks = window.MAX_TRACKS;
+  window.MAX_TRACKS = 3;
+  compareSources.push("held_1.wav", "held_2.wav");
+  updateCompareUI();
+  mockFetch(function() {
+    return makeJsonResponse({
+      loaded: true,
+      type: "multi",
+      items: [fakeResult("over_1.wav"), fakeResult("over_2.wav"), fakeResult("over_3.wav")],
+    });
+  });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 200); });
+  window.MAX_TRACKS = savedMaxTracks;
+
+  assertEqual(compareSources.length, 3, "Queue fills to MAX_TRACKS");
+  assert(document.getElementById("status").textContent.indexOf("(2 skipped: max 3 tracks)") !== -1,
+    "Status names the skipped tracks and MAX_TRACKS");
+
+  // ================================================
   suite("Load JSON — schema_outdated accepted adds source as track");
   // ================================================
 

@@ -346,7 +346,7 @@ function safeName(label) {
 }
 
 function _tryAddTrack(src) {
-  if (src && compareSources.indexOf(src) === -1 && compareSources.length < 6) {
+  if (src && compareSources.indexOf(src) === -1 && compareSources.length < MAX_TRACKS) {
     compareSources.push(src);
     return true;
   }
@@ -538,8 +538,8 @@ form.addEventListener("submit", async (e) => {
   if (_tryAddTrack(pending)) {
     urlInput.value = "";
     updateCompareUI();
-  } else if (pending && compareSources.length >= 6) {
-    showError(window.i18n.t("err.max_tracks"));
+  } else if (pending && compareSources.length >= MAX_TRACKS) {
+    showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
     return;
   }
 
@@ -645,8 +645,8 @@ browseBtn.addEventListener("click", async () => {
 addBtn.addEventListener("click", () => {
   const url = urlInput.value.trim();
   if (!url) return;
-  if (compareSources.length >= 6) {
-    showError(window.i18n.t("err.max_tracks"));
+  if (compareSources.length >= MAX_TRACKS) {
+    showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
     return;
   }
   if (compareSources.indexOf(url) !== -1) {
@@ -792,7 +792,7 @@ function _loadAddToQueue(loadedSources) {
   if (compareSources.length >= 2) {
     var msg = compareSources.length + window.i18n.t("status.tracks_ready");
     if (skipped > 0) {
-      msg += " (" + skipped + window.i18n.t("status.skipped_max_suffix");
+      msg += " (" + skipped + window.i18n.t("status.skipped_max_suffix", { max: MAX_TRACKS });
     }
     statusEl.textContent = msg;
   } else {
