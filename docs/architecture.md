@@ -421,47 +421,7 @@ sequenceDiagram
 
 ### Auto-update
 
-The installed app checks whether the latest release has a newer version at launch (when "Check at launch" in the settings dialog is ON) and from "Check now" in the settings dialog. What it fetches is the Windows installer or the macOS disk image (DMG).
-The screen side (the settings button, the settings dialog, the confirmation dialog) is handled by `vendor/py-analyze-common/src/analyze_common/web/update.js`, and fetching, verifying and applying by `vendor/py-analyze-common/src/analyze_common/update.py`; both are shared with analyze-loudness.
-The `/update/*` endpoints are `GuiHandler`'s (`vendor/py-analyze-common/src/analyze_common/server.py`). What this app owns is `UPDATE_CONFIG` in `src/analyze_spectrum/update.py`, the exit handling (`_exit_for_update()`) in `src/analyze_spectrum/gui.py`, and stopping operations during the download (`_setUpdateLock()`) in `frontend/main.js`.
-The signing key and the `.github/workflows/release.yaml` procedure are in the "Auto-update" section of the project's `CLAUDE.md`.
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant FE as Frontend (/common/update.js)
-    participant SRV as HTTP server (src/analyze_spectrum/gui.py)
-    participant GH as GitHub Releases
-    participant OS as Installer / shell
-
-    FE->>SRV: POST /update/status
-    SRV-->>FE: {current, supported, launch_check}
-    FE->>SRV: POST /update/check
-    SRV->>GH: GET releases/latest/download/latest.json
-    GH-->>SRV: {version, platforms}
-    SRV-->>FE: {available: true, version}
-    FE->>U: confirm (Version X is available. Update now?)
-    U-->>FE: OK
-    FE->>FE: _setUpdateLock(true)
-    FE->>SRV: POST /update/install {version}
-    SRV->>GH: GET setup.exe or .dmg
-    SRV->>SRV: verify the Ed25519 signature with PUBLIC_KEY
-    alt Windows
-        SRV->>OS: start setup.exe with /SILENT and /UPDATE=1
-        SRV-->>FE: {restarting: true}
-        SRV->>SRV: window.destroy() and exit, which frees the mutex
-        OS->>OS: wait for the mutex, install, start the app
-    else macOS
-        SRV->>SRV: copy the .app out of the DMG, check bundle id, version and Team ID, swap it in
-        SRV-->>FE: {restarting: true}
-        SRV->>SRV: remove the temp dirs, os._exit(0)
-        OS->>OS: wait for the exit, open the new .app
-    end
-```
-
-Cancel downloads nothing. The check at launch shows nothing when there is no newer version or when the check fails ("Check now" shows the result inside the dialog). During an analysis it declines without showing the confirmation dialog.
-When any of the download, verification or apply fails, `_setUpdateLock(false)` gives the operations back, the status area shows the cause, and the app keeps running.
-On Windows the installer shows the User Account Control (UAC) prompt, and by then the app has already exited. If UAC is declined, nothing is installed and the app stays closed (launching it again starts the old version, and if the check at launch is ON it offers the same update again).
+How an update runs, what the user sees, what is verified and how each OS applies it are in [py-analyze-common's auto-update document](https://github.com/semnil/py-analyze-common/blob/main/docs/auto-update.md). What this app owns is `UPDATE_CONFIG` in `src/analyze_spectrum/update.py`, the exit handling (`_exit_for_update()`) in `src/analyze_spectrum/gui.py`, and stopping operations during the download (`_setUpdateLock()`) in `frontend/main.js`.
 
 ## Charts
 

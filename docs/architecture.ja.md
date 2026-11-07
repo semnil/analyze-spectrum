@@ -421,47 +421,7 @@ sequenceDiagram
 
 ### 自動更新
 
-インストールしたアプリは、起動時 (設定ダイアログの「起動時に確認」が ON のとき) と設定ダイアログの「今すぐ確認」で、最新リリースに新しい版があるかを確かめる。取得するのは Windows のインストーラーか macOS のディスクイメージ (DMG) である。
-画面側 (設定ボタン・設定ダイアログ・確認ダイアログ) は `vendor/py-analyze-common/src/analyze_common/web/update.js`、取得・検証・適用は `vendor/py-analyze-common/src/analyze_common/update.py` が受け持ち、analyze-loudness と共通である。
-`/update/*` のエンドポイントは `GuiHandler` (`vendor/py-analyze-common/src/analyze_common/server.py`) のものである。このアプリが持つのは `src/analyze_spectrum/update.py` の `UPDATE_CONFIG`、`src/analyze_spectrum/gui.py` の終了処理 (`_exit_for_update()`)、`frontend/main.js` のダウンロード中の操作の停止 (`_setUpdateLock()`) である。
-署名の鍵と `.github/workflows/release.yaml` の手順はプロジェクトの `CLAUDE.md` の「Auto-update」節にある。
-
-```mermaid
-sequenceDiagram
-    participant U as ユーザー
-    participant FE as フロントエンド (/common/update.js)
-    participant SRV as HTTP サーバー (src/analyze_spectrum/gui.py)
-    participant GH as GitHub Releases
-    participant OS as インストーラー / シェル
-
-    FE->>SRV: POST /update/status
-    SRV-->>FE: {current, supported, launch_check}
-    FE->>SRV: POST /update/check
-    SRV->>GH: GET releases/latest/download/latest.json
-    GH-->>SRV: {version, platforms}
-    SRV-->>FE: {available: true, version}
-    FE->>U: confirm (バージョン X が利用可能です。今すぐ更新しますか?)
-    U-->>FE: OK
-    FE->>FE: _setUpdateLock(true)
-    FE->>SRV: POST /update/install {version}
-    SRV->>GH: GET setup.exe か .dmg
-    SRV->>SRV: Ed25519 の署名を PUBLIC_KEY で検証
-    alt Windows
-        SRV->>OS: setup.exe を /SILENT と /UPDATE=1 で起動
-        SRV-->>FE: {restarting: true}
-        SRV->>SRV: window.destroy() で終わり、mutex を手放す
-        OS->>OS: mutex を待ち、インストールし、アプリを起動
-    else macOS
-        SRV->>SRV: DMG から .app を取り出し、bundle id・版・Team ID を確かめて入れ替える
-        SRV-->>FE: {restarting: true}
-        SRV->>SRV: 一時ディレクトリを消し、os._exit(0)
-        OS->>OS: 終了を待ち、新しい .app を開く
-    end
-```
-
-キャンセルすると何もダウンロードしない。起動時の確認は、新しい版が無いときと確認に失敗したときは何も表示しない (「今すぐ確認」はダイアログ内に結果を出す)。分析中は確認ダイアログを出さずに断る。
-ダウンロード・検証・適用のどこかで失敗すると `_setUpdateLock(false)` で操作を戻し、ステータス欄に原因を出してアプリは動き続ける。
-Windows ではユーザーアカウント制御 (UAC) の確認をインストーラーが出し、そのときアプリはもう終わっている。UAC を拒否するとインストールされず、アプリは閉じたままになる (もう一度起動すると旧版が起動し、起動時の確認が ON なら同じ更新をもう一度勧める)。
+更新の流れ、利用者に見えること、検証するもの、OS ごとの適用は [py-analyze-common の自動更新の文書](https://github.com/semnil/py-analyze-common/blob/main/docs/auto-update.ja.md) にある。このアプリが持つのは `src/analyze_spectrum/update.py` の `UPDATE_CONFIG`、`src/analyze_spectrum/gui.py` の終了処理 (`_exit_for_update()`)、`frontend/main.js` のダウンロード中の操作の停止 (`_setUpdateLock()`) である。
 
 ## チャート
 

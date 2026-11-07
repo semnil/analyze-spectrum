@@ -121,13 +121,7 @@ GUI では URL かローカルファイルのパスを入れるか、「参照�
 
 ### アプリの更新
 
-インストール版のアプリ (Windows のインストーラー版、macOS のディスクイメージ (DMG) 版) は、起動時に [GitHub の Releases](../../releases) で新しい版があるかを確認する (分析で取得する音声を除くと、アプリが自分から行う通信はこれだけ)。新しい版があれば「バージョン {version} が利用可能です。今すぐ更新しますか?」と確認し (`{version}` のところに新しい版が入る)、OK を押したときだけ更新を取得し、改ざんされていないことをアプリに組み込んだ公開鍵と署名で確かめてからインストールし、アプリを再起動する。キャンセルすると何もしない。再起動すると、保存していない分析結果は消える。起動時の確認は、新しい版が無いときと確認に失敗したときは何も表示しない。
-
-- 右上の歯車ボタンの設定で、起動時の確認を止められる (「起動時に確認」)。「今すぐ確認」で手動でも確認できる
-- Windows: インストーラーが動くときに、ユーザーアカウント制御 (UAC) の確認が出る。そのときアプリはもう閉じているので、「いいえ」を選ぶと更新はされず、アプリは閉じたままになる。もう一度起動すると、更新の確認がまた出る (起動時の確認を止めていないとき)
-- macOS: アプリを「アプリケーション」フォルダに入れて使う。フォルダに書き込む権限が無いときは管理者のパスワードを求める。同じアプリを 2 つ起動しているときは、片方を終了してから更新する
-- 分析中は更新しない。分析が終わってから「今すぐ確認」を押す
-- 更新の確認とダウンロードの接続先は github.com のリリースと、GitHub がリリースのファイルの取得をリダイレクトする配信先 (release-assets.githubusercontent.com)。リクエストの User-Agent はアプリ名と版 (`analyze-spectrum/<version>`)
+インストール版のアプリは、起動時に新しい版があるかを確認し、確認に OK すると自分を更新する。何をするか、どこへ接続するか、確認の止め方は [py-analyze-common の文書](https://github.com/semnil/py-analyze-common/blob/main/docs/auto-update.ja.md#%E5%88%A9%E7%94%A8%E8%80%85%E3%81%AB%E8%A6%8B%E3%81%88%E3%82%8B%E3%81%93%E3%81%A8) にある。リクエストの User-Agent は `analyze-spectrum/<version>`。
 
 ## 解析指標
 
@@ -203,29 +197,7 @@ python build.py --installer  # + Inno Setup インストーラー (.exe) / DMG (
 
 バンドルは `dist/analyze-spectrum/` (macOS は `dist/Spectrum Analyzer.app`)、インストーラーは `installer_output/` に出力する。
 
-前提条件:
-
-- PyInstaller (`pip install pyinstaller`、または `dev` extra) と certifi (`pip install -e ".[gui]"`)。無いとビルドは止まる
-- Inno Setup 6 (Windows のインストーラーを生成するときのみ)
-- create-dmg (macOS の DMG を生成するときのみ: `brew install create-dmg`)
-
-`build.py` が以下を自動ダウンロード:
-
-- ffmpeg / ffprobe (Windows: BtbN/FFmpeg-Builds、macOS: osxexperts.net。系列と macOS の URL と SHA256 は `build_assets/ffmpeg.json`)
-- deno (GitHub の最新リリース。yt-dlp の YouTube JavaScript 抽出に必要)
-- uPlot (jsDelivr CDN)
-
-yt-dlp は Python 依存 (`pyproject.toml`) として管理され、PyInstaller が自動的にバンドルする。
-
-uPlot は `build_assets/checksums.json` の SHA256 と照合し (`python build.py --update-checksums` で更新)、macOS の ffmpeg / ffprobe は `build_assets/ffmpeg.json` の SHA256 と照合する。deno と Windows の ffmpeg / ffprobe は固定しない。
-
-| フラグ | 説明 |
-|---|---|
-| `--installer` | インストーラー (Inno Setup / DMG) も作る |
-| `--skip-download` | アセットのダウンロードを省く |
-| `--skip-build` | PyInstaller を省く (`dist/` がある前提) |
-| `--update-checksums` | アセットをダウンロードし、`build_assets/checksums.json` を更新して止まる |
-| `--ffmpeg-only` | ffmpeg / ffprobe だけを `build_assets/bin/` にダウンロードして止まる |
+前提条件、`build.py` がダウンロードするもの、フラグは [py-analyze-common の README](https://github.com/semnil/py-analyze-common/blob/main/README.ja.md#consumer-%E3%81%AE%E3%83%93%E3%83%AB%E3%83%89) にある。
 
 ## プロジェクト構成
 
