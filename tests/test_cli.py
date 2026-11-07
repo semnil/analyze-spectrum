@@ -69,6 +69,52 @@ class TestCliRun:
         assert data["duration_sec"] == pytest.approx(0.5, abs=0.001)
         assert "duration_min" not in data["meta"]
 
+    def test_source_shorter_than_the_duration_records_none(self, wav_file, capsys):
+        import json
+        from analyze_spectrum.cli import main
+
+        assert main([wav_file, "--duration", "1", "--json"]) == 0
+        printed = capsys.readouterr()
+        data = json.loads(printed.out[printed.out.index("{"):])
+        assert data["duration_sec"] == pytest.approx(0.5, abs=0.001)
+        assert "duration_min" not in data["meta"]
+
+    def test_source_estimated_too_short_is_analyzed_to_its_end(self, wav_file, capsys, monkeypatch):
+        import json
+        from analyze_spectrum import cli
+
+        monkeypatch.setattr(cli, "probe_info", lambda path: (1, 0.2))
+        assert cli.main([wav_file, "--duration", "1", "--json"]) == 0
+        printed = capsys.readouterr()
+        data = json.loads(printed.out[printed.out.index("{"):])
+        assert data["duration_sec"] == pytest.approx(0.5, abs=0.001)
+        assert "duration_min" not in data["meta"]
+
+    @pytest.mark.parametrize("duration, recorded", [("0.005", 0.005), ("1", None)], ids=["cut", "shorter"])
+    def test_comparison_records_a_duration_that_cut_its_tracks(self, wav_file, wav_file_b, capsys, duration, recorded):
+        import json
+        from analyze_spectrum.cli import main
+
+        assert main([wav_file, wav_file_b, "--duration", duration, "--json"]) == 0
+        printed = capsys.readouterr()
+        data = json.loads(printed.out[printed.out.index("{"):])
+        assert data["meta"].get("duration_min") == recorded
+        assert data["meta"]["sources"] == [wav_file, wav_file_b]
+
+    def test_comparison_records_a_duration_that_cut_only_one_track(self, wav_file, tmp_path, capsys):
+        import json
+        from analyze_spectrum.cli import main
+        from tests.conftest import _make_wav_bytes
+
+        longer = tmp_path / "longer.wav"
+        longer.write_bytes(_make_wav_bytes(1000.0, 2.0))
+        # The source the duration cuts comes first and last, so the record does not rest on the last track.
+        for sources in ([str(longer), wav_file], [wav_file, str(longer)]):
+            assert main([*sources, "--duration", "0.02", "--json"]) == 0
+            printed = capsys.readouterr()
+            data = json.loads(printed.out[printed.out.index("{"):])
+            assert data["meta"]["duration_min"] == 0.02
+
     @pytest.mark.parametrize("duration", ["0", "-1", "nan", "inf", "-inf", "abc"])
     def test_invalid_duration_starts_no_work(self, duration):
         from analyze_spectrum import cli

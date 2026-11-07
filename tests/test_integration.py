@@ -166,11 +166,23 @@ class TestAnalyzeEndpoint:
 
 
 class TestDurationRecord:
-    def test_analysis_with_a_duration_records_it(self, _server, wav_file):
+    def test_analysis_with_a_duration_records_it(self, _server, tmp_path):
+        from tests.conftest import _make_wav_bytes
+
+        longer = tmp_path / "longer.wav"
+        longer.write_bytes(_make_wav_bytes(440.0, 2.0))
         base, _ = _server
-        _, raw = _post(base, "/analyze", {"url": wav_file, "duration": 0.01})
+        _, raw = _post(base, "/analyze", {"url": str(longer), "duration": 0.02})
         data = [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
-        assert data["meta"]["duration_min"] == 0.01
+        assert data["duration_sec"] == pytest.approx(1.2, abs=0.001)
+        assert data["meta"]["duration_min"] == 0.02
+
+    def test_analysis_of_a_source_shorter_than_the_duration_records_none(self, _server, wav_file):
+        base, _ = _server
+        _, raw = _post(base, "/analyze", {"url": wav_file, "duration": 1})
+        data = [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
+        assert data["duration_sec"] == pytest.approx(0.5, abs=0.001)
+        assert "duration_min" not in data["meta"]
 
     def test_full_length_analysis_records_none(self, _server, wav_file):
         base, _ = _server
@@ -178,11 +190,48 @@ class TestDurationRecord:
         data = [e for e in _parse_ndjson(raw) if e["type"] == "result"][0]["data"]
         assert "duration_min" not in data["meta"]
 
-    def test_comparison_with_a_duration_records_it_on_each_track(self, _server, wav_file, wav_file_b):
+    def test_comparison_with_a_duration_records_it_on_each_track(self, _server, tmp_path):
+        from tests.conftest import _make_wav_bytes
+
+        first, second = tmp_path / "first.wav", tmp_path / "second.wav"
+        first.write_bytes(_make_wav_bytes(440.0, 2.0))
+        second.write_bytes(_make_wav_bytes(1000.0, 2.0))
         base, _ = _server
-        _, raw = _post(base, "/compare", {"sources": [wav_file, wav_file_b], "duration": 0.01})
+        _, raw = _post(base, "/compare", {"sources": [str(first), str(second)], "duration": 0.02})
         data = [e for e in _parse_ndjson(raw) if e["type"] == "compare_result"][0]["data"]
-        assert [track["meta"]["duration_min"] for track in data["tracks"]] == [0.01, 0.01]
+        assert [track["meta"]["duration_min"] for track in data["tracks"]] == [0.02, 0.02]
+        assert data["meta"]["duration_min"] == 0.02
+
+    def test_comparison_of_sources_shorter_than_the_duration_records_none(self, _server, wav_file, wav_file_b):
+        base, _ = _server
+        _, raw = _post(base, "/compare", {"sources": [wav_file, wav_file_b], "duration": 1})
+        data = [e for e in _parse_ndjson(raw) if e["type"] == "compare_result"][0]["data"]
+        assert ["duration_min" in track["meta"] for track in data["tracks"]] == [False, False]
+        assert "duration_min" not in data["meta"]
+
+    @pytest.mark.parametrize("path, body, kind", [
+        ("/analyze", lambda wav, other: {"url": wav}, "result"),
+        ("/compare", lambda wav, other: {"sources": [wav, other]}, "compare_result"),
+    ], ids=["analyze", "compare"])
+    def test_source_estimated_too_short_is_analyzed_to_its_end(self, _server, wav_file, wav_file_b, monkeypatch, path, body, kind):
+        base, gui_mod = _server
+        monkeypatch.setattr(gui_mod, "probe_info", lambda source: (1, 0.2))
+        _, raw = _post(base, path, {**body(wav_file, wav_file_b), "duration": 0.01})
+        data = [e for e in _parse_ndjson(raw) if e["type"] == kind][0]["data"]
+        track = data["tracks"][0] if kind == "compare_result" else data
+        assert track["duration_sec"] == pytest.approx(0.5, abs=0.001)
+        assert "duration_min" not in track["meta"]
+
+    def test_comparison_that_cut_only_one_track_records_it(self, _server, wav_file, tmp_path):
+        from tests.conftest import _make_wav_bytes
+
+        longer = tmp_path / "longer.wav"
+        longer.write_bytes(_make_wav_bytes(1000.0, 2.0))
+        base, _ = _server
+        _, raw = _post(base, "/compare", {"sources": [str(longer), wav_file], "duration": 0.02})
+        data = [e for e in _parse_ndjson(raw) if e["type"] == "compare_result"][0]["data"]
+        assert ["duration_min" in track["meta"] for track in data["tracks"]] == [True, False]
+        assert data["meta"]["duration_min"] == 0.02
 
 
 class TestCompareEndpoint:
@@ -370,6 +419,22 @@ class TestLoadEndpoint:
             events = _parse_ndjson(raw)
             track = [e for e in events if e["type"] == "compare_result"][0]["data"]["tracks"][0]
         assert track["duration_sec"] == pytest.approx(0.5 if recorded else 0.3, abs=0.001)
+
+    def test_cli_json_of_a_source_shorter_than_its_duration_answers_a_later_analysis(self, _server, wav_file, tmp_path, capsys):
+        from analyze_spectrum.cli import main
+
+        base, gui_mod = _server
+        assert main([wav_file, "--duration", "1", "--json"]) == 0
+        printed = capsys.readouterr().out
+        saved = tmp_path / "whole.json"
+        saved.write_text(printed[printed.index("{"):], encoding="utf-8")
+        gui_mod._window = MagicMock()
+        gui_mod._window.create_file_dialog.return_value = [str(saved)]
+        status, _ = _post(base, "/load", {})
+        assert status == 200
+
+        _, raw = _post(base, "/analyze", {"url": wav_file})
+        assert [e["stage"] for e in _parse_ndjson(raw) if e["type"] == "progress"] == ["cache"]
 
     def _load_one(self, base, gui_mod, tmp_path, data, name):
         json_path = str(tmp_path / name)
