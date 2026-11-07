@@ -11,6 +11,7 @@ import pytest
 pytest.importorskip("playwright")
 from playwright.sync_api import expect, sync_playwright
 
+from analyze_common.json_util import json_safe
 from analyze_spectrum.analysis import analyze_track, compare_tracks
 from tests.test_frontend import _app_server, _gui_module
 
@@ -131,20 +132,157 @@ def test_reordering_keeps_sources_and_rows_in_sync(page):
     expect(page.locator(".track-item").last.locator(".track-btn").nth(1)).to_be_disabled()
 
 
-def test_moving_a_track_clears_the_comparison_on_screen(page, tracks):
-    page.evaluate("() => {compareSources = ['first.wav', 'second.wav']; updateCompareUI();}")
-    data = compare_tracks(tracks).to_dict()
-    data["tracks"][0]["meta"] = {"source": "first.wav"}
-    data["tracks"][1]["meta"] = {"source": "second.wav"}
-    page.evaluate("data => renderCompare(data)", data)
-    # The comparison stays while the queue holds its tracks in its order.
-    page.evaluate("_maybeInvalidateResults()")
-    assert page.locator(".chart-title", has_text="Transfer Function").count() == 1
-    page.locator(".track-item").first.locator(".track-btn").nth(1).click()
-    assert page.evaluate("compareSources") == ["second.wav", "first.wav"]
+@pytest.fixture(scope="module")
+def tracks_by_source():
+    samples = np.random.default_rng(7).normal(0, 0.05, 12000)
+    gains = {"first.wav": 1, "second.wav": 2, "third.wav": 0.5}
+    return {source: analyze_track(samples * gain, label=source) for source, gain in gains.items()}
+
+
+def _comparison(tracks_by_source, sources):
+    data = compare_tracks([tracks_by_source[source] for source in sources]).to_dict()
+    for track, source in zip(data["tracks"], sources):
+        track["meta"] = {"source": source}
+    return data
+
+
+def _answer_comparison(route, tracks_by_source):
+    sources = json.loads(route.request.post_data)["sources"]
+    event = {"type": "compare_result", "data": _comparison(tracks_by_source, sources)}
+    route.fulfill(status=200, content_type="application/x-ndjson", body=json.dumps(json_safe(event)) + "\n")
+
+
+def _show_comparison(page, tracks_by_source, sources):
+    page.evaluate("sources => {compareSources = sources; updateCompareUI();}", sources)
+    page.evaluate("data => renderCompare(data)", json_safe(_comparison(tracks_by_source, sources)))
+
+
+def _set_height_with_nothing_on_screen(page, height):
+    # Cancels the redraw the page's resize handler schedules, which would replace the results during the steps of a test.
+    page.evaluate("() => {addEventListener('resize', () => {window.resized = true;}, {once: true});}")
+    page.set_viewport_size({"width": 1100, "height": height})
+    page.wait_for_function("window.resized")
+    page.evaluate("clearTimeout(_resizeTimer)")
+
+
+def _track_button(page, row, action):
+    return page.locator(".track-item").nth(row).locator(f'.track-btn[data-action="{action}"]')
+
+
+def _shown_sources(page):
+    return page.evaluate("lastData && lastData.tracks.map(track => track.meta.source)")
+
+
+def _first_held(page, held):
+    for _ in range(500):
+        if held:
+            return held[0]
+        page.wait_for_timeout(10)
+    raise AssertionError("the page sent no request")
+
+
+def test_moving_a_track_compares_again_in_the_new_order(page, tracks_by_source):
+    held = []
+    page.route("**/compare", lambda route: held.append(route))
+    _show_comparison(page, tracks_by_source, ["first.wav", "second.wav"])
+    _track_button(page, 0, "down").click()
+    route = _first_held(page, held)
+    assert json.loads(route.request.post_data) == {"sources": ["second.wav", "first.wav"]}
     expect(page.locator(".track-label")).to_have_text(["second.wav", "first.wav"])
+    # The results stay, and the rows wait, until the new results replace them.
+    assert _shown_sources(page) == ["first.wav", "second.wav"]
+    expect(_track_button(page, 1, "up")).to_be_disabled()
+    _answer_comparison(route, tracks_by_source)
+    page.wait_for_function("!isBusy")
+    assert _shown_sources(page) == ["second.wav", "first.wav"]
+    assert page.locator(".chart-title", has_text="Transfer Function").count() == 1
+    assert page.evaluate("statusEl.textContent") == ""
+    expect(_track_button(page, 1, "up")).to_be_enabled()
+    assert len(held) == 1
+
+
+def test_moving_a_track_keeps_the_focus_the_scroll_and_the_pending_source(page, tracks_by_source):
+    page.route("**/compare", lambda route: _answer_comparison(route, tracks_by_source))
+    # At this height the page is shorter than the scroll position while the results are redrawn.
+    _set_height_with_nothing_on_screen(page, 1000)
+    _show_comparison(page, tracks_by_source, ["first.wav", "second.wav", "third.wav"])
+    field = page.locator("#url-input")
+    field.fill("pending.wav")
+    _track_button(page, 0, "down").focus()
+    page.evaluate("window.scrollTo(0, 120)")
+    scroll = page.evaluate("window.scrollY")
+    assert scroll == 120
+    page.evaluate("() => {window.resultsFocused = 0; resultsEl.addEventListener('focus', () => window.resultsFocused++);}")
+    page.keyboard.press("Enter")
+    page.wait_for_function("!isBusy && lastData.tracks[0].meta.source === 'second.wav'")
+    expect(_track_button(page, 1, "down")).to_be_focused()
+    assert page.evaluate("window.resultsFocused") == 0
+    assert page.evaluate("window.scrollY") == scroll
+    page.keyboard.press("Enter")
+    page.wait_for_function("!isBusy && lastData.tracks[1].meta.source === 'third.wav'")
+    assert _shown_sources(page) == ["second.wav", "third.wav", "first.wav"]
+    expect(field).to_have_value("pending.wav")
+    assert page.evaluate("compareSources") == ["second.wav", "third.wav", "first.wav"]
+
+
+@pytest.mark.parametrize("answer", ["result", "failure"])
+def test_a_run_after_a_move_leaves_what_the_user_changed_while_it_ran(page, tracks_by_source, answer):
+    held = []
+    page.route("**/compare", lambda route: held.append(route))
+    _set_height_with_nothing_on_screen(page, 1000)
+    _show_comparison(page, tracks_by_source, ["first.wav", "second.wav", "third.wav"])
+    _track_button(page, 0, "down").focus()
+    page.keyboard.press("Enter")
+    route = _first_held(page, held)
+    field = page.locator("#url-input")
+    field.focus()
+    page.evaluate("window.scrollTo(0, 200)")
+    if answer == "result":
+        _answer_comparison(route, tracks_by_source)
+    else:
+        route.fulfill(status=500, json={"error": "the source is gone"})
+    page.wait_for_function("!isBusy")
+    expect(field).to_be_focused()
+    if answer == "result":
+        assert page.evaluate("window.scrollY") == 200
+
+
+def test_a_failed_comparison_after_a_move_clears_the_results(page, tracks_by_source):
+    page.route("**/compare", lambda route: route.fulfill(status=500, json={"error": "the source is gone"}))
+    _show_comparison(page, tracks_by_source, ["first.wav", "second.wav"])
+    _track_button(page, 0, "down").click()
+    expect(page.locator("#status")).to_contain_text("the source is gone")
+    page.wait_for_function("!isBusy")
     assert page.evaluate("lastData") is None
     assert page.evaluate("resultsEl.childElementCount") == 0
+    assert page.evaluate("compareSources") == ["second.wav", "first.wav"]
+
+
+def test_a_cancelled_comparison_after_a_move_clears_the_results(page, tracks_by_source):
+    held = []
+    page.route("**/compare", lambda route: held.append(route))
+    _show_comparison(page, tracks_by_source, ["first.wav", "second.wav"])
+    _track_button(page, 0, "down").click()
+    _first_held(page, held)
+    page.locator("#submit-btn").click()
+    page.wait_for_function("!isBusy")
+    assert page.evaluate("lastData") is None
+    assert page.evaluate("resultsEl.childElementCount") == 0
+    assert page.evaluate("statusEl.textContent") == page.evaluate("window.i18n.t('status.cancelled')")
+
+
+def test_moving_a_track_with_no_comparison_on_screen_runs_nothing(page, tracks_by_source):
+    requests = []
+    page.route("**/compare", lambda route: requests.append(route))
+    page.evaluate("() => {compareSources = ['first.wav', 'second.wav']; updateCompareUI();}")
+    _track_button(page, 0, "down").click()
+    single = {**tracks_by_source["third.wav"].to_dict(), "meta": {"source": "third.wav"}}
+    page.evaluate("data => renderSingle(data)", json_safe(single))
+    _track_button(page, 0, "down").click()
+    page.wait_for_function("lastData === null")
+    assert page.evaluate("resultsEl.childElementCount") == 0
+    assert page.evaluate("isBusy") is False
+    assert requests == []
 
 
 def _drop(page, names):

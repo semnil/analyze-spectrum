@@ -450,7 +450,12 @@ function _swapTracks(i, j) {
   compareSources[i] = compareSources[j];
   compareSources[j] = tmp;
   updateCompareUI({ from: i, to: j });
-  _maybeInvalidateResults();
+  // The first track is the reference of the transfer functions, so a comparison on screen runs again in the new order.
+  if (lastData && lastData.tracks) {
+    _runAnalysis(true, null, true);
+  } else {
+    _maybeInvalidateResults();
+  }
 
   var nextItems = trackList.querySelectorAll(".track-item");
   _flipTrackRow(nextItems[j], prevRectI);
@@ -548,10 +553,18 @@ form.addEventListener("submit", async (e) => {
     if (!singleSource) return;
   }
 
+  await _runAnalysis(isCompare, singleSource);
+});
+
+// moved: a comparison on screen runs again after a move of its tracks. Its results stay until the new ones replace them
+// or the run ends without them. The focus goes back to where it was unless it went elsewhere during the run, and the
+// scroll position stays through the replacement.
+async function _runAnalysis(isCompare, singleSource, moved = false) {
   statusEl.textContent = isCompare ? window.i18n.t("status.starting_comparison") : window.i18n.t("status.starting");
   _setStatusNormal();
+  const focused = document.activeElement;
   setBusy(true);
-  clearResults();
+  if (!moved) clearResults();
 
   activeAbort = new AbortController();
   try {
@@ -575,6 +588,8 @@ form.addEventListener("submit", async (e) => {
 
     const data = await readNdjsonStream(resp, resultType, activeAbort.signal);
     statusEl.textContent = "";
+    const scrollY = window.scrollY;
+    if (moved) clearResults();
     if (isCompare) {
       lastDuration = body.duration || null;
       lastSource = null;
@@ -584,8 +599,13 @@ form.addEventListener("submit", async (e) => {
       lastDuration = body.duration || null;
       renderSingle(data);
     }
-    resultsEl.focus({ preventScroll: true });
+    if (moved) {
+      window.scrollTo(0, scrollY);
+    } else {
+      resultsEl.focus({ preventScroll: true });
+    }
   } catch (err) {
+    if (moved) clearResults();
     if (err.name === "AbortError") {
       statusEl.textContent = window.i18n.t("status.cancelled");
       _setStatusNormal();
@@ -594,8 +614,11 @@ form.addEventListener("submit", async (e) => {
     }
   } finally {
     setBusy(false);
+    if (moved && (document.activeElement === focused || document.activeElement === document.body)) {
+      focused.focus({ preventScroll: true });
+    }
   }
-});
+}
 
 // Browse local audio file
 browseBtn.addEventListener("click", async () => {
