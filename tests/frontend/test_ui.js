@@ -638,17 +638,17 @@ function makeNdjsonResponse(type, data) {
   // ================================================
 
   resetState();
-  for (var i = 1; i <= 6; i++) {
+  for (var i = 1; i <= MAX_TRACKS; i++) {
     urlInput.value = "track_" + i + ".wav";
     addBtn.click();
   }
-  assertEqual(compareSources.length, 6, "Setup: 6 tracks");
-  urlInput.value = "track_7.wav";
+  assertEqual(compareSources.length, MAX_TRACKS, "Setup: MAX_TRACKS tracks");
+  urlInput.value = "track_over.wav";
   document.getElementById("submit-btn").click();
   // Should show error and NOT submit
-  assert(document.getElementById("status").textContent.indexOf("Maximum 6") !== -1,
-    "Error shown for 7th track on submit");
-  assertEqual(urlInput.value, "track_7.wav", "urlInput not cleared");
+  assert(document.getElementById("status").textContent.indexOf("Maximum " + MAX_TRACKS + " tracks") !== -1,
+    "Error shown for the track past MAX_TRACKS on submit");
+  assertEqual(urlInput.value, "track_over.wav", "urlInput not cleared");
   assert(!isBusy, "Not busy (submit was blocked)");
 
   // ================================================
