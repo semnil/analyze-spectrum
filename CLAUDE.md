@@ -112,6 +112,7 @@ graph LR
     t --> t_ffb["test_ffmpeg_binary.py<br>checks the ffmpeg / ffprobe on PATH with the app's PCM conversion and ffprobe reading<br>(EXPECT_FFMPEG_DIR selects the bundled binaries)"]
     t --> t_rwf["test_release_workflow.py<br>that release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe in the distributed files,<br>that only create-release can write and it runs no Python, that the job holding the update signing key<br>has a read-only token and installs only the hash-pinned yt-dlp, that the Developer ID identity<br>is imported right before codesign and deleted when codesign ends, that the release jobs install<br>packages only from requirements/*.txt and build tools only after a SHA256 check,<br>that requirements/release.txt satisfies pyproject.toml, and that every requirements/*.txt resolves, with its own pins as constraints,<br>to exactly the packages it pins under the same environment markers<br>(runs py-analyze-common's analyze_common.testing.release_workflow)"]
     t --> t_tpl["test_third_party_licenses.py<br>the full GPL texts that THIRD_PARTY_LICENSES.txt points at,<br>and the spec / installer.iss that bundle them (runs analyze_common.testing.third_party_licenses)"]
+    t --> t_font["test_chart_font.py<br>no script names a font of its own (runs analyze_common.testing.chart_font)"]
     t --> t_ejs["test_yt_dlp_ejs.py<br>the installed yt-dlp-ejs has the version (major.minor) and script hashes<br>the installed yt-dlp accepts (runs analyze_common.testing.yt_dlp_ejs)"]
     t --> t_fe["test_frontend.py<br>the Playwright headless Chromium runner"]
     t --> t_chart["test_chart_rendering.py<br>renders the comparison charts and their PNG export with the real browser scripts"]
@@ -394,7 +395,7 @@ The comparison feature, which analyze-loudness did not have, is taken in as a co
 ### Frontend charts
 
 uPlot (the log-frequency PSD overlay) + our own Canvas drawing (the 1/3-octave bar chart, the transfer function,
-the low-end detail, the mid-high detail). The same vendor layout as analyze-loudness. The text of our own Canvas drawing uses `-apple-system, 'Segoe UI', 'Meiryo', sans-serif`, the same order as the page's font in py-analyze-common's `common.css`, as the PNG export in `frontend/main.js` and analyze-loudness's charts do.
+the low-end detail, the mid-high detail). The same vendor layout as analyze-loudness. The text of our own Canvas drawing and of the PNG export in `frontend/main.js` uses `CHART_FONT_FAMILY`, and the axes of the PSD overlay use `CHART_AXIS_FONTS`, both from py-analyze-common's `analyze_common/web/ui.js`, as analyze-loudness's charts do.
 
 ### Result cache (GUI)
 
