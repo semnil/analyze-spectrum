@@ -157,6 +157,14 @@ def _show_comparison(page, tracks_by_source, sources):
     page.evaluate("data => renderCompare(data)", json_safe(_comparison(tracks_by_source, sources)))
 
 
+def _set_height_with_nothing_on_screen(page, height):
+    # Cancels the redraw the page's resize handler schedules, which would replace the results during the steps of a test.
+    page.evaluate("() => {addEventListener('resize', () => {window.resized = true;}, {once: true});}")
+    page.set_viewport_size({"width": 1100, "height": height})
+    page.wait_for_function("window.resized")
+    page.evaluate("clearTimeout(_resizeTimer)")
+
+
 def _track_button(page, row, action):
     return page.locator(".track-item").nth(row).locator(f'.track-btn[data-action="{action}"]')
 
@@ -196,7 +204,7 @@ def test_moving_a_track_compares_again_in_the_new_order(page, tracks_by_source):
 def test_moving_a_track_keeps_the_focus_the_scroll_and_the_pending_source(page, tracks_by_source):
     page.route("**/compare", lambda route: _answer_comparison(route, tracks_by_source))
     # At this height the page is shorter than the scroll position while the results are redrawn.
-    page.set_viewport_size({"width": 1100, "height": 1000})
+    _set_height_with_nothing_on_screen(page, 1000)
     _show_comparison(page, tracks_by_source, ["first.wav", "second.wav", "third.wav"])
     field = page.locator("#url-input")
     field.fill("pending.wav")
@@ -221,7 +229,7 @@ def test_moving_a_track_keeps_the_focus_the_scroll_and_the_pending_source(page, 
 def test_a_run_after_a_move_leaves_what_the_user_changed_while_it_ran(page, tracks_by_source, answer):
     held = []
     page.route("**/compare", lambda route: held.append(route))
-    page.set_viewport_size({"width": 1100, "height": 1000})
+    _set_height_with_nothing_on_screen(page, 1000)
     _show_comparison(page, tracks_by_source, ["first.wav", "second.wav", "third.wav"])
     _track_button(page, 0, "down").focus()
     page.keyboard.press("Enter")
