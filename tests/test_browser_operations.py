@@ -685,3 +685,19 @@ def test_redraws_keep_the_focus_in_the_results_and_leave_it_elsewhere(page, trac
     page.set_viewport_size({"width": 900, "height": 700})
     page.wait_for_function("!document.querySelector('#results .chart-title[data-before]')")
     expect(page.locator("#url-input")).to_be_focused()
+
+
+@pytest.mark.parametrize("cause", ["resize", "theme", "language"])
+def test_redraws_keep_the_scroll_position(page, tracks, cause):
+    page.evaluate("data => renderSingle(data)", tracks[0].to_dict())
+    page.evaluate("window.scrollTo(0, 150)")
+    assert page.evaluate("window.scrollY") == 150
+    page.evaluate("document.querySelector('#results .chart-title').dataset.before = '1'")
+    if cause == "resize":
+        page.set_viewport_size({"width": 1000, "height": 720})
+    elif cause == "theme":
+        page.evaluate("setThemeMode('dark')")
+    else:
+        page.evaluate("window.i18n.setLang('ja')")
+    page.wait_for_function("!document.querySelector('#results .chart-title[data-before]')")
+    assert page.evaluate("window.scrollY") == 150
