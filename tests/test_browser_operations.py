@@ -162,7 +162,7 @@ def _set_height_with_nothing_on_screen(page, height):
     page.evaluate("() => {addEventListener('resize', () => {window.resized = true;}, {once: true});}")
     page.set_viewport_size({"width": 1100, "height": height})
     page.wait_for_function("window.resized")
-    page.evaluate("clearTimeout(_resizeTimer)")
+    page.evaluate("clearTimeout(_afterResizeTimer); _afterResizeTimer = null; _scrollAtResize = null;")
 
 
 def _track_button(page, row, action):
@@ -699,5 +699,37 @@ def test_redraws_keep_the_scroll_position(page, tracks, cause):
         page.evaluate("setThemeMode('dark')")
     else:
         page.evaluate("window.i18n.setLang('ja')")
+    page.wait_for_function("!document.querySelector('#results .chart-title[data-before]')")
+    assert page.evaluate("window.scrollY") == 150
+
+
+@pytest.mark.parametrize("focus, settled", [("the field", 150), ("nothing", 0)])
+def test_a_resize_goes_back_to_the_position_at_its_start_with_the_field_focused(page, tracks, focus, settled):
+    page.evaluate("data => renderSingle(data)", tracks[0].to_dict())
+    page.evaluate("window.scrollTo(0, 150)")
+    page.evaluate("document.getElementById('url-input').focus({preventScroll: true})" if focus == "the field" else "document.activeElement.blur()")
+    # This listener moves the page to the top after the page's own resize listener, before the redraw.
+    page.evaluate("addEventListener('resize', () => window.scrollTo(0, 0))")
+    page.evaluate("document.querySelector('#results .chart-title').dataset.before = '1'")
+    page.evaluate("() => { addEventListener('scroll', () => { window.atScroll = window.scrollY; }, {once: true}); dispatchEvent(new Event('resize')); dispatchEvent(new Event('resize')); }")
+    page.wait_for_function("window.atScroll !== undefined")
+    assert page.evaluate("window.atScroll") == settled
+    page.wait_for_function("!document.querySelector('#results .chart-title[data-before]')")
+    assert page.evaluate("window.scrollY") == settled
+    page.evaluate("window.scrollTo(0, 300)")
+    page.evaluate("document.querySelector('#results .chart-title').dataset.before = '1'")
+    page.evaluate("setThemeMode('dark')")
+    page.wait_for_function("!document.querySelector('#results .chart-title[data-before]')")
+    assert page.evaluate("window.scrollY") == 300
+
+
+def test_a_redraw_after_a_resize_goes_back_to_the_kept_position_without_a_scroll_event(page, tracks):
+    page.evaluate("data => renderSingle(data)", tracks[0].to_dict())
+    page.evaluate("window.scrollTo(0, 150)")
+    page.evaluate("document.getElementById('url-input').focus({preventScroll: true})")
+    # The page moves to the top in the same task as the redraw, before any scroll event.
+    page.evaluate("() => { const original = _redrawKeepingFocus; _redrawKeepingFocus = function (container, redraw) { window.scrollTo(0, 0); return original(container, redraw); }; }")
+    page.evaluate("document.querySelector('#results .chart-title').dataset.before = '1'")
+    page.evaluate("dispatchEvent(new Event('resize'))")
     page.wait_for_function("!document.querySelector('#results .chart-title[data-before]')")
     assert page.evaluate("window.scrollY") == 150
