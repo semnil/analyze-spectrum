@@ -314,7 +314,7 @@ stateDiagram-v2
     Loading --> Error : Load failed
 
     Uploading --> Idle : Upload finished or failed
-    Uploading --> Idle : The queue is full (the limit error is shown, the rest of the files are not uploaded)
+    Uploading --> Idle : The queue and the URL field hold the limit (the limit error is shown, the rest of the files are not uploaded)
 
     Error --> Idle : User action
 

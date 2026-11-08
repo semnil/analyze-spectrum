@@ -1608,24 +1608,21 @@ async function _uploadDropped(files) {
       }
       const result = await resp.json();
       if (result.uploaded) {
+        // The queue and the URL field together hold at most MAX_TRACKS sources.
+        if (_effectiveTrackCount() >= MAX_TRACKS) {
+          showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
+          break;
+        }
         if (files.length === 1 && !urlInput.value.trim()) {
           urlInput.value = result.path;
           urlInput.focus();
         } else if (files.length === 1) {
-          const pending = urlInput.value.trim();
-          if (!_tryAddTrack(pending) && compareSources.indexOf(pending) === -1) {
-            showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
-            break;
-          }
+          _tryAddTrack(urlInput.value.trim());
           urlInput.value = result.path;
           updateCompareUI();
           _maybeInvalidateResults();
           urlInput.focus();
         } else {
-          if (compareSources.length >= MAX_TRACKS) {
-            showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
-            break;
-          }
           compareSources.push(result.path);
           updateCompareUI();
           _maybeInvalidateResults();

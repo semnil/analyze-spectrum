@@ -351,6 +351,26 @@ def test_file_drop_stops_at_the_track_limit(page):
     assert uploads == names[:limit + 1]
 
 
+@pytest.mark.parametrize("sequence", ["one_then_the_limit", "singles_past_the_limit"])
+def test_file_drops_count_the_field_toward_the_track_limit(page, sequence):
+    page.route("**/upload", lambda route: route.fulfill(
+        json={"uploaded": True, "path": "/uploaded/" + route.request.headers["x-filename"]}))
+    page.route("**/compare", lambda route: route.abort())
+    limit = page.evaluate("MAX_TRACKS")
+    if sequence == "one_then_the_limit":
+        drops = [["one.wav"], [f"many_{i}.wav" for i in range(limit)]]
+    else:
+        drops = [[f"single_{i}.wav"] for i in range(limit + 1)]
+    for names in drops:
+        _drop(page, names)
+        page.wait_for_function("!isBusy")
+    expect(page.locator("#status")).to_contain_text(f"Maximum {limit} tracks for comparison")
+    assert page.evaluate("_effectiveTrackCount()") == limit
+    with page.expect_request("**/compare") as request:
+        page.locator("#submit-btn").click()
+    assert len(request.value.post_data_json["sources"]) == limit
+
+
 def test_a_dropped_file_leaves_the_pending_source_when_the_queue_is_full(page):
     page.route("**/upload", lambda route: route.fulfill(json={"uploaded": True, "path": "/uploaded/one.wav"}))
     queued = page.evaluate("""() => {
