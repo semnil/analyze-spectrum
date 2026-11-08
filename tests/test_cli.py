@@ -21,6 +21,36 @@ class TestIsUrl:
         assert not is_url("C:\\Users\\file.m4a")
 
 
+class TestPrintSummary:
+    @staticmethod
+    def _result(**fields):
+        from types import SimpleNamespace
+        base = dict(label="clip", duration_sec=1.0, rms_dbfs=-20.0, peak_dbfs=-6.0, low_intel_ratio_db=1.5,
+                    spectral_centroid_hz=635.0, hpf_3db_hz=None, rolloff_db_per_decade=None,
+                    band_energy={"sub_20_80": -45.0})
+        return SimpleNamespace(**{**base, **fields})
+
+    def test_missing_ratio_is_not_available(self, capsys):
+        from analyze_spectrum.cli import _print_summary
+        _print_summary(self._result(low_intel_ratio_db=None))
+        out = capsys.readouterr().out
+        assert "Low/Intel ratio: N/A" in out
+        assert "HPF" not in out
+
+    def test_hpf_without_a_slope_prints_only_the_frequency(self, capsys):
+        from analyze_spectrum.cli import _print_summary
+        _print_summary(self._result(hpf_3db_hz=95.0))
+        out = capsys.readouterr().out
+        assert "Low/Intel ratio: +1.5 dB" in out
+        assert "HPF -3dB: ~95 Hz\n" in out
+        assert "dB/dec" not in out
+
+    def test_hpf_with_a_slope_prints_both(self, capsys):
+        from analyze_spectrum.cli import _print_summary
+        _print_summary(self._result(hpf_3db_hz=95.0, rolloff_db_per_decade=24.0))
+        assert "HPF -3dB: ~95 Hz  (24 dB/dec)\n" in capsys.readouterr().out
+
+
 class TestEqBandsOption:
     def test_negative_rejected(self):
         from analyze_spectrum.cli import main
@@ -39,6 +69,28 @@ class TestEqBandsOption:
 
 
 class TestCliRun:
+    def test_output_dir_without_a_collision_gets_analysis_json(self, wav_file, tmp_path, capsys):
+        import json
+        from analyze_spectrum.cli import main
+
+        out = tmp_path / "fresh" / "nested"
+        assert main([wav_file, "--output-dir", str(out)]) == 0
+        saved = json.loads((out / "analysis.json").read_text(encoding="utf-8"))
+        assert saved["meta"]["source"] == wav_file
+        assert [p.name for p in out.iterdir()] == ["analysis.json"]
+        assert f"Saved: {out / 'analysis.json'}" in capsys.readouterr().err
+
+    def test_transfer_function_without_an_eq_prints_no_eq_block(self, wav_file, wav_file_b, capsys):
+        from analyze_spectrum.cli import main
+
+        with patch("analyze_spectrum.analysis.estimate_parametric_eq", return_value=None):
+            assert main([wav_file, wav_file_b]) == 0
+        out = capsys.readouterr().out
+        assert "test_1khz \u2212 test_440hz:" in out
+        assert "Mid (500-2k):" in out
+        assert "Estimated EQ" not in out
+
+
     def test_single_json_and_output_collision(self, wav_file, tmp_path, capsys):
         import json
         from analyze_spectrum import SCHEMA_VERSION
@@ -180,3 +232,37 @@ def test_the_cli_holds_the_instance_lock_while_its_work_folder_exists(wav_file, 
     assert cli.main([wav_file]) == 0
     assert len(seen) == 1
     assert glob.glob(pattern) == []
+
+
+class TestResolveSource:
+    def test_url_is_downloaded_into_the_work_folder(self, tmp_path):
+        from analyze_spectrum import download
+
+        with patch.object(download, "download_audio", return_value=("/work/a.m4a", "Title")) as fetch:
+            assert download.resolve_source("https://example.com/a", str(tmp_path)) == ("/work/a.m4a", "Title")
+        fetch.assert_called_once_with("https://example.com/a", str(tmp_path))
+
+    def test_local_file_is_used_in_place_and_labelled_by_its_stem(self, wav_file, tmp_path):
+        from analyze_spectrum import download
+
+        with patch.object(download, "download_audio") as fetch:
+            assert download.resolve_source(wav_file, str(tmp_path)) == (wav_file, "test_440hz")
+        fetch.assert_not_called()
+
+    def test_missing_local_file_raises(self, tmp_path):
+        from analyze_spectrum import download
+
+        with pytest.raises(FileNotFoundError, match="File not found"):
+            download.resolve_source(str(tmp_path / "gone.wav"), str(tmp_path))
+
+
+def test_importing_the_package_again_keeps_the_vendor_path_once():
+    import importlib
+    import sys
+    import analyze_spectrum
+
+    vendor = str(analyze_spectrum._VENDOR)
+    assert vendor in sys.path
+    before = list(sys.path)
+    importlib.reload(analyze_spectrum)
+    assert sys.path == before
