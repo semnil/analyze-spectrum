@@ -112,7 +112,7 @@ function renderTransfer(canvas, transferFunctions) {
 
   // X tick labels
   ctx.fillStyle = theme.textSecondary;
-  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px " + CHART_FONT_FAMILY;
   ctx.textAlign = "center";
   for (var i = 0; i < freqTicks.length; i++) {
     var x = pad.left + ((Math.log10(freqTicks[i]) - fMin) / fRange) * pw;
@@ -129,7 +129,7 @@ function renderTransfer(canvas, transferFunctions) {
 
   // Axis labels
   ctx.fillStyle = theme.text;
-  ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "12px " + CHART_FONT_FAMILY;
   ctx.textAlign = "center";
   ctx.fillText("Frequency (Hz)", w / 2, h - 6);
 
@@ -140,7 +140,7 @@ function renderTransfer(canvas, transferFunctions) {
   ctx.restore();
 
   // Legend
-  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px " + CHART_FONT_FAMILY;
   ctx.textAlign = "left";
   var lx = pad.left + 8;
   for (var t = 0; t < transferFunctions.length; t++) {

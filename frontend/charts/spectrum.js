@@ -68,6 +68,7 @@ function renderSpectrum(container, tracks) {
     },
     axes: [
       {
+        ...CHART_AXIS_FONTS,
         label: "Frequency (Hz)",
         stroke: theme.textSecondary,
         grid: { stroke: theme.grid, width: 1 },
@@ -86,6 +87,7 @@ function renderSpectrum(container, tracks) {
         splits: freqTicks.map(function(f) { return Math.log10(f); }),
       },
       {
+        ...CHART_AXIS_FONTS,
         label: "Power (dB)",
         stroke: theme.textSecondary,
         grid: { stroke: theme.grid, width: 1 },

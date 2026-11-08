@@ -63,7 +63,7 @@ function renderMidHigh(canvas, tracks) {
     ctx.fillRect(x1, pad.top, x2 - x1, ph);
 
     ctx.fillStyle = theme.textMuted;
-    ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "10px " + CHART_FONT_FAMILY;
     ctx.textAlign = "center";
     ctx.fillText(region.label, (x1 + x2) / 2, pad.top + 12);
   }
@@ -137,7 +137,7 @@ function renderMidHigh(canvas, tracks) {
 
   // X tick labels
   ctx.fillStyle = theme.textSecondary;
-  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px " + CHART_FONT_FAMILY;
   ctx.textAlign = "center";
   for (var i = 0; i < fTicks.length; i++) {
     var x = freqToX(fTicks[i]);
@@ -153,7 +153,7 @@ function renderMidHigh(canvas, tracks) {
 
   // Axis labels
   ctx.fillStyle = theme.text;
-  ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "12px " + CHART_FONT_FAMILY;
   ctx.textAlign = "center";
   ctx.fillText("Frequency (Hz)", w / 2, h - 6);
   var titleHalf = ctx.measureText("Frequency (Hz)").width / 2;
@@ -164,12 +164,12 @@ function renderMidHigh(canvas, tracks) {
   ctx.fillText("Power (dB)", 0, 0);
   ctx.restore();
 
-  ctx.font = "9px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "9px " + CHART_FONT_FAMILY;
   _drawMarkerLabels(ctx, markers, pad.top + ph + 28, [w / 2 - titleHalf, w / 2 + titleHalf]);
 
   // Legend (if multi-track)
   if (tracks.length > 1) {
-    ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "10px " + CHART_FONT_FAMILY;
     ctx.textAlign = "right";
     for (var t = 0; t < tracks.length; t++) {
       var lx = w - pad.right - 8;
