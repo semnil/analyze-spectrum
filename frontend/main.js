@@ -1608,6 +1608,11 @@ async function _uploadDropped(files) {
       }
       const result = await resp.json();
       if (result.uploaded) {
+        // The queue and the URL field together hold at most MAX_TRACKS sources.
+        if (_effectiveTrackCount() >= MAX_TRACKS) {
+          showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
+          break;
+        }
         if (files.length === 1 && !urlInput.value.trim()) {
           urlInput.value = result.path;
           urlInput.focus();
