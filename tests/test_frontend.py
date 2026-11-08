@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from analyze_common.server import GuiServer
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 try:
@@ -97,7 +99,7 @@ def _app_server(gui_module_name):
     gui_mod = _gui_module(gui_module_name)
 
     class _Server(ThreadingHTTPServer):
-        request_queue_size = 64
+        request_queue_size = GuiServer.request_queue_size
 
     server = _Server(("127.0.0.1", 0), gui_mod.AnalyzeHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()

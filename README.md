@@ -121,13 +121,7 @@ Dark mode is supported (a 3-way switch Light / Dark / Auto; the default follows 
 
 ### App updates
 
-The installed app (the installer version on Windows, the disk image (DMG) version on macOS) checks [GitHub Releases](../../releases) at launch for a newer version (apart from the audio fetched for analysis, this is the only network access the app makes on its own). If a newer version exists, it asks "Version {version} is available. Update now?" with the new version in place of `{version}`, and only when you press OK does it download the update, verify with its signature and the public key built into the app that it has not been tampered with, install it, and restart the app. Cancel does nothing. Restarting clears analysis results that are not saved. The check at launch shows nothing when there is no newer version or when the check fails.
-
-- The check at launch can be turned off in the settings of the gear button at the top right ("Check at launch"). "Check now" checks manually as well
-- Windows: a User Account Control (UAC) prompt appears when the installer runs. The app is already closed at that point, so choosing "No" leaves the app not updated and closed. Launching it again shows the update prompt again (when the check at launch is on)
-- macOS: keep the app in the "Applications" folder. If you lack permission to write to that folder, it asks for an administrator password. When two copies of the same app are running, quit one before updating
-- It does not update during an analysis. Press "Check now" after the analysis finishes
-- The update check and the download connect to the releases on github.com and to the delivery host that GitHub redirects release file downloads to (release-assets.githubusercontent.com). The User-Agent of the requests is the app name and version (`analyze-spectrum/<version>`)
+The installed app checks for a newer version at launch and updates itself when you confirm. What it does, what it connects to and how to turn the check off are in [py-analyze-common's document](https://github.com/semnil/py-analyze-common/blob/main/docs/auto-update.md#what-the-user-sees). The User-Agent of its requests is `analyze-spectrum/<version>`.
 
 ## Analysis metrics
 
@@ -203,29 +197,7 @@ python build.py --installer  # + Inno Setup installer (.exe) / DMG (macOS)
 
 The bundle is written to `dist/analyze-spectrum/` (`dist/Spectrum Analyzer.app` on macOS) and the installer to `installer_output/`.
 
-Prerequisites:
-
-- PyInstaller (`pip install pyinstaller`, or the `dev` extra) and certifi (`pip install -e ".[gui]"`). The build stops without them
-- Inno Setup 6 (only when generating the Windows installer)
-- create-dmg (only when generating the macOS DMG: `brew install create-dmg`)
-
-`build.py` downloads the following automatically:
-
-- ffmpeg / ffprobe (Windows: BtbN/FFmpeg-Builds, macOS: osxexperts.net. The series and the macOS URL and SHA256 are in `build_assets/ffmpeg.json`)
-- deno (the latest GitHub release, needed for yt-dlp's YouTube JavaScript extraction)
-- uPlot (jsDelivr CDN)
-
-yt-dlp is managed as a Python dependency (`pyproject.toml`), and PyInstaller bundles it automatically.
-
-uPlot is checked against the SHA256 in `build_assets/checksums.json` (`python build.py --update-checksums` updates that file), and the macOS ffmpeg / ffprobe against the SHA256 in `build_assets/ffmpeg.json`. deno and the Windows ffmpeg / ffprobe are not pinned.
-
-| Flag | Description |
-|---|---|
-| `--installer` | Also builds the installer (Inno Setup / DMG) |
-| `--skip-download` | Skips downloading the assets |
-| `--skip-build` | Skips PyInstaller (assumes `dist/` exists) |
-| `--update-checksums` | Downloads the assets, updates `build_assets/checksums.json` and stops |
-| `--ffmpeg-only` | Downloads only ffmpeg / ffprobe into `build_assets/bin/` and stops |
+The prerequisites, what `build.py` downloads and its flags are in [py-analyze-common's README](https://github.com/semnil/py-analyze-common/blob/main/README.md#building-a-consumer).
 
 ## Project layout
 

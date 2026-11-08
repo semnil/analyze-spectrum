@@ -11,7 +11,6 @@ import tempfile
 import threading
 import traceback
 from collections import OrderedDict
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
@@ -22,8 +21,11 @@ from analyze_spectrum.analysis import analyze_track, estimate_parametric_eq, mis
 from analyze_spectrum.download import compute_middle, is_url, resolve_source, sanitize_filename
 from analyze_spectrum.pcm import extract_audio, probe_info
 from analyze_spectrum.update import UPDATE_CONFIG
+from analyze_common.server import CACHE_MAX_ENTRIES as _CACHE_MAX_ENTRIES
 from analyze_common.server import ClientDisconnected as _ClientDisconnected
 from analyze_common.server import GuiHandler
+from analyze_common.server import GuiServer as _HTTPServer
+from analyze_common.server import MAX_TRACKS
 from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
 from analyze_common.tempdirs import InstanceLock, sweep_orphan_tempdirs
 from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
@@ -57,7 +59,6 @@ def _cleanup_orphan_tempdirs() -> None:
 
 
 atexit.register(_cleanup_orphan_tempdirs)
-_CACHE_MAX_ENTRIES = 10
 _result_cache: "OrderedDict[tuple, str]" = OrderedDict()  # key -> json path
 _result_cache_data: "OrderedDict[tuple, dict]" = OrderedDict()  # key -> data
 # External /load payloads are kept separate so /analyze can force recomputation
@@ -406,8 +407,8 @@ class AnalyzeHandler(GuiHandler):
             self._json_error(400, "Need at least 2 sources for comparison")
             return
 
-        if len(sources) > 6:
-            self._json_error(400, "Maximum 6 tracks for comparison")
+        if len(sources) > MAX_TRACKS:
+            self._json_error(400, f"Maximum {MAX_TRACKS} tracks for comparison")
             return
 
         if not all(isinstance(s, str) and s.strip() for s in sources):
@@ -800,13 +801,6 @@ def _exit_for_update(exit_mode: str) -> None:
         os._exit(0)
     else:
         _window.destroy()
-
-
-class _HTTPServer(ThreadingHTTPServer):
-    """Loopback server whose listen backlog holds the burst of connections a
-    webview opens while loading the page and its scripts in parallel."""
-
-    request_queue_size = 64
 
 
 def main():

@@ -15,6 +15,7 @@ if "webview" not in sys.modules:
     sys.modules["webview"] = MagicMock()
 
 import analyze_spectrum.gui as _gui_mod  # noqa: E402
+from analyze_common.server import MAX_TRACKS  # noqa: E402
 
 # Integration suite drives the real analysis pipeline, which shells out to
 # ffprobe/ffmpeg.  Skip the whole module when either binary is missing so CI
@@ -240,9 +241,9 @@ class TestCompareEndpoint:
         status, raw = _post(base, "/compare", {"sources": [wav_file]})
         assert status == 400
 
-    def test_compare_max_six(self, _server, wav_file):
+    def test_compare_refuses_more_than_max_tracks(self, _server, wav_file):
         base, _ = _server
-        status, _ = _post(base, "/compare", {"sources": [wav_file] * 7})
+        status, _ = _post(base, "/compare", {"sources": [wav_file] * (MAX_TRACKS + 1)})
         assert status == 400
 
     def test_compare_two_tracks(self, _server, wav_file, wav_file_b):

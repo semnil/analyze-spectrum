@@ -303,6 +303,30 @@ function makeNdjsonResponse(type, data) {
   assertIncludes(compareSources, "new.wav", "New track added");
 
   // ================================================
+  suite("Load JSON — tracks past the limit name the limit");
+  // ================================================
+
+  resetState();
+  var savedMaxTracks = window.MAX_TRACKS;
+  window.MAX_TRACKS = 3;
+  compareSources.push("held_1.wav", "held_2.wav");
+  updateCompareUI();
+  mockFetch(function() {
+    return makeJsonResponse({
+      loaded: true,
+      type: "multi",
+      items: [fakeResult("over_1.wav"), fakeResult("over_2.wav"), fakeResult("over_3.wav")],
+    });
+  });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 200); });
+  window.MAX_TRACKS = savedMaxTracks;
+
+  assertEqual(compareSources.length, 3, "Queue fills to MAX_TRACKS");
+  assert(document.getElementById("status").textContent.indexOf("(2 skipped: max 3 tracks)") !== -1,
+    "Status names the skipped tracks and MAX_TRACKS");
+
+  // ================================================
   suite("Load JSON — schema_outdated accepted adds source as track");
   // ================================================
 
@@ -614,17 +638,17 @@ function makeNdjsonResponse(type, data) {
   // ================================================
 
   resetState();
-  for (var i = 1; i <= 6; i++) {
+  for (var i = 1; i <= MAX_TRACKS; i++) {
     urlInput.value = "track_" + i + ".wav";
     addBtn.click();
   }
-  assertEqual(compareSources.length, 6, "Setup: 6 tracks");
-  urlInput.value = "track_7.wav";
+  assertEqual(compareSources.length, MAX_TRACKS, "Setup: MAX_TRACKS tracks");
+  urlInput.value = "track_over.wav";
   document.getElementById("submit-btn").click();
   // Should show error and NOT submit
-  assert(document.getElementById("status").textContent.indexOf("Maximum 6") !== -1,
-    "Error shown for 7th track on submit");
-  assertEqual(urlInput.value, "track_7.wav", "urlInput not cleared");
+  assert(document.getElementById("status").textContent.indexOf("Maximum " + MAX_TRACKS + " tracks") !== -1,
+    "Error shown for the track past MAX_TRACKS on submit");
+  assertEqual(urlInput.value, "track_over.wav", "urlInput not cleared");
   assert(!isBusy, "Not busy (submit was blocked)");
 
   // ================================================
