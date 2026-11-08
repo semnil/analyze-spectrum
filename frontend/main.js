@@ -1612,12 +1612,20 @@ async function _uploadDropped(files) {
           urlInput.value = result.path;
           urlInput.focus();
         } else if (files.length === 1) {
-          _tryAddTrack(urlInput.value.trim());
+          const pending = urlInput.value.trim();
+          if (!_tryAddTrack(pending) && compareSources.indexOf(pending) === -1) {
+            showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
+            break;
+          }
           urlInput.value = result.path;
           updateCompareUI();
           _maybeInvalidateResults();
           urlInput.focus();
         } else {
+          if (compareSources.length >= MAX_TRACKS) {
+            showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
+            break;
+          }
           compareSources.push(result.path);
           updateCompareUI();
           _maybeInvalidateResults();

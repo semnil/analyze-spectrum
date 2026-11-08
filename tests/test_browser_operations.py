@@ -332,6 +332,40 @@ def test_file_drop_sends_a_non_ascii_name_percent_encoded(page):
     assert requests == ["%E6%97%A5%E6%9C%AC%E8%AA%9E%20track.wav"]
 
 
+def test_file_drop_stops_at_the_track_limit(page):
+    uploads = []
+
+    def upload(route):
+        name = route.request.headers["x-filename"]
+        uploads.append(name)
+        route.fulfill(json={"uploaded": True, "path": "/uploaded/" + name})
+
+    page.route("**/upload", upload)
+    limit = page.evaluate("MAX_TRACKS")
+    names = [f"track_{i}.wav" for i in range(limit + 2)]
+    _drop(page, names)
+    expect(page.locator("#status")).to_contain_text(f"Maximum {limit} tracks for comparison")
+    expect(page.locator("#status")).to_have_attribute("role", "alert")
+    page.wait_for_function("!isBusy")
+    assert page.evaluate("compareSources") == ["/uploaded/" + name for name in names[:limit]]
+    assert uploads == names[:limit + 1]
+
+
+def test_a_dropped_file_leaves_the_pending_source_when_the_queue_is_full(page):
+    page.route("**/upload", lambda route: route.fulfill(json={"uploaded": True, "path": "/uploaded/one.wav"}))
+    queued = page.evaluate("""() => {
+        for (let i = 1; i <= MAX_TRACKS; i++) compareSources.push('/queued/' + i + '.wav');
+        updateCompareUI();
+        return compareSources.slice();
+    }""")
+    page.locator("#url-input").fill("pending.wav")
+    _drop(page, ["one.wav"])
+    expect(page.locator("#status")).to_contain_text(f"Maximum {len(queued)} tracks for comparison")
+    page.wait_for_function("!isBusy")
+    expect(page.locator("#url-input")).to_have_value("pending.wav")
+    assert page.evaluate("compareSources") == queued
+
+
 def _response(page, endpoint, status, body):
     page.route("**/" + endpoint, lambda route: route.fulfill(status=status, json=body))
 

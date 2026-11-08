@@ -314,6 +314,7 @@ stateDiagram-v2
     Loading --> Error : 読み込みに失敗
 
     Uploading --> Idle : アップロードが終わった、または失敗した
+    Uploading --> Idle : キューが満杯 (上限のエラーを出し、残りのファイルはアップロードしない)
 
     Error --> Idle : ユーザーの操作
 
