@@ -68,6 +68,24 @@ class TestComputeWelch:
         # Should have same freq resolution as non-chunked
         assert abs(freqs[1] - freqs[0] - SAMPLE_RATE / NPERSEG) < 0.01
 
+    def test_chunked_signal_drops_a_trailing_chunk_shorter_than_the_window(self, monkeypatch):
+        from scipy import signal
+        monkeypatch.setattr("analyze_spectrum.analysis._MAX_CHUNK", 5000)
+        data = _white_noise(duration=0.125)  # 6000 samples: a 5000-sample chunk and a 1000-sample rest
+        freqs, psd = compute_welch(data)
+        expected_freqs, expected_psd = signal.welch(data[:5000], fs=SAMPLE_RATE, nperseg=NPERSEG, noverlap=NPERSEG // 2)
+        np.testing.assert_array_equal(freqs, expected_freqs)
+        np.testing.assert_allclose(psd, expected_psd)
+
+    def test_chunks_all_shorter_than_the_window_fall_back_to_one_pass(self, monkeypatch):
+        from scipy import signal
+        monkeypatch.setattr("analyze_spectrum.analysis._MAX_CHUNK", 3000)
+        data = _white_noise(duration=0.125)  # 6000 samples: every 3000-sample chunk is shorter than NPERSEG
+        freqs, psd = compute_welch(data)
+        expected_freqs, expected_psd = signal.welch(data, fs=SAMPLE_RATE, nperseg=NPERSEG, noverlap=NPERSEG // 2)
+        np.testing.assert_array_equal(freqs, expected_freqs)
+        np.testing.assert_allclose(psd, expected_psd)
+
 
 class TestThirdOctaveBands:
     def test_band_count(self):
@@ -164,6 +182,12 @@ class TestEstimateHpf:
             assert 100 < hpf3 < 300
 
 
+    def test_too_few_bins_for_the_slope_report_no_rolloff(self):
+        freqs = np.arange(0, 24001, 500.0)  # no bin between 40 and 120 Hz
+        psd_db = np.full(freqs.size, -30.0)
+        assert estimate_hpf(freqs, psd_db) == (None, None, None)
+
+
 class TestAnalyzeTrack:
     def test_returns_spectrum_result(self):
         data = _white_noise()
@@ -258,6 +282,19 @@ class TestCompareTracks:
         results = [analyze_track(_white_noise(), label=f"v{i}") for i in range(3)]
         comp = compare_tracks(results)
         assert len(comp.transfer_functions) == 2
+
+    def test_sample_rate_mismatch_carries_a_warning(self):
+        import dataclasses
+        ref = analyze_track(_white_noise(), label="ref")
+        other = dataclasses.replace(analyze_track(_white_noise(), label="other"), sample_rate=44100)
+        comp = compare_tracks([ref, other])
+        warning = comp.transfer_functions[0]["warning"]
+        assert warning == f"sample rate mismatch (48000 vs 44100); clipped to {ref.freqs[-1]:.0f} Hz"
+        assert comp.to_dict()["transfer_functions"][0]["warning"] == warning
+
+    def test_equal_sample_rates_carry_no_warning(self):
+        results = [analyze_track(_white_noise(), label=name) for name in ("a", "b")]
+        assert "warning" not in compare_tracks(results).transfer_functions[0]
 
     def test_different_length_tracks(self):
         # Short signal produces different nperseg, hence different freq array length
@@ -376,6 +413,12 @@ class TestParametricEq:
     def test_too_few_points_returns_none(self):
         assert estimate_parametric_eq(np.array([0.0, 10.0, 22.0]), np.zeros(3)) is None
         assert estimate_parametric_eq(np.array([]), np.array([])) is None
+
+    def test_fit_range_above_the_usable_band_returns_none(self):
+        freqs = np.linspace(1, 20, 40)  # nothing above the 20 Hz lower edge of the fit range
+        assert estimate_parametric_eq(freqs, np.zeros(freqs.size)) is None
+        full = np.linspace(0, 24000, 2049)
+        assert estimate_parametric_eq(full, np.zeros(full.size), sample_rate=40) is None
 
     def test_compare_tracks_attaches_eq(self):
         r1 = analyze_track(_sine(1000, duration=1.0), label="a")

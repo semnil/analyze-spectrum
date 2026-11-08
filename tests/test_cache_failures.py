@@ -1,5 +1,6 @@
 """Cache fallback and failed analyses through the real HTTP handler."""
 
+import json
 import subprocess
 import threading
 from collections import OrderedDict
@@ -53,6 +54,8 @@ def test_unreadable_disk_cache_becomes_a_miss(isolated_cache, contents):
     (subprocess.CalledProcessError(1, ["ffmpeg", "secret-url"], stderr=b"x" * 250),
      "ffmpeg failed during PCM extraction: " + "x" * 200),
     (subprocess.CalledProcessError(1, ["ffmpeg", "secret-url"]), "ffmpeg failed during PCM extraction"),
+    (subprocess.CalledProcessError(1, ["ffmpeg", "secret-url"], stderr="y" * 250),
+     "ffmpeg failed during PCM extraction: " + "y" * 200),
 ])
 def test_failed_extraction_sends_error_without_result_and_cleans_workdir(isolated_cache, monkeypatch, error, expected):
     resolve = Mock(return_value=("audio.wav", "Clip"))
@@ -77,3 +80,58 @@ def test_failed_extraction_sends_error_without_result_and_cleans_workdir(isolate
         thread.join(timeout=5)
         server.server_close()
         assert not thread.is_alive()
+
+
+def _stream_request(monkeypatch, send_event):
+    """POST /analyze for a.wav with the stream's events handed to ``send_event``; return the raw response body."""
+    monkeypatch.setattr(gui.AnalyzeHandler, "_send_event", send_event)
+    server = HTTPServer(("127.0.0.1", 0), gui.AnalyzeHandler)
+    unhandled = []
+    server.handle_error = lambda request, client_address: unhandled.append(client_address)
+    thread = threading.Thread(target=server.handle_request)
+    thread.start()
+    try:
+        status, raw = _post(f"http://127.0.0.1:{server.server_port}", "/analyze", {"url": "a.wav"})
+    finally:
+        thread.join(timeout=5)
+        server.server_close()
+    assert status == 200
+    assert unhandled == []
+    return raw
+
+
+def test_client_gone_before_the_first_event_stops_the_analysis(isolated_cache, monkeypatch):
+    resolve = Mock()
+    monkeypatch.setattr(gui, "resolve_source", resolve)
+    sent = []
+
+    def gone(self, event_type, **fields):
+        sent.append(event_type)
+        raise gui._ClientDisconnected()
+
+    assert _stream_request(monkeypatch, gone) == ""
+    assert sent == ["progress"]
+    resolve.assert_not_called()
+
+
+@pytest.mark.parametrize("error, expected", [
+    (FileNotFoundError("missing decoder"), "missing decoder"),
+    (subprocess.CalledProcessError(1, ["ffmpeg"], stderr=b"bad input"), "ffmpeg failed during PCM extraction: bad input"),
+    (RuntimeError("decode interrupted"), "Analysis failed: decode interrupted"),
+], ids=["file_not_found", "ffmpeg_failed", "other"])
+def test_client_gone_while_the_error_is_sent_ends_the_stream_quietly(isolated_cache, monkeypatch, error, expected):
+    monkeypatch.setattr(gui, "resolve_source", Mock(return_value=("audio.wav", "Clip")))
+    monkeypatch.setattr(gui, "probe_info", Mock(return_value=(2, 10.0)))
+    monkeypatch.setattr(gui, "extract_audio", Mock(side_effect=error))
+    sent = []
+
+    def gone_at_the_error(self, event_type, **fields):
+        sent.append((event_type, fields))
+        if event_type == "error":
+            raise gui._ClientDisconnected()
+        self.wfile.write((json.dumps({"type": event_type, **fields}) + "\n").encode())
+
+    raw = _stream_request(monkeypatch, gone_at_the_error)
+    assert sent[-1] == ("error", {"error": expected})
+    assert all(event_type != "error" for event_type, _ in sent[:-1])
+    assert all(event["type"] != "error" for event in _parse_ndjson(raw))

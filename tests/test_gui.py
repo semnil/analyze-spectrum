@@ -87,6 +87,30 @@ class TestAnalyzeHandler:
         assert isinstance(handler._parse_duration({"duration": [1]}), str)
         assert isinstance(handler._parse_duration({"duration": {"v": 1}}), str)
 
+    @pytest.mark.parametrize("duration, message", [
+        (True, "'duration' must be a number, not bool"),
+        (float("nan"), "'duration' must be a finite number"),
+        (float("inf"), "'duration' must be a finite number"),
+        (-1, "'duration' must be a positive number"),
+        (0.005, "'duration' must be >= 0.01 minutes"),
+        ("abc", "'duration' must be a number"),
+    ])
+    def test_parse_duration_messages(self, _mock_webview, duration, message):
+        gui_mod = _mock_webview
+        handler = gui_mod.AnalyzeHandler.__new__(gui_mod.AnalyzeHandler)
+        assert handler._parse_duration({"duration": duration}) == message
+
+    def test_parse_duration_accepts_the_minimum(self, _mock_webview):
+        gui_mod = _mock_webview
+        handler = gui_mod.AnalyzeHandler.__new__(gui_mod.AnalyzeHandler)
+        assert handler._parse_duration({"duration": 0.01}) == 0.01
+
+    def test_frozen_app_reads_bundled_resources_from_the_bundle(self, _mock_webview, monkeypatch, tmp_path):
+        gui_mod = _mock_webview
+        monkeypatch.setattr(gui_mod.sys, "frozen", True, raising=False)
+        monkeypatch.setattr(gui_mod.sys, "_MEIPASS", str(tmp_path), raising=False)
+        assert gui_mod._get_base_dir() == tmp_path
+
     def test_audio_types_defined(self, _mock_webview):
         gui_mod = _mock_webview
         types = gui_mod.AnalyzeHandler._AUDIO_TYPES
@@ -210,6 +234,38 @@ class TestCachePutGet:
         assert gui_mod._cache_get(str(f), None) == data
 
 
+class TestCacheEviction:
+    def test_replacing_an_entry_whose_file_is_gone_still_stores_the_new_one(self, _clear_cache):
+        gui_mod = _clear_cache
+        old = gui_mod._cache_put("https://example.com/a", None, {"v": 1})
+        os.unlink(old)
+        new = gui_mod._cache_put("https://example.com/a", None, {"v": 2})
+        assert new != old
+        assert json.loads(open(new, encoding="utf-8").read()) == {"v": 2}
+        assert gui_mod._cache_get("https://example.com/a", None) == {"v": 2}
+
+    def test_disk_read_of_an_entry_evicted_meanwhile_is_not_kept_in_memory(self, _clear_cache, monkeypatch):
+        gui_mod = _clear_cache
+        key = gui_mod._cache_key("https://example.com/a", None)
+        path = gui_mod._cache_put("https://example.com/a", None, {"v": 1})
+        gui_mod._result_cache_data.clear()
+        real_path = gui_mod.Path
+
+        class EvictedWhileReading:
+            def __init__(self, name):
+                self._path = real_path(name)
+
+            def read_text(self, *args, **kwargs):
+                text = self._path.read_text(*args, **kwargs)
+                gui_mod._result_cache.pop(key)
+                return text
+
+        monkeypatch.setattr(gui_mod, "Path", EvictedWhileReading)
+        assert gui_mod._cache_get("https://example.com/a", None) == {"v": 1}
+        assert key not in gui_mod._result_cache_data
+        assert os.path.isfile(path)
+
+
 class TestCacheFile:
     def test_returns_none_before_put(self, _clear_cache):
         gui_mod = _clear_cache
@@ -255,6 +311,48 @@ class TestTransferFunctionsFromDicts:
         eq = result[0]["eq"]
         assert set(eq) == {"preamp_db", "bands", "residual_rms_db", "fit_range_hz"}
         assert eq["fit_range_hz"] == [20.0, 400.0]
+
+    def test_reference_without_spectrum_bins_returns_empty(self, _clear_cache):
+        gui_mod = _clear_cache
+        tracks = [
+            {"label": "ref", "spectrum": {"freqs": [], "psd_db": []}},
+            {"label": "other", "spectrum": {"freqs": [100, 200], "psd_db": [-10, -20]}},
+        ]
+        assert gui_mod._transfer_functions_from_dicts(tracks) == []
+
+    def test_track_without_spectrum_bins_is_skipped(self, _clear_cache):
+        gui_mod = _clear_cache
+        tracks = [
+            {"label": "A", "spectrum": {"freqs": [100, 200], "psd_db": [-20, -30]}},
+            {"label": "empty", "spectrum": {"freqs": [], "psd_db": []}},
+            {"label": "C", "spectrum": {"freqs": [100, 200], "psd_db": [-19, -31]}},
+        ]
+        result = gui_mod._transfer_functions_from_dicts(tracks)
+        assert [tf["label"] for tf in result] == ["C \u2212 A"]
+
+    def test_sample_rate_mismatch_warns_and_clips_to_the_common_band(self, _clear_cache):
+        gui_mod = _clear_cache
+        tracks = [
+            {"label": "ref", "sample_rate": 48000, "spectrum": {"freqs": [100, 200, 400], "psd_db": [-20, -30, -40]}},
+            {"label": "other", "sample_rate": 44100, "spectrum": {"freqs": [100, 200], "psd_db": [-22, -28]}},
+        ]
+        tf = gui_mod._transfer_functions_from_dicts(tracks)[0]
+        assert tf["warning"] == "sample rate mismatch (48000 vs 44100); clipped to 200 Hz"
+        assert tf["freqs"] == [100, 200]
+
+    def test_matching_or_unknown_sample_rates(self, _clear_cache):
+        gui_mod = _clear_cache
+        spectrum = {"freqs": [100, 200], "psd_db": [-20, -30]}
+        same = gui_mod._transfer_functions_from_dicts([
+            {"label": "A", "sample_rate": 48000, "spectrum": spectrum},
+            {"label": "B", "sample_rate": 48000, "spectrum": spectrum},
+        ])[0]
+        unknown = gui_mod._transfer_functions_from_dicts([
+            {"label": "A", "sample_rate": 48000, "spectrum": spectrum},
+            {"label": "B", "spectrum": spectrum},
+        ])[0]
+        assert "warning" not in same
+        assert unknown["warning"] == "sample_rate unknown; frequency comparison may be approximate"
 
     def test_three_tracks(self, _clear_cache):
         gui_mod = _clear_cache
@@ -597,6 +695,27 @@ class TestUpdateEndpoints:
         assert held == [_mock_webview.UPDATE_CONFIG.mutex_name]
 
 
+    def test_frozen_main_puts_the_bundled_programs_first_on_path(self, _mock_webview, monkeypatch, tmp_path):
+        monkeypatch.setattr(_mock_webview, "hold_instance_mutex", lambda name: None)
+        monkeypatch.setattr(_mock_webview.sys, "frozen", True, raising=False)
+        monkeypatch.setattr(_mock_webview.sys, "_MEIPASS", str(tmp_path), raising=False)
+        monkeypatch.setenv("PATH", "existing")
+        _mock_webview.main()
+        assert os.environ["PATH"] == str(tmp_path / "bin") + os.pathsep + "existing"
+
+    def test_running_the_module_as_a_script_starts_the_app(self, _mock_webview, monkeypatch):
+        import runpy
+        import warnings
+        from analyze_common import update
+        monkeypatch.setattr(update, "hold_instance_mutex", lambda name: None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            runpy.run_module("analyze_spectrum.gui", run_name="__main__")
+        _mock_webview.webview.create_window.assert_called_once()
+        assert _mock_webview.webview.create_window.call_args.args[0] == "Spectrum Analyzer"
+        _mock_webview.webview.start.assert_called_once()
+
+
 class TestUiSettingsEndpoints:
     _request = TestUpdateEndpoints._request
     _post = TestUpdateEndpoints._post
@@ -689,6 +808,333 @@ class TestUiSettingsEndpoints:
         monkeypatch.setattr(_mock_webview, "run_atexit_on_app_quit", watch)
         _mock_webview.main()
         watch.assert_called_once_with()
+
+
+class _Routes:
+    """Requests to the app's handler over a real socket, with the sources and dialogs the tests control."""
+
+    _request = TestUpdateEndpoints._request
+
+    def _call(self, gui, path, body=b"", headers=None):
+        raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+        response, data = self._request(gui, "POST", path, raw, headers)
+        return response.status, data
+
+    def _json(self, gui, path, body=b"", headers=None):
+        status, data = self._call(gui, path, body, headers)
+        return status, json.loads(data)
+
+    @staticmethod
+    def _window(gui, monkeypatch, result=None):
+        window = MagicMock()
+        window.create_file_dialog.return_value = result
+        monkeypatch.setattr(gui, "_window", window)
+        return window
+
+
+class TestRequestValidation(_Routes):
+    @pytest.fixture(autouse=True)
+    def _no_sources(self, _mock_webview, monkeypatch):
+        self.resolve = MagicMock()
+        monkeypatch.setattr(_mock_webview, "resolve_source", self.resolve)
+
+    def test_unknown_path_is_404(self, _mock_webview):
+        assert self._call(_mock_webview, "/nope", {})[0] == 404
+
+    @pytest.mark.parametrize("body, message", [
+        (b"{not json", "Invalid JSON body"),
+        ({"url": "   "}, "Missing or invalid 'url' field"),
+        ({"url": 5}, "Missing or invalid 'url' field"),
+        ({"url": "file:///etc/hosts"}, "'url' must use http or https scheme"),
+        ({"url": "javascript:alert(1)"}, "'url' must use http or https scheme"),
+        ({"url": "a.wav", "duration": True}, "'duration' must be a number, not bool"),
+        ({"url": "a.wav", "duration": 0.001}, "'duration' must be >= 0.01 minutes"),
+    ])
+    def test_analyze_rejects_the_request_before_any_work(self, _mock_webview, body, message):
+        assert self._json(_mock_webview, "/analyze", body) == (400, {"error": message})
+        self.resolve.assert_not_called()
+
+    @pytest.mark.parametrize("body, message", [
+        (b"{not json", "Invalid JSON body"),
+        ({"sources": ["a.wav", 5]}, "All sources must be non-empty strings"),
+        ({"sources": ["a.wav", "  "]}, "All sources must be non-empty strings"),
+        ({"sources": ["a.wav", "ftp://host/b.wav"]}, "'url' must use http or https scheme"),
+        ({"sources": ["a.wav", "b.wav"], "duration": "x"}, "'duration' must be a number"),
+    ])
+    def test_compare_rejects_the_request_before_any_work(self, _mock_webview, body, message):
+        assert self._json(_mock_webview, "/compare", body) == (400, {"error": message})
+        self.resolve.assert_not_called()
+
+    def test_url_source_reports_the_download_stage(self, _mock_webview, monkeypatch):
+        self.resolve.side_effect = FileNotFoundError("stop here")
+        status, data = self._call(_mock_webview, "/analyze", {"url": "https://example.com/a"})
+        events = [json.loads(line) for line in data.decode().splitlines()]
+        assert status == 200
+        assert events == [
+            {"type": "progress", "stage": "download", "message": "Downloading audio..."},
+            {"type": "error", "error": "stop here"},
+        ]
+        self.resolve.assert_called_once()
+
+    def test_compare_of_cached_tracks_analyzes_nothing(self, _mock_webview):
+        gui_mod = _mock_webview
+        spectrum = {"freqs": [100, 200], "psd_db": [-20, -30]}
+        for name in ("a", "b"):
+            gui_mod._cache_put(f"https://example.com/{name}", None,
+                               {"label": name, "spectrum": spectrum, "meta": {"source": name}})
+        body = {"sources": ["https://example.com/a", "https://example.com/b"]}
+        status, data = self._call(gui_mod, "/compare", body)
+        events = [json.loads(line) for line in data.decode().splitlines()]
+        assert status == 200
+        assert [e.get("stage") for e in events if e["type"] == "progress"] == ["cache", "cache", "compare"]
+        assert [t["label"] for t in events[-1]["data"]["tracks"]] == ["a", "b"]
+        assert events[-1]["data"]["transfer_functions"][0]["label"] == "b \u2212 a"
+        self.resolve.assert_not_called()
+
+
+class TestUnexpectedFailure(_Routes):
+    def test_error_in_a_route_is_500_without_its_details(self, _mock_webview, monkeypatch):
+        def explode(self):
+            raise RuntimeError("secret detail")
+
+        monkeypatch.setattr(_mock_webview.AnalyzeHandler, "_handle_load", explode)
+        status, data = self._call(_mock_webview, "/load", {})
+        assert status == 500
+        assert json.loads(data) == {"error": "Internal server error"}
+        assert b"secret detail" not in data
+
+    def test_server_survives_a_route_whose_error_cannot_be_reported(self, _mock_webview, monkeypatch):
+        import http.client
+        reported = []
+
+        def explode(self):
+            raise RuntimeError("first")
+
+        def cannot_report(self, status, message):
+            reported.append((status, message))
+            raise BrokenPipeError()
+
+        monkeypatch.setattr(_mock_webview.AnalyzeHandler, "_handle_load", explode)
+        monkeypatch.setattr(_mock_webview.AnalyzeHandler, "_json_error", cannot_report)
+        with pytest.raises(http.client.RemoteDisconnected):
+            self._call(_mock_webview, "/load", {})
+        assert reported == [(500, "Internal server error")]
+
+
+class TestSaveRoute(_Routes):
+    def test_invalid_json_body(self, _mock_webview, monkeypatch):
+        window = self._window(_mock_webview, monkeypatch)
+        assert self._json(_mock_webview, "/save", b"{not json") == (400, {"error": "Invalid JSON body"})
+        window.create_file_dialog.assert_not_called()
+
+    def test_open_dialog_is_refused_with_409(self, _mock_webview, monkeypatch):
+        window = self._window(_mock_webview, monkeypatch)
+        with _mock_webview._dialog_lock:
+            status, body = self._json(_mock_webview, "/save", {"data": {"x": 1}})
+        assert (status, body) == (409, {"error": "A dialog is already open"})
+        window.create_file_dialog.assert_not_called()
+
+    def test_dialog_failure_is_500_and_frees_the_dialog(self, _mock_webview, monkeypatch):
+        window = self._window(_mock_webview, monkeypatch)
+        window.create_file_dialog.side_effect = RuntimeError("boom")
+        assert self._json(_mock_webview, "/save", {"data": {"x": 1}}) == (500, {"error": "File dialog error: boom"})
+        assert _mock_webview._dialog_lock.acquire(blocking=False)
+        _mock_webview._dialog_lock.release()
+
+    def test_unwritable_path_is_500(self, _mock_webview, monkeypatch, tmp_path):
+        target = tmp_path / "missing_folder" / "result.json"
+        self._window(_mock_webview, monkeypatch, str(target))
+        status, body = self._json(_mock_webview, "/save", {"data": {"x": 1}})
+        assert status == 500
+        assert body["error"].startswith("Failed to write file: ")
+        assert not target.exists()
+
+
+class TestLoadRoute(_Routes):
+    def test_dialog_failure_is_500_and_frees_the_dialog(self, _mock_webview, monkeypatch):
+        window = self._window(_mock_webview, monkeypatch)
+        window.create_file_dialog.side_effect = RuntimeError("boom")
+        assert self._json(_mock_webview, "/load", {}) == (500, {"error": "File dialog error: boom"})
+        assert _mock_webview._dialog_lock.acquire(blocking=False)
+        _mock_webview._dialog_lock.release()
+
+    def test_chosen_folder_is_refused(self, _mock_webview, monkeypatch, tmp_path):
+        self._window(_mock_webview, monkeypatch, [str(tmp_path)])
+        assert self._json(_mock_webview, "/load", {}) == (400, {"error": f"Not a file: {tmp_path.name}"})
+
+    def test_oversize_file_is_refused_without_reading_it(self, _mock_webview, monkeypatch, tmp_path):
+        big = tmp_path / "big.json"
+        limit = _mock_webview.AnalyzeHandler._MAX_LOAD_BYTES
+        big.write_text(json.dumps({"spectrum": {}, "pad": "x" * limit}), encoding="utf-8")
+        self._window(_mock_webview, monkeypatch, [str(big)])
+        status, body = self._json(_mock_webview, "/load", {})
+        assert (status, body) == (400, {"error": "JSON file exceeds 10 MB: big.json"})
+
+    def test_file_whose_size_cannot_be_read_is_refused(self, _mock_webview, monkeypatch, tmp_path):
+        target = tmp_path / "gone.json"
+        target.write_text("{}", encoding="utf-8")
+        self._window(_mock_webview, monkeypatch, [str(target)])
+
+        def deny(path):
+            raise OSError("denied")
+
+        monkeypatch.setattr(_mock_webview.os.path, "getsize", deny)
+        assert self._json(_mock_webview, "/load", {}) == (400, {"error": "Failed to read file: denied"})
+
+    def test_file_that_is_not_json_is_refused(self, _mock_webview, monkeypatch, tmp_path):
+        target = tmp_path / "broken.json"
+        target.write_text("{broken", encoding="utf-8")
+        self._window(_mock_webview, monkeypatch, [str(target)])
+        status, body = self._json(_mock_webview, "/load", {})
+        assert status == 400
+        assert body["error"].startswith("Failed to read file: ")
+
+    @pytest.mark.parametrize("meta, source", [
+        (None, ""),
+        ({"source": 5}, ""),
+        ({"source": ""}, ""),
+        ({"source": "/nonexistent/clip.wav"}, "/nonexistent/clip.wav"),
+        ({"source": "https://example.com/clip"}, "https://example.com/clip"),
+    ])
+    def test_outdated_result_reports_its_source_and_is_not_cached(self, _mock_webview, monkeypatch, tmp_path, meta, source):
+        gui_mod = _mock_webview
+        target = tmp_path / "old.json"
+        target.write_text(json.dumps({"spectrum": {"freqs": [1], "psd_db": [0]}, "meta": meta}), encoding="utf-8")
+        self._window(gui_mod, monkeypatch, [str(target)])
+        status, body = self._json(gui_mod, "/load", {})
+        assert status == 200
+        assert body["schema_outdated"] is True
+        assert body["source"] == source
+        assert body["source_available"] is source.startswith("https://")
+        assert not gui_mod._loaded_cache_data
+
+
+class TestCacheLoaded:
+    @pytest.mark.parametrize("data", [
+        {"meta": {"source": "https://example.com/a"}},
+        {"spectrum": {}},
+        {"spectrum": {}, "meta": None},
+        {"spectrum": {}, "meta": {"source": 5}},
+        {"spectrum": {}, "meta": {"source": ""}},
+        {"spectrum": {}, "meta": {"source": "https://example.com/a", "duration_min": 2}},
+    ])
+    def test_result_without_a_usable_source_or_with_a_cut_is_not_kept(self, _mock_webview, data):
+        gui_mod = _mock_webview
+        gui_mod._loaded_cache_data.clear()
+        gui_mod.AnalyzeHandler._cache_loaded(data)
+        assert not gui_mod._loaded_cache_data
+
+    def test_whole_source_result_is_kept_under_its_source(self, _mock_webview):
+        gui_mod = _mock_webview
+        gui_mod._loaded_cache_data.clear()
+        data = {"spectrum": {}, "meta": {"source": "https://example.com/a"}}
+        gui_mod.AnalyzeHandler._cache_loaded(data)
+        assert gui_mod._cache_get("https://example.com/a", None) is data
+        gui_mod._loaded_cache_data.clear()
+
+
+class TestUploadRoute(_Routes):
+    _OCTET = {"Content-Type": "application/octet-stream"}
+
+    def _upload(self, gui, name, payload=b"\x00" * 32):
+        from urllib.parse import quote
+        return self._json(gui, "/upload", payload, {**self._OCTET, "X-Filename": quote(name)})
+
+    def test_invalid_content_length(self, _mock_webview):
+        status, body = self._json(_mock_webview, "/upload", b"", {**self._OCTET, "Content-Length": "abc"})
+        assert (status, body) == (400, {"error": "Invalid Content-Length"})
+
+    def test_file_over_the_limit_is_413_before_any_data_is_read(self, _mock_webview):
+        too_big = str(_mock_webview.AnalyzeHandler._MAX_UPLOAD + 1)
+        status, body = self._json(_mock_webview, "/upload", b"", {**self._OCTET, "Content-Length": too_big})
+        assert (status, body) == (413, {"error": "File too large (max 500 MB)"})
+
+    def test_upper_case_extension_gets_the_lower_case_one_appended(self, _mock_webview):
+        status, body = self._upload(_mock_webview, "TRACK.WAV", b"abc")
+        assert status == 200
+        assert os.path.basename(body["path"]) == "TRACK.WAV.wav"
+        assert os.path.dirname(body["path"]) == _mock_webview._upload_dir
+        with open(body["path"], "rb") as f:
+            assert f.read() == b"abc"
+
+    def test_same_name_uploaded_again_gets_a_number(self, _mock_webview):
+        paths = [self._upload(_mock_webview, "dup.wav", bytes([i]))[1]["path"] for i in range(3)]
+        assert [os.path.basename(p) for p in paths] == ["dup.wav", "dup_1.wav", "dup_2.wav"]
+        for i, path in enumerate(paths):
+            with open(path, "rb") as f:
+                assert f.read() == bytes([i])
+
+    def test_name_that_leaves_the_upload_folder_is_refused(self, _mock_webview, monkeypatch, tmp_path):
+        uploads = tmp_path / "uploads"
+        uploads.mkdir()
+        monkeypatch.setattr(_mock_webview, "_upload_dir", str(uploads))
+        monkeypatch.setattr(_mock_webview, "sanitize_filename", lambda name: "../escape.wav")
+        status, body = self._upload(_mock_webview, "x.wav")
+        assert (status, body) == (400, {"error": "Invalid filename"})
+        assert not (tmp_path / "escape.wav").exists()
+        assert list(uploads.iterdir()) == []
+
+    @pytest.mark.parametrize("unlink_fails", [False, True], ids=["removed", "removal_fails"])
+    def test_failed_write_leaves_no_partial_file(self, _mock_webview, monkeypatch, unlink_fails):
+        gui_mod = _mock_webview
+        real_open, real_unlink = open, os.unlink
+
+        def failing_open(path, mode="r", *args, **kwargs):
+            f = real_open(path, mode, *args, **kwargs)
+            f.write(b"partial")
+            f.close()
+            raise OSError("disk full")
+
+        def unlink(path, *args, **kwargs):
+            if unlink_fails and str(path).startswith(gui_mod._upload_dir):
+                raise OSError("locked")
+            return real_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(gui_mod, "open", failing_open, raising=False)
+        monkeypatch.setattr(gui_mod.os, "unlink", unlink)
+        status, body = self._upload(gui_mod, "fail_write.wav")
+        assert (status, body) == (400, {"error": "Invalid filename"})
+        assert os.path.exists(os.path.join(gui_mod._upload_dir, "fail_write.wav")) is unlink_fails
+
+    def test_write_refused_before_a_file_exists_leaves_nothing(self, _mock_webview, monkeypatch):
+        def refuse(path, *args, **kwargs):
+            raise ValueError("embedded null byte")
+
+        monkeypatch.setattr(_mock_webview, "open", refuse, raising=False)
+        assert self._upload(_mock_webview, "refused.wav") == (400, {"error": "Invalid filename"})
+        assert not os.path.exists(os.path.join(_mock_webview._upload_dir, "refused.wav"))
+
+    @pytest.mark.parametrize("unlink_fails", [False, True], ids=["removed", "removal_fails"])
+    def test_cut_off_upload_is_refused_and_removed(self, _mock_webview, monkeypatch, unlink_fails):
+        import socket
+        from http.server import HTTPServer
+        gui_mod = _mock_webview
+        real_unlink = os.unlink
+
+        def unlink(path, *args, **kwargs):
+            if unlink_fails and str(path).startswith(gui_mod._upload_dir):
+                raise OSError("locked")
+            return real_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(gui_mod.os, "unlink", unlink)
+        server = HTTPServer(("127.0.0.1", 0), gui_mod.AnalyzeHandler)
+        thread = threading.Thread(target=server.handle_request)
+        thread.start()
+        try:
+            with socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=10) as sock:
+                sock.sendall(b"POST /upload HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                             b"Content-Type: application/octet-stream\r\nX-Filename: cut.wav\r\n"
+                             b"Content-Length: 100\r\n\r\n" + b"0123456789")
+                sock.shutdown(socket.SHUT_WR)
+                reply = b""
+                while chunk := sock.recv(65536):
+                    reply += chunk
+        finally:
+            thread.join(timeout=5)
+            server.server_close()
+        assert reply.startswith(b"HTTP/1.0 400")
+        assert json.loads(reply.split(b"\r\n\r\n", 1)[1]) == {"error": "Incomplete upload"}
+        assert os.path.exists(os.path.join(gui_mod._upload_dir, "cut.wav")) is unlink_fails
 
 
 class TestUpdateConfig:
