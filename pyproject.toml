@@ -46,5 +46,7 @@ testpaths = ["tests"]
 # Measures this package only; vendor/py-analyze-common is measured by its own repository's CI.
 [tool.coverage.run]
 source_pkgs = ["analyze_spectrum"]
+# the two-line entry point that only calls cli.main(), which the CLI tests cover
+omit = ["*/analyze_spectrum/__main__.py"]
 branch = true
 relative_files = true

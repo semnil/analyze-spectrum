@@ -204,7 +204,7 @@ Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip 
 
 ```bash
 pytest -q                                          # all tests
-pytest -q --cov --cov-report=term-missing          # with line and branch coverage of src/analyze_spectrum ([tool.coverage.run] in pyproject.toml)
+pytest -q --cov --cov-report=term-missing          # with line and branch coverage of src/analyze_spectrum, without __main__.py ([tool.coverage.run] in pyproject.toml)
 pytest -q --js-coverage=coverage-js.lcov           # with the line coverage of frontend/*.js that the Playwright tests run, as LCOV (tests/js_coverage.py)
 python -m playwright install --with-deps chromium  # first time only (used by test_frontend.py)
 python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q tests/test_ffmpeg_binary.py  # with the bundled ffmpeg / ffprobe
