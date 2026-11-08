@@ -778,21 +778,27 @@ loadBtn.addEventListener("click", async () => {
 });
 
 // Append loaded sources (plus any pending urlInput value) to compareSources.
-// Reports total queued and how many were skipped due to dup/cap.
+// Reports total queued, how many were already queued and how many did not fit.
 function _loadAddToQueue(loadedSources) {
   var pending = urlInput.value.trim();
   if (pending) _tryAddTrack(pending);
   urlInput.value = "";
-  var skipped = 0;
+  var duplicates = 0;
+  var over = 0;
   for (var i = 0; i < loadedSources.length; i++) {
-    if (!_tryAddTrack(loadedSources[i])) skipped++;
+    if (compareSources.indexOf(loadedSources[i]) !== -1) duplicates++;
+    else if (!_tryAddTrack(loadedSources[i])) over++;
   }
   updateCompareUI();
   _maybeInvalidateResults();
   if (compareSources.length >= 2) {
     var msg = compareSources.length + window.i18n.t("status.tracks_ready");
-    if (skipped > 0) {
-      msg += " (" + skipped + window.i18n.t("status.skipped_max_suffix", { max: MAX_TRACKS });
+    if (duplicates > 0 && over > 0) {
+      msg += window.i18n.t("status.skipped_duplicate_and_max", { duplicates: duplicates, over: over, max: MAX_TRACKS });
+    } else if (duplicates > 0) {
+      msg += window.i18n.t("status.skipped_duplicate", { count: duplicates });
+    } else if (over > 0) {
+      msg += window.i18n.t("status.skipped_max", { count: over, max: MAX_TRACKS });
     }
     statusEl.textContent = msg;
   } else {
