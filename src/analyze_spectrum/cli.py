@@ -11,7 +11,7 @@ import numpy as np
 
 from analyze_spectrum import __version__, make_compare_meta, make_meta, recorded_minutes
 from analyze_spectrum.analysis import EQ_BANDS_DEFAULT, analyze_track, compare_tracks
-from analyze_spectrum.download import is_url, middle_of, resolve_source
+from analyze_spectrum.download import compute_middle, is_url, resolve_source
 from analyze_spectrum.pcm import extract_audio, probe_info
 from analyze_common.tempdirs import InstanceLock
 
@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
 
             ss, dur = None, None
             if args.duration is not None:
-                ss, dur, msg = middle_of(total_sec, args.duration)
+                ss, dur, msg = compute_middle(total_sec, args.duration)
                 print(f"  {msg}", file=sys.stderr)
             cut_minutes = recorded_minutes(args.duration, ss) or cut_minutes
 
