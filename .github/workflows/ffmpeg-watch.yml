@@ -300,9 +300,11 @@ jobs:
 
           # auto_merge_pr: the pull request whose auto-merge land has enabled and not yet seen merged or closed. Whatever
           # ends the step while it is set — a failed command, a stop of merge_when_required, the SIGINT a cancelled job
-          # sends this shell — turns that auto-merge off on the way out, so the pull request does not merge after land
-          # has stopped. The step then ends with the status it was ending with, or 1 when the auto-merge could not be
-          # turned off. The SIGINT ends the shell once the command in front of it returns.
+          # sends this shell — calls GitHub on the way out to turn that auto-merge off, so the pull request does not
+          # merge after land has stopped. The step then ends with the status it was ending with, or 1 when that call
+          # fails. The SIGINT ends the shell once the command in front of it returns. A SIGTERM that arrives during that
+          # call ends the shell without waiting for it, so if the call does not complete, the auto-merge stays on and no
+          # error is reported.
           auto_merge_pr=""
           end_land() {
             local status=$?

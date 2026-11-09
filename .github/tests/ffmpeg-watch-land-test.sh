@@ -591,7 +591,8 @@ check "a pull request that does not merge stops land after its wait" \
   "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 late_success "a pull request that does not merge in time"
 
-# Once the auto-merge is enabled, whatever else ends land turns it off on the way out.
+# Once the auto-merge is enabled, a failed poll, a failed enabling call and a cancelled job each turn it off on the
+# way out, and a call that fails to turn it off is reported.
 want_error="HTTP 502"
 run_land true true "" CODECOV=never VIEW_FAIL=1
 check "a poll that fails after the auto-merge is enabled stops land" \
