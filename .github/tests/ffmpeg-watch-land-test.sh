@@ -2,8 +2,12 @@
 # Runs the land step of ffmpeg-watch.yml against a fixture repository (a bare remote and a shallow clone) and a fake gh
 # that answers by the token a call carries: a pull request the App's token opens gets successful pull_request runs of
 # CI and dependabot-auto-merge.yml and a pull_request_target run of workflow-checks.yml, one GITHUB_TOKEN opens gets
-# pull_request runs that wait for an approval and no pull_request_target run, a merge needs the three required checks,
-# and a merge with the App's token starts a push run of CI on master. It asserts what lands on master, which token
+# pull_request runs that wait for an approval and no pull_request_target run, a merge needs the three required checks
+# and codecov/project, which reports only after land has polled the pull request (CODECOV_AFTER polls; CODECOV=failure
+# reports a failure, CODECOV=never reports nothing), auto-merge merges once they have all passed, and a merge with the
+# App's token starts a push run of CI on master. VIEW_FAIL fails every poll of a pull request's state, AUTO_FAIL fails
+# the call that enables auto-merge after enabling it, DISABLE_FAIL fails turning it off, and LAND_SIGNAL cancels land
+# during its first wait between polls (the sleep stub below). It asserts what lands on master, which token
 # opened and merged each pull request, and what land dispatched. It also checks that a queued detect reads the
 # updated pin, version and tags from master after an earlier run completes, that smoke uses its recorded commit, that
 # the detect step hands the next attempt to retry when the CLI exits 3, and that retry dispatches it with GITHUB_TOKEN.
@@ -73,7 +77,7 @@ def parse(args):
     opts, rest, i = {}, [], 0
     while i < len(args):
         a = args[i]
-        if a in ("--exit-status", "--compact", "--required", "--merge"):
+        if a in ("--exit-status", "--compact", "--required", "--merge", "--auto", "--disable-auto"):
             opts[a] = True
         elif a.startswith("-"):
             if a == "-f":
@@ -98,6 +102,24 @@ def checks_pass(state, sha):
                    for r in state["runs"]) for w, e in REQUIRED.items())
 
 
+def codecov(state, sha):
+    """codecov/project on sha: None until it reports, then its conclusion."""
+    outcome = os.environ.get("CODECOV", "success")
+    if outcome == "never" or state["polls"].get(sha, 0) < int(os.environ.get("CODECOV_AFTER", "2")):
+        return None
+    return outcome
+
+
+def merge_pr(state, pr, head, token):
+    master = git("rev-parse", "refs/heads/master")
+    merge = git("commit-tree", f"{head}^{{tree}}", "-p", master, "-p", head,
+                "-m", f"Merge pull request #{pr['number']} from o/{pr['head']}")
+    git("update-ref", "refs/heads/master", merge)
+    pr.update(state="MERGED", merged_by=token, merge=merge)
+    if token == APP:
+        add_run(state, "ci.yaml", "push", merge, "success")
+
+
 def main():
     args = sys.argv[1:]
     token = os.environ.get("GH_TOKEN", "")
@@ -119,7 +141,7 @@ def main():
         sha = git("rev-parse", f"refs/heads/{head}")
         state["next_pr"] += 1
         state["prs"].append({"number": state["next_pr"], "head": head, "state": "OPEN", "opened_by": token,
-                             "merged_by": None, "merge": None})
+                             "merged_by": None, "merge": None, "auto": None})
         if token == APP:
             for workflow, event in REQUIRED.items():
                 failing = os.environ.get("FAIL_RUN") == workflow
@@ -132,7 +154,16 @@ def main():
         print(f"https://github.com/o/r/pull/{state['next_pr']}")
     elif (group, verb) == ("pr", "view"):
         pr = next(p for p in state["prs"] if str(p["number"]) == rest[0] or p["head"] == rest[0])
-        emit({"number": pr["number"]}, opts)
+        if "state" in opts.get("--json", "").split(",") and pr["state"] == "OPEN" and os.environ.get("VIEW_FAIL"):
+            print("HTTP 502: Bad Gateway (https://api.github.com/graphql)", file=sys.stderr)
+            status = 1
+        elif "state" in opts.get("--json", "").split(",") and pr["state"] == "OPEN":
+            head = git("rev-parse", f"refs/heads/{pr['head']}")
+            state["polls"][head] = state["polls"].get(head, 0) + 1
+            if pr.get("auto") and checks_pass(state, head) and codecov(state, head) == "success":
+                merge_pr(state, pr, head, pr["auto"])
+        if status == 0:
+            emit({"number": pr["number"], "state": pr["state"]}, opts)
     elif (group, verb) == ("run", "list"):
         runs = [r for r in state["runs"] if r["workflow"] == opts.get("--workflow")
                 and r["event"] == opts.get("--event") and r["sha"] == opts.get("--commit")]
@@ -145,24 +176,37 @@ def main():
             status = 1
     elif (group, verb) == ("pr", "checks"):
         pr = next(p for p in state["prs"] if str(p["number"]) == rest[0])
-        if not checks_pass(state, git("rev-parse", f"refs/heads/{pr['head']}")):
+        head = git("rev-parse", f"refs/heads/{pr['head']}")
+        if not checks_pass(state, head):
             print(f"no checks reported on the '{pr['head']}' branch", file=sys.stderr)
             status = 1
+        elif codecov(state, head) == "failure":
+            print("codecov/project\tfail", file=sys.stderr)
+            status = 1
+    elif (group, verb) == ("pr", "merge") and "--disable-auto" in opts:
+        pr = next(p for p in state["prs"] if str(p["number"]) == rest[0])
+        if os.environ.get("DISABLE_FAIL"):
+            print("HTTP 502: Bad Gateway (https://api.github.com/graphql)", file=sys.stderr)
+            status = 1
+        else:
+            pr["auto"] = None
     elif (group, verb) == ("pr", "merge"):
         pr = next(p for p in state["prs"] if str(p["number"]) == rest[0])
         head = git("rev-parse", f"refs/heads/{pr['head']}")
         master = git("rev-parse", "refs/heads/master")
-        if head != opts.get("--match-head-commit") or git("merge-base", master, head) != master \
-                or not checks_pass(state, head):
+        if head != opts.get("--match-head-commit") or git("merge-base", master, head) != master:
             print("the base branch policy prohibits the merge", file=sys.stderr)
             status = 1
+        elif "--auto" in opts:
+            pr["auto"] = token
+            if os.environ.get("AUTO_FAIL"):
+                print("HTTP 502: Bad Gateway (https://api.github.com/graphql)", file=sys.stderr)
+                status = 1
+        elif not checks_pass(state, head) or codecov(state, head) != "success":
+            print('Required status check "codecov/project" is expected.', file=sys.stderr)
+            status = 1
         else:
-            merge = git("commit-tree", f"{head}^{{tree}}", "-p", master, "-p", head,
-                        "-m", f"Merge pull request #{pr['number']} from o/{pr['head']}")
-            git("update-ref", "refs/heads/master", merge)
-            pr.update(state="MERGED", merged_by=token, merge=merge)
-            if token == APP:
-                add_run(state, "ci.yaml", "push", merge, "success")
+            merge_pr(state, pr, head, token)
     elif (group, verb) == ("workflow", "run"):
         state["dispatches"].append({"workflow": rest[0], "ref": opts.get("--ref"), "inputs": opts.get("-f", []),
                                     "token": token})
@@ -344,7 +388,29 @@ else
   echo "FAIL wiring: the input detect_attempt, detect's attempt, outputs or permissions, or retry's condition, permissions, steps or env changed"
 fi
 
-printf '#!/usr/bin/env bash\nexit 0\n' > "$work/bin/sleep"
+# The sleep stub returns at once. With LAND_SIGNAL set, its first call stands for a wait the job is cancelled during: it
+# sends SIGINT to the land shell alone, SIGTERM 7.5 seconds later and SIGKILL 2.5 seconds after that, each only while
+# the land shell is still running, then kills whatever is left of the process group run_land started land in, and it
+# lasts longer than all of that. The killer is in that group itself, so the group's id and the land shell's pid stay
+# unused by any other process for as long as it signals them.
+cat > "$work/bin/sleep" <<'EOF'
+#!/usr/bin/env bash
+if [ -n "${LAND_SIGNAL:-}" ] && mkdir "$LAND_DIR/signalled" 2> /dev/null; then
+  exec > /dev/null 2>&1
+  pid=$(cat "$LAND_DIR/pid")
+  (
+    kill -INT "$pid"
+    for step in 7.5:TERM 2.5:KILL; do
+      /bin/sleep "${step%%:*}"
+      kill -0 "$pid" 2> /dev/null || break
+      kill -"${step#*:}" "$pid"
+    done
+    kill -KILL -- -"$pid"
+  ) &
+  exec /bin/sleep 12
+fi
+exit 0
+EOF
 chmod +x "$work/bin/sleep"
 if ! sed --version > /dev/null 2>&1; then
   cat > "$work/bin/sed" <<'EOF'
@@ -362,18 +428,24 @@ run_land() {
   git -C "$work/remote.git" update-ref refs/heads/master "$base"
   git -C "$work/remote.git" for-each-ref --format='%(refname)' refs/heads/ffmpeg-watch \
     | while read -r ref; do git -C "$work/remote.git" update-ref -d "$ref"; done
-  printf '{"next_run": 100, "next_pr": 10, "runs": [], "prs": %s, "calls": [], "dispatches": []}\n' \
+  printf '{"next_run": 100, "next_pr": 10, "runs": [], "prs": %s, "calls": [], "dispatches": [], "polls": {}}\n' \
     "${SEED_PRS:-[]}" > "$work/state.json"
-  rm -rf "$work/land"
+  rm -rf "$work/land" "$work/land-process"
+  mkdir "$work/land-process"
   git clone -q --depth 1 "file://$work/remote.git" "$work/land" 2>/dev/null
   if out=$(cd "$work/land" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \
-    "$@" PATH="$work/bin:$PATH" FAKE_STATE="$work/state.json" \
+    "$@" PATH="$work/bin:$PATH" LAND_DIR="$work/land-process" FAKE_STATE="$work/state.json" \
     FAKE_REMOTE="$work/remote.git" FAKE_APP_TOKEN="$app_token" FAKE_GITHUB_TOKEN="$github_token" \
     FAKE_APP_SLUG="$app_slug" FAKE_BOT_ID="$bot_id" GH_TOKEN="$github_token" APP_TOKEN="$app_token" \
     APP_SLUG="$app_slug" PIN_UPDATE="$pin_update" BUMP="$bump" SERIES=9.0 VERSION=1.4.1 NEXT_VERSION=1.4.2 \
     RELEASE_SHA="$release_sha" CANDIDATE="$work/candidate.json" GITHUB_SERVER_URL=https://github.com \
     GITHUB_REPOSITORY=o/r GITHUB_RUN_ID=7 GITHUB_RUN_ATTEMPT=1 RUNNER_DEBUG='' \
-    bash -e -o pipefail -c "$land" 2>&1 < /dev/null); then status=0; else status=$?; fi
+    python3 -c 'import os, sys; os.setpgid(0, 0); os.execvp(sys.argv[1], sys.argv[1:])' \
+    bash -c 'echo "$$" > "$LAND_DIR/pid"; exec bash -e -o pipefail -c "$1"' land "$land" 2>&1 < /dev/null); then
+    status=0
+  else
+    status=$?
+  fi
   land_out="$out"
   land_status="$status"
 }
@@ -465,6 +537,91 @@ check "a failing required run stops land before the merge" \
 want_error="no pull_request_target run of workflow-checks.yml on"
 run_land true true "" NO_TARGET_RUN=1
 check "a pull request without its pull_request_target run stops land" \
+  "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
+  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+
+# codecov/project reports after the runs, so the merge waits for it: here on the fifth poll.
+run_land true true "" CODECOV_AFTER=5
+check "a required check that reports after the runs is waited for before the merge" \
+  "exit=0" \
+  "master=Merge pull request #11 from o/ffmpeg-watch/pin-9.0-7-1 | Merge pull request #12 from o/ffmpeg-watch/bump-v1.4.2-7-1" \
+  "version=1.4.2" "pin=9.0" \
+  "pr ffmpeg-watch/pin-9.0 MERGED opened_by=${app_token} merged_by=${app_token}" \
+  "pr ffmpeg-watch/bump-v1.4.2 MERGED opened_by=${app_token} merged_by=${app_token}" \
+  "dispatches=" "push_ci_on_last_merge=1" "$author" "$author"
+count=$((count + 1))
+merges=$(jq -r '[.calls[] | select(.args[0] == "pr" and .args[1] == "merge")
+  | "\(.args | index("--auto") != null) \(.args | index("--match-head-commit") != null) \(.token)"] | unique | join(";")' \
+  "$work/state.json")
+if [ "$merges" = "true true ${app_token}" ]; then
+  echo "ok   every merge is an auto-merge of the head commit with the App's token"
+else
+  failures=$((failures + 1))
+  echo "FAIL every merge must be an auto-merge of the head commit with the App's token: ${merges}"
+fi
+
+# late_success <name>: once land has stopped, codecov/project passes on #11; nothing may merge it, since land turned
+# its auto-merge off before stopping.
+late_success() {
+  local state
+  count=$((count + 1))
+  state=$(env PATH="$work/bin:$PATH" FAKE_STATE="$work/state.json" FAKE_REMOTE="$work/remote.git" \
+    FAKE_APP_TOKEN="$app_token" FAKE_GITHUB_TOKEN="$github_token" FAKE_APP_SLUG="$app_slug" FAKE_BOT_ID="$bot_id" \
+    GH_TOKEN="$github_token" CODECOV=success CODECOV_AFTER=0 gh pr view 11 --json state --jq .state)
+  if [ "$state" = OPEN ] && [ "$(git -C "$work/remote.git" rev-parse master)" = "$base" ] \
+    && [ "$(jq -r '.prs[] | select(.number == 11) | .auto' "$work/state.json")" = null ]; then
+    echo "ok   $1: a check passing after land stopped merges nothing"
+  else
+    failures=$((failures + 1))
+    echo "FAIL $1: a check passing after land stopped must merge nothing (state=${state})"
+  fi
+}
+
+want_error="a required check of #11 failed"
+run_land true true "" CODECOV=failure
+check "a required check that fails after the runs stops land before the merge" \
+  "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
+  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+late_success "a required check that fails after the runs"
+
+want_error="#11 did not merge within 10 minutes of its runs passing"
+run_land true true "" CODECOV=never
+check "a pull request that does not merge stops land after its wait" \
+  "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
+  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+late_success "a pull request that does not merge in time"
+
+# Once the auto-merge is enabled, whatever else ends land turns it off on the way out.
+want_error="HTTP 502"
+run_land true true "" CODECOV=never VIEW_FAIL=1
+check "a poll that fails after the auto-merge is enabled stops land" \
+  "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
+  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+late_success "a poll that fails after the auto-merge is enabled"
+
+want_error="HTTP 502"
+run_land true true "" CODECOV=never AUTO_FAIL=1
+check "a call that enables the auto-merge and then fails stops land" \
+  "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
+  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+late_success "a call that enables the auto-merge and then fails"
+
+run_land true true "" CODECOV=never LAND_SIGNAL=1
+check "a job cancelled while land waits stops land" \
+  "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
+  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+count=$((count + 1))
+if [ "$land_status" -eq 130 ]; then
+  echo "ok   a job cancelled while land waits: land ends at the SIGINT, before the SIGTERM"
+else
+  failures=$((failures + 1))
+  echo "FAIL a job cancelled while land waits: land must end at the SIGINT, before the SIGTERM (status=${land_status})"
+fi
+late_success "a job cancelled while land waits"
+
+want_error="could not turn the auto-merge of #11 off, so it can still merge"
+run_land true true "" CODECOV=failure DISABLE_FAIL=1
+check "an auto-merge that cannot be turned off is reported" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
   "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 
