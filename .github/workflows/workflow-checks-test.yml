@@ -4,7 +4,8 @@ name: Workflow checks test
 # git trees served by a fake gh and asserts which fixtures pass and which fail with which reason, and
 # .github/tests/dependabot-auto-merge-test.sh, which checks that dependabot-auto-merge.yml reports on every pull request and which updates it auto-merges,
 # .github/tests/tag-release-test.sh, which runs the tag step of tag-release.yml against a fixture repository, and
-# .github/tests/ffmpeg-watch-land-test.sh, which runs the land step of ffmpeg-watch.yml against a fixture repository.
+# .github/tests/ffmpeg-watch-land-test.sh, which runs the land step of ffmpeg-watch.yml against a fixture repository, and its
+# detect step and the dispatch of the next attempt of detect.
 on:
   pull_request:
     paths:

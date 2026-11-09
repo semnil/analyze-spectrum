@@ -5,7 +5,8 @@
 # pull_request runs that wait for an approval and no pull_request_target run, a merge needs the three required checks,
 # and a merge with the App's token starts a push run of CI on master. It asserts what lands on master, which token
 # opened and merged each pull request, and what land dispatched. It also checks that a queued detect reads the
-# updated pin, version and tags from master after an earlier run completes, and smoke uses its recorded commit.
+# updated pin, version and tags from master after an earlier run completes, that smoke uses its recorded commit, that
+# the detect step hands the next attempt to retry when the CLI exits 3, and that retry dispatches it with GITHUB_TOKEN.
 # WORKFLOW_FILE selects the workflow under test (relative to the repository root, or absolute).
 set -euo pipefail
 
@@ -234,8 +235,117 @@ fi
 
 mkdir -p "$work/bin"
 printf '#!/usr/bin/env bash\nexec python3 -I %q "$@"\n' "$work/gh.py" > "$work/bin/gh"
+chmod +x "$work/bin/gh"
+
+detect_step=$(yq '.jobs.detect.steps[] | select(.id == "detect") | .run' "$workflow_path")
+max_attempts=$(yq '.jobs.detect.steps[] | select(.id == "detect") | .env.MAX_DETECT_ATTEMPTS' "$workflow_path")
+retry_step=$(yq '.jobs.retry.steps[] | select(.name == "Dispatch the Next Attempt 🔁") | .run' "$workflow_path")
+if [ -z "$detect_step" ] || [ "$detect_step" = null ] || [ -z "$retry_step" ] || [ "$retry_step" = null ] \
+  || ! [[ "$max_attempts" =~ ^[0-9]+$ ]]; then
+  echo "FAIL the detect step, its MAX_DETECT_ATTEMPTS or the step of retry was not found in ${workflow}" >&2
+  exit 1
+fi
+mkdir -p "$work/detect-bin"
+cat > "$work/detect-bin/python" <<'EOF'
+#!/usr/bin/env bash
+# The detect CLI: exits FAKE_DETECT_STATUS, and appends two outputs to --github-output when that is 0.
+if [ "$1 $2 $3" != "-m analyze_common.ffmpeg_release detect" ]; then
+  echo "fake python: unexpected $*" >&2
+  exit 99
+fi
+echo run >> "$FAKE_DETECT_CALLS"
+out=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = --github-output ]; then out="$2"; fi
+  shift
+done
+if [ "$FAKE_DETECT_STATUS" -eq 0 ]; then printf 'pin_update=false\nbump=false\n' >> "$out"; fi
+exit "$FAKE_DETECT_STATUS"
+EOF
+chmod +x "$work/detect-bin/python"
+
+# check_detect <name> <cli exit> <detect_attempt> <step exit> <runs of the cli> <output lines...>: runs the detect step
+# with a CLI that exits <cli exit> and compares the step's exit, how many times it ran the CLI and its outputs; the
+# step's own output must contain $want_error when it is set.
+check_detect() {
+  local name="$1" cli="$2" attempt="$3" want_exit="$4" want_runs="$5" out step_exit got want
+  shift 5
+  count=$((count + 1))
+  : > "$work/detect-output"
+  : > "$work/detect-calls"
+  if out=$(env PATH="$work/detect-bin:$PATH" FAKE_DETECT_STATUS="$cli" FAKE_DETECT_CALLS="$work/detect-calls" \
+    DETECT_ATTEMPT="$attempt" MAX_DETECT_ATTEMPTS="$max_attempts" GITHUB_OUTPUT="$work/detect-output" \
+    RUNNER_TEMP="$work" GH_TOKEN="$github_token" bash -e -o pipefail -c "$detect_step" 2>&1 < /dev/null); then
+    step_exit=0
+  else
+    step_exit=$?
+  fi
+  got=$(printf 'exit=%s\nruns=%s\n' "$step_exit" "$(wc -l < "$work/detect-calls" | tr -d ' ')"; cat "$work/detect-output")
+  want=$(printf 'exit=%s\nruns=%s\n' "$want_exit" "$want_runs"; if [ $# -gt 0 ]; then printf '%s\n' "$@"; fi)
+  if [ "$got" != "$want" ]; then
+    failures=$((failures + 1))
+    echo "FAIL ${name}"
+    diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") | sed 's/^/     /' || :
+    printf '%s\n' "$out" | tail -n 4 | sed 's/^/     | /'
+  elif [ -n "${want_error:-}" ] && [[ "$out" != *"$want_error"* ]]; then
+    failures=$((failures + 1))
+    echo "FAIL ${name}: expected the output to contain \"${want_error}\""
+    printf '%s\n' "$out" | tail -n 4 | sed 's/^/     | /'
+  else
+    echo "ok   ${name}"
+  fi
+  want_error=""
+}
+
+want_error="::warning::detect could not connect on attempt 1 of ${max_attempts}"
+check_detect "detect that could not connect on attempt 1 passes and hands attempt 2 to retry" 3 1 0 1 "next_attempt=2"
+check_detect "detect that could not connect on attempt $((max_attempts - 1)) hands the last attempt to retry" \
+  3 $((max_attempts - 1)) 0 1 "next_attempt=${max_attempts}"
+check_detect "detect that could not connect on the last attempt fails with the CLI's exit" 3 "$max_attempts" 3 1
+check_detect "detect that fails otherwise fails without a next attempt" 1 1 1 1
+check_detect "detect that succeeds keeps the CLI's outputs and has no next attempt" 0 1 0 1 "pin_update=false" "bump=false"
+for attempt in 0 x 1.5 ''; do
+  want_error="detect_attempt must be a positive integer, not '${attempt}'"
+  check_detect "detect_attempt '${attempt}' fails before the CLI runs" 3 "$attempt" 1 0
+done
+
+count=$((count + 1))
+printf '{"next_run": 100, "next_pr": 10, "runs": [], "prs": [], "calls": [], "dispatches": []}\n' > "$work/state.json"
+if out=$(env PATH="$work/bin:$PATH" FAKE_STATE="$work/state.json" FAKE_REMOTE="$work/remote.git" \
+  FAKE_APP_TOKEN="$app_token" FAKE_GITHUB_TOKEN="$github_token" FAKE_APP_SLUG="$app_slug" FAKE_BOT_ID="$bot_id" \
+  GH_TOKEN="$github_token" NEXT_ATTEMPT=2 GITHUB_REPOSITORY=o/r bash -e -o pipefail -c "$retry_step" 2>&1 < /dev/null) \
+  && [ "$(jq -r '[.dispatches[] | "\(.workflow)@\(.ref) \(.inputs | join(",")) by \(.token)"] | join("; ")' "$work/state.json")" \
+    = "$(basename "$workflow_path")@master detect_attempt=2 by ${github_token}" ]; then
+  echo "ok   retry dispatches this workflow on master with the next attempt, with GITHUB_TOKEN"
+else
+  failures=$((failures + 1))
+  echo "FAIL retry must dispatch this workflow on master with the next attempt, with GITHUB_TOKEN"
+  printf '%s\n' "$out" | tail -n 4 | sed 's/^/     | /'
+  jq -c .dispatches "$work/state.json" | sed 's/^/     /'
+fi
+
+count=$((count + 1))
+detect_env='.jobs.detect.steps[] | select(.id == "detect") | .env'
+retry_env='.jobs.retry.steps[] | select(.name == "Dispatch the Next Attempt 🔁") | .env'
+if [ "$(yq '.on.workflow_dispatch.inputs.detect_attempt | [.type, .default] | to_json(0)' "$workflow_path")" = '["number",1]' ] \
+  && [ "$(yq "${detect_env}.DETECT_ATTEMPT" "$workflow_path")" = '${{ inputs.detect_attempt || 1 }}' ] \
+  && [ "$(yq '.jobs.detect.outputs.next_attempt' "$workflow_path")" = '${{ steps.detect.outputs.next_attempt }}' ] \
+  && [ "$(yq '.permissions | to_json(0)' "$workflow_path")" = '{"contents":"read"}' ] \
+  && [ "$(yq '.jobs.detect.permissions' "$workflow_path")" = null ] \
+  && [ "$(yq '.jobs.retry.needs' "$workflow_path")" = detect ] \
+  && [ "$(yq '.jobs.retry.if' "$workflow_path")" = "needs.detect.outputs.next_attempt != ''" ] \
+  && [ "$(yq '.jobs.retry.permissions | to_json(0)' "$workflow_path")" = '{"actions":"write"}' ] \
+  && [ "$(yq '[.jobs.retry.steps[] | select(has("uses"))] | length' "$workflow_path")" = 0 ] \
+  && [ "$(yq "${retry_env}.GH_TOKEN" "$workflow_path")" = '${{ github.token }}' ] \
+  && [ "$(yq "${retry_env}.NEXT_ATTEMPT" "$workflow_path")" = '${{ needs.detect.outputs.next_attempt }}' ]; then
+  echo "ok   wiring: detect reads detect_attempt and reads only contents, and retry runs no action, after detect hands it the next attempt, with actions write only"
+else
+  failures=$((failures + 1))
+  echo "FAIL wiring: the input detect_attempt, detect's attempt, outputs or permissions, or retry's condition, permissions, steps or env changed"
+fi
+
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work/bin/sleep"
-chmod +x "$work/bin/gh" "$work/bin/sleep"
+chmod +x "$work/bin/sleep"
 if ! sed --version > /dev/null 2>&1; then
   cat > "$work/bin/sed" <<'EOF'
 #!/usr/bin/env bash
