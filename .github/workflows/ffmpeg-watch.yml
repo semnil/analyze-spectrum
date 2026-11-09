@@ -16,8 +16,9 @@ run-name: ffmpeg watch 🔭
 # opens and merges them with a token of the GitHub App whose client ID is the repository variable
 # FFMPEG_WATCH_APP_CLIENT_ID and whose private key is the secret FFMPEG_WATCH_APP_PRIVATE_KEY, and it reads everything
 # else with GITHUB_TOKEN. The pull request starts its own CI and dependabot-auto-merge.yml runs (pull_request) and its
-# workflow-checks.yml run (pull_request_target); land waits for the three runs on the pull request's head commit and for
-# its required checks, and merges. The merge of the bump starts CI on master, and the CI run of that push starts
+# workflow-checks.yml run (pull_request_target); land waits for the three runs on the pull request's head commit, hands
+# the merge to GitHub's auto-merge, which merges once every check the ruleset requires has passed (codecov/project
+# reports after the runs), and waits for that merge. The merge of the bump starts CI on master, and the CI run of that push starts
 # tag-release.yml, which tags the bump and starts release.yaml. When __version__ has no tag yet (the CI run of the
 # bump's merge failed, for example), detect reports the commit that set it (release_sha) and land dispatches
 # tag-release.yml with that. The draft Release is published by hand.
@@ -297,8 +298,41 @@ jobs:
             git switch --quiet --create "$1" FETCH_HEAD
           }
 
+          # merge_when_required <pr> <sha>: hand the merge of <sha> to GitHub's auto-merge with the App's token and wait
+          # for it. GitHub merges once every check the ruleset requires has passed, codecov/project included, which
+          # Codecov reports after the runs and which `gh pr checks` does not list before it reports. A required check
+          # that fails, a pull request closed without merging, and ten minutes without a merge each stop land; for a
+          # failed check and for the time running out it first turns the auto-merge off, so a check that passes later
+          # does not merge the pull request after land has stopped.
+          merge_when_required() {
+            local pr="$1" sha="$2" state checks
+            GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --auto --merge --match-head-commit "${sha}"
+            for _ in $(seq 60); do
+              state=$(gh pr view "${pr}" --json state --jq .state)
+              case "${state}" in
+                MERGED) return 0 ;;
+                CLOSED)
+                  echo "::error::#${pr} was closed before it merged"
+                  return 1
+                  ;;
+              esac
+              checks=0
+              gh pr checks "${pr}" --required > /dev/null 2>&1 || checks=$?
+              if [[ "${checks}" -ne 0 && "${checks}" -ne 8 ]]; then
+                gh pr checks "${pr}" --required || :
+                echo "::error::a required check of #${pr} failed"
+                GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --disable-auto
+                return 1
+              fi
+              sleep 10
+            done
+            echo "::error::#${pr} did not merge within 10 minutes of its runs passing"
+            GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --disable-auto
+            return 1
+          }
+
           # land <branch> <title> <body> <path>...: commit the paths, push them and open the pull request with the App's
-          # token, wait for the pull request's runs and required checks, and merge it with the App's token.
+          # token, wait for the pull request's runs, and have it merged once its required checks pass.
           land() {
             local branch="$1" title="$2" body="$3" sha pr ci automerge pins
             shift 3
@@ -315,8 +349,7 @@ jobs:
             gh run watch "${ci}" --exit-status --compact --interval 30
             gh run watch "${automerge}" --exit-status --compact --interval 15
             gh run watch "${pins}" --exit-status --compact --interval 15
-            gh pr checks "${pr}" --required
-            GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --merge --match-head-commit "${sha}"
+            merge_when_required "${pr}" "${sha}"
             echo "merged #${pr}"
           }
 
