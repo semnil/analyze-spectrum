@@ -298,20 +298,42 @@ jobs:
             git switch --quiet --create "$1" FETCH_HEAD
           }
 
+          # auto_merge_pr: the pull request whose auto-merge land has enabled and not yet seen merged or closed. Whatever
+          # ends the step while it is set — a failed command, a stop of merge_when_required, the SIGINT a cancelled job
+          # sends this shell — turns that auto-merge off on the way out, so the pull request does not merge after land
+          # has stopped. The step then ends with the status it was ending with, or 1 when the auto-merge could not be
+          # turned off. The SIGINT ends the shell once the command in front of it returns.
+          auto_merge_pr=""
+          end_land() {
+            local status=$?
+            trap - EXIT
+            if [[ -n "${auto_merge_pr}" ]] && ! GH_TOKEN="${APP_TOKEN}" gh pr merge "${auto_merge_pr}" --disable-auto; then
+              echo "::error::could not turn the auto-merge of #${auto_merge_pr} off, so it can still merge"
+              status=1
+            fi
+            exit "${status}"
+          }
+          trap end_land EXIT
+          trap 'exit 130' INT
+
           # merge_when_required <pr> <sha>: hand the merge of <sha> to GitHub's auto-merge with the App's token and wait
           # for it. GitHub merges once every check the ruleset requires has passed, codecov/project included, which
           # Codecov reports after the runs and which `gh pr checks` does not list before it reports. A required check
-          # that fails, a pull request closed without merging, and ten minutes without a merge each stop land; for a
-          # failed check and for the time running out it first turns the auto-merge off, so a check that passes later
-          # does not merge the pull request after land has stopped.
+          # that fails, a pull request closed without merging, and ten minutes without a merge each stop land. The
+          # wait between polls runs in the background, so the SIGINT ends it at once.
           merge_when_required() {
             local pr="$1" sha="$2" state checks
+            auto_merge_pr="${pr}"
             GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --auto --merge --match-head-commit "${sha}"
             for _ in $(seq 60); do
               state=$(gh pr view "${pr}" --json state --jq .state)
               case "${state}" in
-                MERGED) return 0 ;;
+                MERGED)
+                  auto_merge_pr=""
+                  return 0
+                  ;;
                 CLOSED)
+                  auto_merge_pr=""
                   echo "::error::#${pr} was closed before it merged"
                   return 1
                   ;;
@@ -321,13 +343,12 @@ jobs:
               if [[ "${checks}" -ne 0 && "${checks}" -ne 8 ]]; then
                 gh pr checks "${pr}" --required || :
                 echo "::error::a required check of #${pr} failed"
-                GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --disable-auto
                 return 1
               fi
-              sleep 10
+              sleep 10 &
+              wait "$!"
             done
             echo "::error::#${pr} did not merge within 10 minutes of its runs passing"
-            GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --disable-auto
             return 1
           }
 
