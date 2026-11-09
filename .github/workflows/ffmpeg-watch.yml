@@ -22,6 +22,11 @@ run-name: ffmpeg watch 🔭
 # bump's merge failed, for example), detect reports the commit that set it (release_sha) and land dispatches
 # tag-release.yml with that. The draft Release is published by hand.
 #
+# When no address of a host accepts the connection from detect's runner (analyze_common.ffmpeg_release exits 3),
+# detect passes with a warning and retry dispatches this workflow on master with detect_attempt one higher, so the next
+# attempt runs on another runner. Exit 3 on attempt 3 fails detect. Why it does not retry on the same runner is in the
+# section "Patch release for an ffmpeg update" of vendor/py-analyze-common/CLAUDE.md.
+#
 # An open pull request from an earlier run (head branch ffmpeg-watch/...) stops land before it changes anything. The
 # branch names carry the run id and attempt, so a branch an earlier run pushed without opening its pull request does
 # not collide with the next run's.
@@ -29,6 +34,11 @@ on:
   schedule:
     - cron: '41 4 * * *'
   workflow_dispatch:
+    inputs:
+      detect_attempt:
+        description: Which attempt of detect this run is (retry dispatches the next one)
+        type: number
+        default: 1
 
 concurrency:
   group: ffmpeg-watch
@@ -53,6 +63,7 @@ jobs:
       version: ${{ steps.detect.outputs.version }}
       next_version: ${{ steps.detect.outputs.next_version }}
       release_sha: ${{ steps.detect.outputs.release_sha }}
+      next_attempt: ${{ steps.detect.outputs.next_attempt }}
     steps:
       - name: Check Ref ☑️
         run: |
@@ -92,12 +103,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PYTHONPATH: vendor/py-analyze-common/src
+          DETECT_ATTEMPT: ${{ inputs.detect_attempt || 1 }}
+          MAX_DETECT_ATTEMPTS: 3
         run: |
+          if ! [[ "${DETECT_ATTEMPT}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::detect_attempt must be a positive integer, not '${DETECT_ATTEMPT}'"
+            exit 1
+          fi
+          status=0
           python -m analyze_common.ffmpeg_release detect \
             --pin build_assets/ffmpeg.json \
             --version-file src/analyze_spectrum/__init__.py \
             --candidate "${RUNNER_TEMP}/ffmpeg.json" \
-            --github-output "${GITHUB_OUTPUT}"
+            --github-output "${GITHUB_OUTPUT}" || status=$?
+          # 3: no address of a host accepted the connection from this runner.
+          if [[ "${status}" -eq 3 ]] && (( DETECT_ATTEMPT < MAX_DETECT_ATTEMPTS )); then
+            next=$((DETECT_ATTEMPT + 1))
+            echo "::warning::detect could not connect on attempt ${DETECT_ATTEMPT} of ${MAX_DETECT_ATTEMPTS}; retry dispatches attempt ${next} on another runner"
+            echo "next_attempt=${next}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          exit "${status}"
 
       - name: Upload the New Pin 📡
         if: steps.detect.outputs.pin_update == 'true'
@@ -106,6 +132,26 @@ jobs:
           name: ffmpeg-pin
           path: ${{ runner.temp }}/ffmpeg.json
           if-no-files-found: error
+
+  retry:
+    name: Run Detect Again on Another Runner 🔁
+    needs: detect
+    if: needs.detect.outputs.next_attempt != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write # dispatch this workflow for the next attempt of detect
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Dispatch the Next Attempt 🔁
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_ATTEMPT: ${{ needs.detect.outputs.next_attempt }}
+        run: |
+          gh workflow run ffmpeg-watch.yml --repo "${GITHUB_REPOSITORY}" --ref master -f detect_attempt="${NEXT_ATTEMPT}"
+          echo "dispatched attempt ${NEXT_ATTEMPT} of detect"
 
   smoke:
     name: Test the Binaries on ${{ matrix.os }} 🧪
