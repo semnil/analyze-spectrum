@@ -10,6 +10,8 @@
 # that a failure to read the commits, the head or the auto-merge state fails the step. The
 # fake gh answers the commits query by running its --jq expression with jq on a commits document of the case, and the
 # REST commit list with the same commits in the shape the pulls API returns.
+# A gh call that fails is made again after a ten-second wait, which a fake sleep records in place of waiting, and the
+# step fails on a call whose third attempt failed; what a failed attempt printed does not reach the decision.
 # WORKFLOW_FILE selects the workflow under test (relative to the repository root, or absolute).
 set -euo pipefail
 
@@ -46,7 +48,7 @@ expect "the deciding step reads the ecosystem from fetch-metadata" "$(yq "${deci
   '${{ steps.metadata.outputs.package-ecosystem }}'
 expect "the deciding step reads the update type from fetch-metadata" "$(yq "${decide} | .env.UPDATE_TYPE" "$workflow_path")" \
   '${{ steps.metadata.outputs.update-type }}'
-# The deciding step runs after a failed metadata step only when that failure does not fail the job (dependabot-auto-merge.yml:39).
+# The deciding step runs after a failed metadata step only when that failure does not fail the job (dependabot-auto-merge.yml:41).
 expect "a failed metadata step does not fail the job" "$(yq '.jobs."auto-merge".steps[0].continue-on-error' "$workflow_path")" true
 expect "the deciding step reads the outcome of the metadata step" "$(yq "${decide} | .env.METADATA_OUTCOME" "$workflow_path")" \
   '${{ steps.metadata.outcome }}'
@@ -63,14 +65,17 @@ other=fedcba9876543210fedcba9876543210fedcba98
 #   <sha of the other commits: other|head> <committer of the commits: web-flow|another login>]
 # In the REST commit list each commit's author is the first of its authors, the last commit carries the given sha and
 # the others the other given one. METADATA_OUTCOME (default success) set before the call gives the outcome of the
-# metadata step, CURRENT_HEAD (default the event's head) the head the pull request has now.
+# metadata step, CURRENT_HEAD (default the event's head) the head the pull request has now. FAILS, as <call>=<count>
+# words (authors, api, view, enable, disable), makes the first <count> calls of that kind fail. The calls and the
+# waits of the case are left in the file last_calls names and what the step printed in the file last_out names.
 decision_case() {
   local name="$1" ecosystem="$2" update="$3" commits="$4" state="$5" expected="$6" rest="${7:-ok}"
   local signature="${8:-verified}" last="${9:-head}" first="${10:-other}" committer="${11:-web-flow}" dir out status got
-  local current="${CURRENT_HEAD:-$head}"
+  local current="${CURRENT_HEAD:-$head}" pair
   count=$((count + 1))
   dir="$work/case${count}"
-  mkdir -p "$dir/bin"
+  mkdir -p "$dir/bin" "$dir/fails"
+  for pair in ${FAILS:-}; do echo "${pair#*=}" > "$dir/fails/${pair%%=*}"; done
   : > "$dir/calls"
   jq -n -c --arg c "$commits" \
     '{commits: ($c | if . == "" then [] else split(";") end | map({authors: (split(",") | map({login: .}))}))}' \
@@ -85,6 +90,21 @@ decision_case() {
   cat > "$dir/bin/gh" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$dir/calls"
+kind=
+[ "\$1" = api ] && kind=api
+[ "\$1 \$2 \$5" = 'pr view commits' ] && kind=authors
+[ "\$1 \$2 \$5" = 'pr view headRefOid,autoMergeRequest' ] && kind=view
+[ "\$1 \$2 \$3" = 'pr merge --auto' ] && kind=enable
+[ "\$1 \$2 \$3" = 'pr merge --disable-auto' ] && kind=disable
+# A call of a kind fails while the count in fails/<kind> is above zero, the way gh fails on an error answer: the
+# body on stdout, its reading of it on stderr.
+left=\$(cat "$dir/fails/\$kind" 2>/dev/null || echo 0)
+if [ "\$left" -gt 0 ]; then
+  echo \$((left - 1)) > "$dir/fails/\$kind"
+  echo '{"message":"Server Error"}'
+  echo "stub gh: the \$kind call failed" >&2
+  exit 1
+fi
 case "\$*" in
   "pr view ${url} --json headRefOid,autoMergeRequest --jq [.headRefOid, (.autoMergeRequest != null)] | @tsv")
     if [ "${state}" = FAIL ]; then echo "HTTP 502" >&2; exit 1; fi
@@ -99,10 +119,17 @@ case "\$*" in
   *) echo "unexpected gh call: \$*" >&2; exit 2 ;;
 esac
 EOF
-  chmod +x "$dir/bin/gh"
+  # The waits the step asks for are recorded beside the gh calls and take no time.
+  cat > "$dir/bin/sleep" <<EOF
+#!/usr/bin/env bash
+echo "sleep \$*" >> "$dir/calls"
+EOF
+  chmod +x "$dir/bin/gh" "$dir/bin/sleep"
   if out=$(PATH="$dir/bin:$PATH" GH_TOKEN=unused GITHUB_REPOSITORY=owner/repo PR_URL="$url" PR_NUMBER=7 \
     HEAD_SHA="$head" METADATA_OUTCOME="${METADATA_OUTCOME:-success}" ECOSYSTEM="$ecosystem" UPDATE_TYPE="$update" \
-    bash -e -o pipefail -c "$script" 2>&1 < /dev/null); then status=0; else status=$?; fi
+    bash -e -o pipefail -c "$script" 2>&1 < /dev/null | tee "$dir/out"); then status=0; else status=$?; fi
+  last_calls="$dir/calls"
+  last_out="$dir/out"
   if [ "$status" -ne 0 ]; then
     got=fail
   elif grep -qx "pr merge --auto --merge --match-head-commit ${head} ${url}" "$dir/calls"; then
@@ -161,6 +188,47 @@ METADATA_OUTCOME=failure CURRENT_HEAD=$other decision_case "a failed metadata st
 CURRENT_HEAD=$other decision_case "a uv patch for an older head, the newer head a Dependabot commit" uv "$patch" "$bot" true none ok verified other
 CURRENT_HEAD=$other decision_case "a GitHub Action major for an older head" github_actions "$major" "$bot" true none
 CURRENT_HEAD=unreadable decision_case "a GitHub Action major when the head cannot be read" github_actions "$major" "$bot" true fail
+
+# calls <name> <the gh calls and the waits of the last decision_case, in order...>
+calls() {
+  local name="$1"
+  shift
+  expect "calls: ${name}" "$(paste -sd'|' - < "$last_calls")" "$(printf '%s\n' "$@" | paste -sd'|' -)"
+}
+authors="pr view ${url} --json commits --jq "'[.commits[].authors[].login] | unique | join(" ")'
+api="api repos/owner/repo/pulls/7/commits?per_page=100"
+enable="pr merge --auto --merge --match-head-commit ${head} ${url}"
+view="pr view ${url} --json headRefOid,autoMergeRequest --jq [.headRefOid, (.autoMergeRequest != null)] | @tsv"
+disable="pr merge --disable-auto ${url}"
+wait='sleep 10'
+# Each of the five gh calls goes through the step's retry on its own line, so each has its own rows.
+FAILS=authors=1 decision_case "a uv patch when the commits query fails once" uv "$patch" "$bot" false enable
+calls "the commits query is made again" "$authors" "$wait" "$authors" "$api" "$enable"
+FAILS=api=1 decision_case "a uv patch when the REST commit list fails once" uv "$patch" "$bot" false enable
+calls "the REST commit list is read again" "$authors" "$api" "$wait" "$api" "$enable"
+FAILS=enable=1 decision_case "a uv patch when enabling fails once" uv "$patch" "$bot" false enable
+calls "enabling is tried again" "$authors" "$api" "$enable" "$wait" "$enable"
+expect "the failed attempt is named" "$(grep -c '^::warning::attempt 1 of 3 failed' "$last_out")" 1
+FAILS=enable=2 decision_case "a uv patch when enabling fails twice" uv "$patch" "$bot" false enable
+calls "enabling is tried a third time" "$authors" "$api" "$enable" "$wait" "$enable" "$wait" "$enable"
+expect "the second failed attempt is named" "$(grep -c '^::warning::attempt 2 of 3 failed' "$last_out")" 1
+expect "nothing but the warnings and the errors of gh is printed" \
+  "$(grep -c -v -e '^::warning::attempt' -e '^stub gh: ' "$last_out")" 0
+FAILS=view=1 decision_case "a GitHub Action major after auto-merge was enabled when the state read fails once" \
+  github_actions "$major" "$bot" true disable
+calls "the auto-merge state is read again" "$view" "$wait" "$view" "$disable"
+FAILS=disable=1 decision_case "a GitHub Action major after auto-merge was enabled when disabling fails once" \
+  github_actions "$major" "$bot" true disable
+calls "disabling is tried again" "$view" "$disable" "$wait" "$disable"
+FAILS=enable=9 decision_case "a uv patch when enabling fails every time" uv "$patch" "$bot" false fail
+calls "enabling stops after the third attempt" "$authors" "$api" "$enable" "$wait" "$enable" "$wait" "$enable"
+FAILS=disable=9 decision_case "a GitHub Action major after auto-merge was enabled when disabling fails every time" \
+  github_actions "$major" "$bot" true fail
+calls "disabling stops after the third attempt" "$view" "$disable" "$wait" "$disable" "$wait" "$disable"
+FAILS='authors=1 api=1 view=1' decision_case "a uv major with a commit someone else wrote when each read fails once" \
+  uv "$major" "$bot;someone" true disable
+calls "each read is made again and the attempt that succeeded decides" \
+  "$authors" "$wait" "$authors" "$api" "$wait" "$api" "$view" "$wait" "$view" "$disable"
 
 echo "${count} cases, ${failures} failed"
 if [ "$failures" -ne 0 ]; then

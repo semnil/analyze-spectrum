@@ -13,6 +13,8 @@ name: Dependabot auto-merge
 # the head of the pull request changes nothing, and the runs for one pull request run one at a time. On every
 # other pull request both steps are skipped.
 # The step fails when it cannot read the commits, the head of the pull request or whether auto-merge is on.
+# It makes each call through the GitHub CLI up to three times, ten seconds apart, and fails on a call whose
+# third attempt failed.
 # The job reports `auto-merge`, a required status check of the default branch, so a pull request does not
 # merge before the run for its head commit has decided. The Dependabot condition therefore sits on the
 # steps and not on the job, and the trigger carries no filter: the job reports on every pull request.
@@ -36,7 +38,7 @@ jobs:
     steps:
       - id: metadata
         if: github.event.pull_request.user.login == 'dependabot[bot]'
-        continue-on-error: true # the deciding step keeps auto-merge off and the check passes (dependabot-auto-merge-test.sh:157)
+        continue-on-error: true # the deciding step keeps auto-merge off and the check passes (dependabot-auto-merge-test.sh:184)
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
       - name: Enable auto-merge for an update that merges on its own, disable it otherwise
         if: github.event.pull_request.user.login == 'dependabot[bot]'
@@ -49,6 +51,19 @@ jobs:
           ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
         run: |
+          # Runs a command up to three times, ten seconds apart, prints what the attempt that
+          # succeeded printed and nothing an attempt that failed printed, and fails when none did.
+          retry() {
+            local attempt out
+            for attempt in 1 2 3; do
+              out=$("$@") && { [ -z "$out" ] || printf '%s\n' "$out"; return 0; }
+              if [ "$attempt" -lt 3 ]; then
+                echo "::warning::attempt ${attempt} of 3 failed, running it again in 10 seconds: $1 $2 $3" >&2
+                sleep 10
+              fi
+            done
+            return 1
+          }
           authors=''
           single=false
           if [ "$METADATA_OUTCOME" != 'success' ]; then
@@ -58,8 +73,8 @@ jobs:
               uv:version-update:semver-major | uv:version-update:semver-minor | uv:version-update:semver-patch | \
               submodules:* | \
               github_actions:version-update:semver-minor | github_actions:version-update:semver-patch)
-                authors=$(gh pr view "$PR_URL" --json commits --jq '[.commits[].authors[].login] | unique | join(" ")')
-                commits=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100")
+                authors=$(retry gh pr view "$PR_URL" --json commits --jq '[.commits[].authors[].login] | unique | join(" ")')
+                commits=$(retry gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100")
                 single=$(printf '%s' "$commits" | jq -r --arg head "$HEAD_SHA" '
                   length == 1 and .[0].sha == $head and .[0].committer.login == "web-flow"
                   and .[0].commit.verification.verified == true')
@@ -67,9 +82,9 @@ jobs:
             esac
           fi
           if [ "$authors" = 'dependabot[bot]' ] && [ "$single" = 'true' ]; then
-            gh pr merge --auto --merge --match-head-commit "$HEAD_SHA" "$PR_URL"
+            retry gh pr merge --auto --merge --match-head-commit "$HEAD_SHA" "$PR_URL"
           else
-            state=$(gh pr view "$PR_URL" --json headRefOid,autoMergeRequest --jq '[.headRefOid, (.autoMergeRequest != null)] | @tsv')
+            state=$(retry gh pr view "$PR_URL" --json headRefOid,autoMergeRequest --jq '[.headRefOid, (.autoMergeRequest != null)] | @tsv')
             read -r current enabled <<< "$state"
             if ! [[ "$current" =~ ^[0-9a-f]{40}$ ]] || { [ "$enabled" != 'true' ] && [ "$enabled" != 'false' ]; }; then
               echo "::error::could not read the head of the pull request and whether auto-merge is enabled: '$state'"
@@ -78,6 +93,6 @@ jobs:
             if [ "$current" != "$HEAD_SHA" ]; then
               echo "::notice::the head of the pull request is now ${current}, so the run for that head decides"
             elif [ "$enabled" = 'true' ]; then
-              gh pr merge --disable-auto "$PR_URL"
+              retry gh pr merge --disable-auto "$PR_URL"
             fi
           fi
