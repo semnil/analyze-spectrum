@@ -3,11 +3,11 @@
   "macos_arm64": {
     "ffmpeg": {
       "url": "https://www.osxexperts.net/ffmpeg902arm.zip",
-      "sha256": "762f16b2913b8d3b8fdb8092df12b691053b035b13ae9b88205513c55cb8e71e"
+      "sha256": "6deb2860c3dc0c08e0f96bab119196c024103046fa3cc7ef72e3a77797d8553c"
     },
     "ffprobe": {
       "url": "https://www.osxexperts.net/ffprobe902arm.zip",
-      "sha256": "e9d3ad989b11d1ff4e3b0d140df170a6b38f194f83ac77f0e05a127a0f3a0ae4"
+      "sha256": "8d56278ec2ba80f35138e7dceccb1a72eff951156691d8c733066ebd7628d3f2"
     }
   }
 }
