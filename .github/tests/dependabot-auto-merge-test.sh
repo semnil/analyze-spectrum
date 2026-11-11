@@ -12,6 +12,7 @@
 # REST commit list with the same commits in the shape the pulls API returns.
 # A gh call that fails is made again after a ten-second wait, which a fake sleep records in place of waiting, and the
 # step fails on a call whose third attempt failed; what a failed attempt printed does not reach the decision.
+# An attempt to turn auto-merge off after a wait follows a fresh read of the head and of auto-merge.
 # WORKFLOW_FILE selects the workflow under test (relative to the repository root, or absolute).
 set -euo pipefail
 
@@ -48,7 +49,7 @@ expect "the deciding step reads the ecosystem from fetch-metadata" "$(yq "${deci
   '${{ steps.metadata.outputs.package-ecosystem }}'
 expect "the deciding step reads the update type from fetch-metadata" "$(yq "${decide} | .env.UPDATE_TYPE" "$workflow_path")" \
   '${{ steps.metadata.outputs.update-type }}'
-# The deciding step runs after a failed metadata step only when that failure does not fail the job (dependabot-auto-merge.yml:41).
+# The deciding step runs after a failed metadata step only when that failure does not fail the job (dependabot-auto-merge.yml:42).
 expect "a failed metadata step does not fail the job" "$(yq '.jobs."auto-merge".steps[0].continue-on-error' "$workflow_path")" true
 expect "the deciding step reads the outcome of the metadata step" "$(yq "${decide} | .env.METADATA_OUTCOME" "$workflow_path")" \
   '${{ steps.metadata.outcome }}'
@@ -68,6 +69,8 @@ other=fedcba9876543210fedcba9876543210fedcba98
 # metadata step, CURRENT_HEAD (default the event's head) the head the pull request has now. FAILS, as <call>=<count>
 # words (authors, api, view, enable, disable), makes the first <count> calls of that kind fail. The calls and the
 # waits of the case are left in the file last_calls names and what the step printed in the file last_out names.
+# HEAD_AFTER_WAIT, STATE_AFTER_WAIT and VIEW_FAIL_AFTER_WAIT=1 give the head, the auto-merge state and a failing read of
+# them the pull request answers once the step has waited.
 decision_case() {
   local name="$1" ecosystem="$2" update="$3" commits="$4" state="$5" expected="$6" rest="${7:-ok}"
   local signature="${8:-verified}" last="${9:-head}" first="${10:-other}" committer="${11:-web-flow}" dir out status got
@@ -76,6 +79,9 @@ decision_case() {
   dir="$work/case${count}"
   mkdir -p "$dir/bin" "$dir/fails"
   for pair in ${FAILS:-}; do echo "${pair#*=}" > "$dir/fails/${pair%%=*}"; done
+  [ -z "${HEAD_AFTER_WAIT:-}" ] || echo "$HEAD_AFTER_WAIT" > "$dir/fails/after-head"
+  [ -z "${STATE_AFTER_WAIT:-}" ] || echo "$STATE_AFTER_WAIT" > "$dir/fails/after-state"
+  [ "${VIEW_FAIL_AFTER_WAIT:-0}" != 1 ] || : > "$dir/fails/after-view-fail"
   : > "$dir/calls"
   jq -n -c --arg c "$commits" \
     '{commits: ($c | if . == "" then [] else split(";") end | map({authors: (split(",") | map({login: .}))}))}' \
@@ -108,7 +114,14 @@ fi
 case "\$*" in
   "pr view ${url} --json headRefOid,autoMergeRequest --jq [.headRefOid, (.autoMergeRequest != null)] | @tsv")
     if [ "${state}" = FAIL ]; then echo "HTTP 502" >&2; exit 1; fi
-    printf '%s\t%s\n' "${current}" "${state}" ;;
+    head_now="${current}"
+    state_now="${state}"
+    if [ -e "$dir/fails/waited" ]; then
+      if [ -e "$dir/fails/after-view-fail" ]; then echo "HTTP 502" >&2; exit 1; fi
+      [ -e "$dir/fails/after-head" ] && head_now=\$(cat "$dir/fails/after-head")
+      [ -e "$dir/fails/after-state" ] && state_now=\$(cat "$dir/fails/after-state")
+    fi
+    printf '%s\t%s\n' "\$head_now" "\$state_now" ;;
   "pr view ${url} --json commits --jq "*)
     if [ "${commits}" = FAIL ]; then echo "HTTP 502" >&2; exit 1; fi
     jq -r "\$7" "$dir/commits.json" ;;
@@ -123,6 +136,7 @@ EOF
   cat > "$dir/bin/sleep" <<EOF
 #!/usr/bin/env bash
 echo "sleep \$*" >> "$dir/calls"
+: > "$dir/fails/waited"
 EOF
   chmod +x "$dir/bin/gh" "$dir/bin/sleep"
   if out=$(PATH="$dir/bin:$PATH" GH_TOKEN=unused GITHUB_REPOSITORY=owner/repo PR_URL="$url" PR_NUMBER=7 \
@@ -201,7 +215,7 @@ enable="pr merge --auto --merge --match-head-commit ${head} ${url}"
 view="pr view ${url} --json headRefOid,autoMergeRequest --jq [.headRefOid, (.autoMergeRequest != null)] | @tsv"
 disable="pr merge --disable-auto ${url}"
 wait='sleep 10'
-# Each of the five gh calls goes through the step's retry on its own line, so each has its own rows.
+# Each of the five gh calls is made again at its own place in the step, so each has its own rows.
 FAILS=authors=1 decision_case "a uv patch when the commits query fails once" uv "$patch" "$bot" false enable
 calls "the commits query is made again" "$authors" "$wait" "$authors" "$api" "$enable"
 FAILS=api=1 decision_case "a uv patch when the REST commit list fails once" uv "$patch" "$bot" false enable
@@ -219,16 +233,38 @@ FAILS=view=1 decision_case "a GitHub Action major after auto-merge was enabled w
 calls "the auto-merge state is read again" "$view" "$wait" "$view" "$disable"
 FAILS=disable=1 decision_case "a GitHub Action major after auto-merge was enabled when disabling fails once" \
   github_actions "$major" "$bot" true disable
-calls "disabling is tried again" "$view" "$disable" "$wait" "$disable"
+calls "disabling is tried again" "$view" "$disable" "$wait" "$view" "$disable"
 FAILS=enable=9 decision_case "a uv patch when enabling fails every time" uv "$patch" "$bot" false fail
 calls "enabling stops after the third attempt" "$authors" "$api" "$enable" "$wait" "$enable" "$wait" "$enable"
 FAILS=disable=9 decision_case "a GitHub Action major after auto-merge was enabled when disabling fails every time" \
   github_actions "$major" "$bot" true fail
-calls "disabling stops after the third attempt" "$view" "$disable" "$wait" "$disable" "$wait" "$disable"
+calls "disabling stops after the third attempt" "$view" "$disable" "$wait" "$view" "$disable" "$wait" "$view" "$disable"
 FAILS='authors=1 api=1 view=1' decision_case "a uv major with a commit someone else wrote when each read fails once" \
   uv "$major" "$bot;someone" true disable
 calls "each read is made again and the attempt that succeeded decides" \
   "$authors" "$wait" "$authors" "$api" "$wait" "$api" "$view" "$wait" "$view" "$disable"
+
+# An attempt to turn auto-merge off after a wait follows a fresh read of the head and of auto-merge.
+FAILS=disable=2 decision_case "a GitHub Action major after auto-merge was enabled when disabling fails twice" \
+  github_actions "$major" "$bot" true disable
+calls "disabling is tried a third time, each attempt behind a read" \
+  "$view" "$disable" "$wait" "$view" "$disable" "$wait" "$view" "$disable"
+expect "nothing but the warnings and the errors of gh is printed when disabling fails twice" \
+  "$(grep -c -v -e '^::warning::attempt' -e '^stub gh: ' "$last_out")" 0
+FAILS=disable=1 HEAD_AFTER_WAIT=$other decision_case "a failed disabling when the head moves during the wait" \
+  github_actions "$major" "$bot" true disable
+calls "disabling is not tried again for a newer head" "$view" "$disable" "$wait" "$view"
+expect "the newer head is named" "$(grep -c "^::notice::the head of the pull request is now $other" "$last_out")" 1
+FAILS=disable=1 STATE_AFTER_WAIT=false decision_case "a failed disabling when auto-merge is off after the wait" \
+  github_actions "$major" "$bot" true disable
+calls "disabling is not tried again when auto-merge is off" "$view" "$disable" "$wait" "$view"
+FAILS=disable=1 VIEW_FAIL_AFTER_WAIT=1 decision_case "a failed disabling when the state cannot be read after the wait" \
+  github_actions "$major" "$bot" true fail
+calls "disabling is not tried again when the read fails" \
+  "$view" "$disable" "$wait" "$view" "$wait" "$view" "$wait" "$view"
+FAILS=disable=1 STATE_AFTER_WAIT=maybe decision_case "a failed disabling when the state is unexpected after the wait" \
+  github_actions "$major" "$bot" true fail
+calls "disabling is not tried again when the state is unexpected" "$view" "$disable" "$wait" "$view"
 
 echo "${count} cases, ${failures} failed"
 if [ "$failures" -ne 0 ]; then
