@@ -238,6 +238,7 @@ graph LR
     root --> docs["docs/"]
     docs --> docs_arch["architecture.md"]
     docs --> docs_arch_ja["architecture.ja.md"]
+    docs --> docs_dec["decisions/<br>records of closed decisions (English .md and Japanese .ja.md)"]
     docs --> docs_shot["screenshot.png"]
     root --> vend["vendor/py-analyze-common/<br>shared library (git submodule)"]
     root --> r_build["build.py<br>build script (asset download + PyInstaller + Inno Setup / DMG)"]

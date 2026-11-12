@@ -563,7 +563,7 @@ graph LR
 
 ### Build and distribution
 
-- Build-time assets: uPlot and the macOS ffmpeg / ffprobe are checked against SHA-256 values in the repository (`build_assets/checksums.json`, `build_assets/ffmpeg.json`). The Windows ffmpeg / ffprobe (the pinned series' build in BtbN's `latest`) and deno (its latest release) are not pinned
+- Build-time assets: uPlot and the macOS ffmpeg / ffprobe are checked against SHA-256 values in the repository (`build_assets/checksums.json`, `build_assets/ffmpeg.json`)
 - The release jobs install Python packages only from the hash-pinned `requirements/*.txt`, and Inno Setup / create-dmg from downloads checked against SHA-256 in `.github/workflows/release.yaml`
 - The frozen build puts `_MEIPASS/bin` at the front of `PATH`
 - What auto-update fetches is applied only after its Ed25519 signature is verified with the public key built into the app ([Auto-update](#auto-update))
@@ -680,7 +680,6 @@ With `--js-coverage=PATH`, `tests/js_coverage.py` records the line coverage of `
 - 48kHz mono float32 = 192 KB/s, about 115 MB for 10 minutes (memory constraint)
 - Long files are handled by extracting the middle with `--duration` of the CLI (a new analysis in the GUI is always of the full length; a loaded JSON keeps its own length, [Result cache](#result-cache))
 - A cancel does not stop the stage that is running ([Cancel](#cancel))
-- Avoiding upload file name collisions in `/upload` is a time-of-check to time-of-use (TOCTOU) pattern (accepted for a single-user app)
 
 ## Reference standards
 

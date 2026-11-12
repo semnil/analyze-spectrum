@@ -563,7 +563,7 @@ graph LR
 
 ### ビルド・配布
 
-- ビルド時アセット: uPlot と macOS の ffmpeg / ffprobe はリポジトリの SHA-256 (`build_assets/checksums.json`、`build_assets/ffmpeg.json`) と照合する。Windows の ffmpeg / ffprobe (BtbN の `latest` にある固定した系列のビルド) と deno (最新リリース) は固定しない
+- ビルド時アセット: uPlot と macOS の ffmpeg / ffprobe はリポジトリの SHA-256 (`build_assets/checksums.json`、`build_assets/ffmpeg.json`) と照合する
 - リリースのジョブは Python パッケージをハッシュで固定した `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg は `.github/workflows/release.yaml` の SHA-256 と照合したダウンロードから入れる
 - Frozen build は `_MEIPASS/bin` を `PATH` の先頭に置く
 - 自動更新の取得物は Ed25519 の署名をアプリに組み込んだ公開鍵で検証してから適用する ([自動更新](#自動更新))
@@ -680,7 +680,6 @@ flowchart TD
 - 48kHz mono float32 = 192 KB/s で、10 分で約 115 MB (メモリ制約)
 - 長尺は CLI の `--duration` で中盤抽出で対処 (GUI の新しい分析は常に全尺。読み込んだ JSON は自分の長さのまま。[結果キャッシュ](#結果キャッシュ))
 - キャンセルは動いているステージを止めない ([キャンセル](#キャンセル))
-- `/upload` のファイル名衝突回避は検査から使用までの間に競合が起こりうるパターン (time-of-check to time-of-use、TOCTOU) (単一ユーザーアプリとして許容)
 
 ## 参照規格
 
