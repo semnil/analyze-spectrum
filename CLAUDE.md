@@ -6,7 +6,7 @@ Built on the same architecture as analyze-loudness (pywebview + a local HTTP ser
 
 ## Documentation languages
 
-- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/<name>.md`, Japanese at `README.ja.md` and `docs/<name>.ja.md`. The decision records under `docs/decisions/` are pairs of the same form (`<subject>.md` and `<subject>.ja.md`)
+- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/<name>.md`, Japanese at `README.ja.md` and `docs/<name>.ja.md`. The decision records under `docs/decisions/` are pairs of the same form (`<subject>.md` and `<subject>.ja.md`), kept section for section, with the Japanese file under the same headings as the English one
 
 ## Architecture overview
 
