@@ -546,7 +546,7 @@ graph LR
 - POST body は 10MB 上限 (JSON)、50MB (base64 画像)、500MB (ファイルアップロード)
 - アップロードファイル名は `sanitize_filename()` (`vendor/py-analyze-common/src/analyze_common/download.py`) を通す: `\/:*?"<>|` と制御文字 0x00-0x1F を `_` に置き換え、先頭と末尾の `.` と空白を除き、Windows の予約デバイス名には先頭に `_` を付け、200 文字で切る
 - アップロード拡張子はホワイトリスト (`src/analyze_spectrum/gui.py` の `_ALLOWED_EXTENSIONS`。`.wav`, `.mp3`, `.m4a` 等)
-- duration パラメータは 0.01 分以上の有限の数値のみ許可 (`_parse_duration()`)
+- duration パラメータは 0.01 分以上 240 分以下の有限の数値のみ許可 (`_parse_duration()`)
 - `/compare` の `sources` 配列は 2〜6 個の空でない文字列でなければならず、URL に見えるソース (`/analyze` の `url` も同じ) は http か https でなければならない (`_reject_bad_scheme()`)
 
 ### クロスサイトスクリプティング (XSS) 防止
