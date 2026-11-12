@@ -121,7 +121,7 @@ GUI では URL かローカルファイルのパスを入れるか、「参照�
 
 ### アプリの更新
 
-インストール版のアプリは、起動時に新しい版があるかを確認し、確認に OK すると自分を更新する。何をするか、どこへ接続するか、確認の止め方は [py-analyze-common の文書](https://github.com/semnil/py-analyze-common/blob/main/docs/auto-update.ja.md#%E5%88%A9%E7%94%A8%E8%80%85%E3%81%AB%E8%A6%8B%E3%81%88%E3%82%8B%E3%81%93%E3%81%A8) にある。リクエストの User-Agent は `analyze-spectrum/<version>`。
+インストール版のアプリは、起動時に新しい版があるかを確認し、確認に OK すると自分を更新する。何をするか、どこへ接続するか、確認の止め方は [py-analyze-common の文書](https://github.com/semnil/py-analyze-common/blob/main/docs/auto-update.ja.md#what-the-user-sees) にある。リクエストの User-Agent は `analyze-spectrum/<version>`。
 
 ## 解析指標
 
@@ -197,7 +197,7 @@ python build.py --installer  # + Inno Setup インストーラー (.exe) / DMG (
 
 バンドルは `dist/analyze-spectrum/` (macOS は `dist/Spectrum Analyzer.app`)、インストーラーは `installer_output/` に出力する。
 
-前提条件、`build.py` がダウンロードするもの、フラグは [py-analyze-common の README](https://github.com/semnil/py-analyze-common/blob/main/README.ja.md#consumer-%E3%81%AE%E3%83%93%E3%83%AB%E3%83%89) にある。
+前提条件、`build.py` がダウンロードするもの、フラグは [py-analyze-common の README](https://github.com/semnil/py-analyze-common/blob/main/README.ja.md#building-a-consumer) にある。
 
 ## プロジェクト構成
 
