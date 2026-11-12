@@ -6,7 +6,7 @@ Built on the same architecture as analyze-loudness (pywebview + a local HTTP ser
 
 ## Documentation languages
 
-- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/<name>.md`, Japanese at `README.ja.md` and `docs/<name>.ja.md`
+- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/<name>.md`, Japanese at `README.ja.md` and `docs/<name>.ja.md`. The decision records under `docs/decisions/` are pairs of the same form (`<subject>.md` and `<subject>.ja.md`)
 
 ## Architecture overview
 
@@ -125,6 +125,8 @@ graph LR
     root --> docs["docs/"]
     docs --> docs_arch["architecture.md"]
     docs --> docs_arch_ja["architecture.ja.md"]
+    docs --> docs_dec["decisions/<br>closed decisions: what was chosen, why, and when to decide again;<br>each record is an English .md and a Japanese .ja.md"]
+    docs_dec --> docs_dec_test["testing.md, testing.ja.md<br>the accept queue of the test page's server"]
     docs --> docs_shot["screenshot.png"]
     root --> vend["vendor/py-analyze-common/<br>git submodule (used through sys.path injection)"]
     root --> r_build["build.py<br>py-analyze-common's analyze_common.build with this app's names"]

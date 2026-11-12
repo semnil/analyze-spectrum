@@ -238,6 +238,7 @@ graph LR
     root --> docs["docs/"]
     docs --> docs_arch["architecture.md"]
     docs --> docs_arch_ja["architecture.ja.md"]
+    docs --> docs_dec["decisions/<br>閉じた判断の記録 (英語の .md と日本語の .ja.md)"]
     docs --> docs_shot["screenshot.png"]
     root --> vend["vendor/py-analyze-common/<br>共有ライブラリ (git submodule)"]
     root --> r_build["build.py<br>ビルドスクリプト (アセットのダウンロード + PyInstaller + Inno Setup / DMG)"]
