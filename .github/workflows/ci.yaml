@@ -122,7 +122,7 @@ jobs:
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         timeout-minutes: 5
         # On a pull request a failed upload fails the job, so the run that lost it is red: an upload that never
-        # arrives leaves the required codecov/project unreported (CLAUDE.md:214). On a push to master the run stays
+        # arrives leaves the required codecov/project unreported (CLAUDE.md, "Tests"). On a push to master the run stays
         # green.
         continue-on-error: ${{ github.event_name != 'pull_request' }}
         with:
