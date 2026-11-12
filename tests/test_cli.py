@@ -167,7 +167,7 @@ class TestCliRun:
             data = json.loads(printed.out[printed.out.index("{"):])
             assert data["meta"]["duration_min"] == 0.02
 
-    @pytest.mark.parametrize("duration", ["0", "-1", "nan", "inf", "-inf", "abc"])
+    @pytest.mark.parametrize("duration", ["0", "-1", "nan", "inf", "-inf", "abc", "240.001", "1e9"])
     def test_invalid_duration_starts_no_work(self, duration):
         from analyze_spectrum import cli
 
@@ -176,6 +176,20 @@ class TestCliRun:
                 cli.main(["a.wav", "--duration=" + duration])
         assert error.value.code == 2
         resolve.assert_not_called()
+
+    def test_duration_above_the_limit_names_the_limit(self, capsys):
+        from analyze_spectrum import cli
+
+        with pytest.raises(SystemExit):
+            cli.main(["a.wav", "--duration=240.001"])
+        assert "duration must be <= 240 minutes" in capsys.readouterr().err
+
+    def test_duration_at_the_limit_starts_work(self):
+        from analyze_spectrum import cli
+
+        with patch.object(cli, "resolve_source", side_effect=RuntimeError("stop here")) as resolve:
+            assert cli.main(["a.wav", "--duration=240"]) == 1
+        resolve.assert_called_once()
 
     @pytest.mark.parametrize("stage, message", [
         ("resolve_source", "Error: broken"),
