@@ -347,21 +347,21 @@ analyze-spectrum uses blues (`--accent: #1565C0`), analyze-loudness purples (`--
 
 ### yt-dlp version pin
 
-`pyproject.toml` has an exact pin `yt-dlp==<version>`. Who updates it, why it is pinned and the check before a release are in the "yt-dlp version pin" section of `vendor/py-analyze-common/CLAUDE.md`.
+`pyproject.toml` has an exact pin `yt-dlp==<version>`. Who updates it, why it is pinned and the check before a release are in the "yt-dlp version pin" section of `vendor/py-analyze-common/AGENTS.md`.
 
 ### macOS is Apple Silicon (arm64) only (v1.3.0+)
 
-The reason is in the "Building a consumer (build)" section of `vendor/py-analyze-common/CLAUDE.md`.
+The reason is in the "Building a consumer (build)" section of `vendor/py-analyze-common/AGENTS.md`.
 
 ### Bundled ffmpeg pin
 
-`build_assets/ffmpeg.json` holds the pin. How each OS bundles it, how it is updated and how the release build checks the distributed copies are in the "Bundled ffmpeg pin (ffmpeg_release)" section of `vendor/py-analyze-common/CLAUDE.md`.
+`build_assets/ffmpeg.json` holds the pin. How each OS bundles it, how it is updated and how the release build checks the distributed copies are in the "Bundled ffmpeg pin (ffmpeg_release)" section of `vendor/py-analyze-common/AGENTS.md`.
 
 `tests/test_ffmpeg_binary.py` here reads a 48 kHz 16-bit stereo WAV written with numpy (a different sine wave on left and right) with the ffmpeg / ffprobe on PATH and the app's `extract_audio()` / `probe_info()`, and checks that the returned float32 PCM matches the written samples times 1/32768 (including a cut from the middle), and the channel count and length.
 
 ### Starting ffmpeg / ffprobe by absolute path
 
-`extract_audio()` in `src/analyze_spectrum/pcm.py`, and py-analyze-common's `probe_info()` / `download_audio()`, start ffmpeg / ffprobe (and yt-dlp's deno) by the absolute path that py-analyze-common's `find_executable()` returns. It searches only the absolute entries of PATH, in order; the frozen app puts the bundled `bin` folder at the front of PATH (`main()` in `src/analyze_spectrum/gui.py`). The reason is in the "Programs start by absolute path (find_executable)" section of `vendor/py-analyze-common/CLAUDE.md`. When the program they run is not on PATH (ffmpeg for `extract_audio()` / `download_audio()`, ffprobe for `probe_info()`), they raise `FileNotFoundError` without starting a process. `tests/test_ffmpeg_binary.py` checks `EXPECT_FFMPEG_DIR` with the same `find_executable()`.
+`extract_audio()` in `src/analyze_spectrum/pcm.py`, and py-analyze-common's `probe_info()` / `download_audio()`, start ffmpeg / ffprobe (and yt-dlp's deno) by the absolute path that py-analyze-common's `find_executable()` returns. It searches only the absolute entries of PATH, in order; the frozen app puts the bundled `bin` folder at the front of PATH (`main()` in `src/analyze_spectrum/gui.py`). The reason is in the "Programs start by absolute path (find_executable)" section of `vendor/py-analyze-common/AGENTS.md`. When the program they run is not on PATH (ffmpeg for `extract_audio()` / `download_audio()`, ffprobe for `probe_info()`), they raise `FileNotFoundError` without starting a process. `tests/test_ffmpeg_binary.py` checks `EXPECT_FFMPEG_DIR` with the same `find_executable()`.
 
 ### PCM conversion approach
 
@@ -399,7 +399,7 @@ A 3-part setup that prevents flicker on page load:
 
 - **Frontend** (`frontend/index.html`): the `<head>` loads `common/settings.js`, `common/i18n.js` and `i18n.js`, and then py-analyze-common's `common/boot.js`, before the CSS paint, resolves the theme from `window.analyzeSettings.theme` and sets the `data-theme` attribute on `<html>`, and sets the `lang` attribute to the language `i18n.js` decided
 - **Backend** (`gui.py`): `analyze_common.ui_settings.UiSettings.background_color()` decides pywebview's `background_color` from the theme in the settings file. auto (including when nothing is saved) follows the OS dark mode setting (`analyze_common.theme.is_dark_mode()`: the registry's `AppsUseLightTheme` on Windows, `AppleInterfaceStyle` on macOS)
-- **macOS webview** (`gui.py` calls `analyze_common.ui_settings.show_window_color_until_paint()` right after `create_window()`): pywebview attaches the WKWebView to the window after the first load finishes, and the WKWebView draws white until its first paint. It turns off the WKWebView's background and shows the window's `background_color` until the page is drawn (the mechanism is in the "Theme and language settings" section of `vendor/py-analyze-common/CLAUDE.md`)
+- **macOS webview** (`gui.py` calls `analyze_common.ui_settings.show_window_color_until_paint()` right after `create_window()`): pywebview attaches the WKWebView to the window after the first load finishes, and the WKWebView draws white until its first paint. It turns off the WKWebView's background and shows the window's `background_color` until the page is drawn (the mechanism is in the "Theme and language settings" section of `vendor/py-analyze-common/AGENTS.md`)
 
 ### Keeping the pending source on Load JSON
 
@@ -453,11 +453,11 @@ The theme and language choices are kept in the same settings file as auto-update
 
 ### Temp folders of a killed run
 
-`gui.py` holds py-analyze-common's `InstanceLock` while it runs, and the CLI holds one while its work folder exists. When the GUI ends, `_cleanup_orphan_tempdirs()` removes the `spectrum_*` temp folders a killed run left behind, unless another instance runs (the "Temp folders a killed process left behind (tempdirs)" section of `vendor/py-analyze-common/CLAUDE.md`).
+`gui.py` holds py-analyze-common's `InstanceLock` while it runs, and the CLI holds one while its work folder exists. When the GUI ends, `_cleanup_orphan_tempdirs()` removes the `spectrum_*` temp folders a killed run left behind, unless another instance runs (the "Temp folders a killed process left behind (tempdirs)" section of `vendor/py-analyze-common/AGENTS.md`).
 
 ### Window icon
 
-Why `webview.start(icon=...)` gets the icon only on Windows, and what the AppUserModelID does, are in the "Window icon" section of `vendor/py-analyze-common/CLAUDE.md`. `main()` sets `com.semnil.spectrum-analyzer` with `set_app_user_model_id()`.
+Why `webview.start(icon=...)` gets the icon only on Windows, and what the AppUserModelID does, are in the "Window icon" section of `vendor/py-analyze-common/AGENTS.md`. `main()` sets `com.semnil.spectrum-analyzer` with `set_app_user_model_id()`.
 
 ### pywebview file_types constraint
 
@@ -482,15 +482,15 @@ What this app holds:
 
 ## Release procedure
 
-The steps are in the "Releasing a consumer" section of `vendor/py-analyze-common/CLAUDE.md`. In this app `__version__` is in `src/analyze_spectrum/__init__.py`, the Windows installer is `SpectrumAnalyzer-X.Y.Z-setup.exe` and the macOS DMG is `Spectrum-Analyzer.dmg`.
+The steps are in the "Releasing a consumer" section of `vendor/py-analyze-common/AGENTS.md`. In this app `__version__` is in `src/analyze_spectrum/__init__.py`, the Windows installer is `SpectrumAnalyzer-X.Y.Z-setup.exe` and the macOS DMG is `Spectrum-Analyzer.dmg`.
 
 ### Pinned release dependencies
 
-What the release jobs install, the commands that regenerate `requirements/*.txt` and what fails when they are not regenerated are in the section of the same name in `vendor/py-analyze-common/CLAUDE.md`.
+What the release jobs install, the commands that regenerate `requirements/*.txt` and what fails when they are not regenerated are in the section of the same name in `vendor/py-analyze-common/AGENTS.md`.
 
 ### Patch release for an ffmpeg update
 
-What `.github/workflows/ffmpeg-watch.yml` does daily, and its prerequisite, are in the section of the same name in `vendor/py-analyze-common/CLAUDE.md`.
+What `.github/workflows/ffmpeg-watch.yml` does daily, and its prerequisite, are in the section of the same name in `vendor/py-analyze-common/AGENTS.md`.
 
 ## Versioning
 

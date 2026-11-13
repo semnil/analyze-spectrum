@@ -26,7 +26,7 @@ run-name: ffmpeg watch 🔭
 # When no address of a host accepts the connection from detect's runner (analyze_common.ffmpeg_release exits 3),
 # detect passes with a warning and retry dispatches this workflow on master with detect_attempt one higher, so the next
 # attempt runs on another runner. Exit 3 on attempt 3 fails detect. Why it does not retry on the same runner is in the
-# section "Patch release for an ffmpeg update" of vendor/py-analyze-common/CLAUDE.md.
+# section "Patch release for an ffmpeg update" of vendor/py-analyze-common/AGENTS.md.
 #
 # An open pull request from an earlier run (head branch ffmpeg-watch/...) stops land before it changes anything. The
 # branch names carry the run id and attempt, so a branch an earlier run pushed without opening its pull request does

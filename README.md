@@ -208,7 +208,7 @@ graph LR
     root --> r_ignore[".gitignore"]
     root --> r_mod[".gitmodules"]
     root --> r_venv[".venv/<br>Python virtual environment (not tracked by git)"]
-    root --> r_claude["CLAUDE.md<br>project instructions for AI"]
+    root --> r_claude["AGENTS.md<br>project instructions for AI"]
     root --> r_readme["README.md"]
     root --> r_readme_ja["README.ja.md"]
     root --> r_pyproj["pyproject.toml<br>package, dependencies, commands"]

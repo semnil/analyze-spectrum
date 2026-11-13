@@ -2,7 +2,7 @@
 
 > For the English version, see [testing.md](testing.md).
 
-このリポジトリのテストについて、閉じた判断の記録。テストの今の動かし方は `CLAUDE.md` (「Tests」) にある。この文書には、何を選んだか、理由、決め直す条件を残す。
+このリポジトリのテストについて、閉じた判断の記録。テストの今の動かし方は `AGENTS.md` (「Tests」) にある。この文書には、何を選んだか、理由、決め直す条件を残す。
 
 ## The test page's static server keeps the default accept queue
 
