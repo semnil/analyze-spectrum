@@ -303,6 +303,8 @@ class AnalyzeHandler(GuiHandler):
                 return "'duration' must be a positive number"
             if duration < 0.01:
                 return "'duration' must be >= 0.01 minutes"
+            if duration > 240:
+                return "'duration' must be <= 240 minutes"
             return duration
         except (ValueError, TypeError):
             return "'duration' must be a number"

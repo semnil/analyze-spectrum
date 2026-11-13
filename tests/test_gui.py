@@ -93,6 +93,7 @@ class TestAnalyzeHandler:
         (float("inf"), "'duration' must be a finite number"),
         (-1, "'duration' must be a positive number"),
         (0.005, "'duration' must be >= 0.01 minutes"),
+        (240.001, "'duration' must be <= 240 minutes"),
         ("abc", "'duration' must be a number"),
     ])
     def test_parse_duration_messages(self, _mock_webview, duration, message):
@@ -104,6 +105,11 @@ class TestAnalyzeHandler:
         gui_mod = _mock_webview
         handler = gui_mod.AnalyzeHandler.__new__(gui_mod.AnalyzeHandler)
         assert handler._parse_duration({"duration": 0.01}) == 0.01
+
+    def test_parse_duration_accepts_the_maximum(self, _mock_webview):
+        gui_mod = _mock_webview
+        handler = gui_mod.AnalyzeHandler.__new__(gui_mod.AnalyzeHandler)
+        assert handler._parse_duration({"duration": 240}) == 240.0
 
     def test_frozen_app_reads_bundled_resources_from_the_bundle(self, _mock_webview, monkeypatch, tmp_path):
         gui_mod = _mock_webview
@@ -849,6 +855,7 @@ class TestRequestValidation(_Routes):
         ({"url": "javascript:alert(1)"}, "'url' must use http or https scheme"),
         ({"url": "a.wav", "duration": True}, "'duration' must be a number, not bool"),
         ({"url": "a.wav", "duration": 0.001}, "'duration' must be >= 0.01 minutes"),
+        ({"url": "a.wav", "duration": 241}, "'duration' must be <= 240 minutes"),
     ])
     def test_analyze_rejects_the_request_before_any_work(self, _mock_webview, body, message):
         assert self._json(_mock_webview, "/analyze", body) == (400, {"error": message})
@@ -860,6 +867,7 @@ class TestRequestValidation(_Routes):
         ({"sources": ["a.wav", "  "]}, "All sources must be non-empty strings"),
         ({"sources": ["a.wav", "ftp://host/b.wav"]}, "'url' must use http or https scheme"),
         ({"sources": ["a.wav", "b.wav"], "duration": "x"}, "'duration' must be a number"),
+        ({"sources": ["a.wav", "b.wav"], "duration": 240.001}, "'duration' must be <= 240 minutes"),
     ])
     def test_compare_rejects_the_request_before_any_work(self, _mock_webview, body, message):
         assert self._json(_mock_webview, "/compare", body) == (400, {"error": message})

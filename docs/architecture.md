@@ -546,7 +546,7 @@ graph LR
 - POST bodies are limited to 10MB (JSON), 50MB (base64 image), 500MB (file upload)
 - Upload file names go through `sanitize_filename()` (`vendor/py-analyze-common/src/analyze_common/download.py`): `\/:*?"<>|` and the control characters 0x00-0x1F are replaced with `_`, leading and trailing `.` and spaces are removed, a Windows reserved device name gets a leading `_`, and the name is cut to 200 characters
 - Upload extensions are on an allowlist (`_ALLOWED_EXTENSIONS` in `src/analyze_spectrum/gui.py`, such as `.wav`, `.mp3`, `.m4a`)
-- The duration parameter accepts only finite numbers of at least 0.01 minutes (`_parse_duration()`)
+- The duration parameter accepts only finite numbers from 0.01 to 240 minutes (`_parse_duration()`)
 - The `sources` array of `/compare` must hold 2-6 non-empty strings, and a source that looks like a URL (`/analyze`'s `url` too) must be http or https (`_reject_bad_scheme()`)
 
 ### Cross-site scripting (XSS) prevention

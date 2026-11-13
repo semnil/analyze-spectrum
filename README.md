@@ -57,7 +57,7 @@ The summary goes to standard output and the progress to standard error. `--outpu
 
 | Option | Default | Description |
 |---|---|---|
-| `--duration` | none (full length) | Length to analyze in minutes, cut out of the middle of the source. The JSON records it as `meta.duration_min` when the source was cut |
+| `--duration` | none (full length) | Length to analyze in minutes, up to 240, cut out of the middle of the source. The JSON records it as `meta.duration_min` when the source was cut |
 | `--output-dir` | none (writes no file) | Output directory of the result JSON |
 | `--eq-bands` | `5` | Maximum number of peaking bands in the estimated EQ per Transfer Function (0 or greater) |
 | `--json` | off | Prints the result JSON to standard output |

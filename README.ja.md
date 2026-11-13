@@ -57,7 +57,7 @@ analyze-spectrum ./recording.m4a --json --output-dir ./results
 
 | オプション | デフォルト | 説明 |
 |---|---|---|
-| `--duration` | なし (全尺) | 分析対象の長さ (分)。ソースの中央部分を切り出す。切り出したときは JSON の `meta.duration_min` に記録する |
+| `--duration` | なし (全尺) | 分析対象の長さ (分)。上限は 240。ソースの中央部分を切り出す。切り出したときは JSON の `meta.duration_min` に記録する |
 | `--output-dir` | なし (ファイルを書かない) | 結果の JSON の出力ディレクトリ |
 | `--eq-bands` | `5` | Transfer Function ごとの推定 EQ のピーキングバンド数の上限 (0 以上) |
 | `--json` | オフ | 結果の JSON を標準出力へ出す |

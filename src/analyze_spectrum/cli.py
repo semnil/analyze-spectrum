@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
         f = float(v)
         if not math.isfinite(f) or f <= 0:
             raise argparse.ArgumentTypeError(f"must be a positive finite number, got {v!r}")
+        if f > 240:
+            raise argparse.ArgumentTypeError("duration must be <= 240 minutes")
         return f
 
     parser.add_argument("--duration", type=_positive_finite_float, default=None,
