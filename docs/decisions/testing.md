@@ -2,7 +2,7 @@
 
 > 日本語版は [testing.ja.md](testing.ja.md) を参照してください。
 
-Closed decisions about this repository's tests. How the tests run today is in `CLAUDE.md` ("Tests"); this file keeps what was chosen, why, and when to decide again.
+Closed decisions about this repository's tests. How the tests run today is in `AGENTS.md` ("Tests"); this file keeps what was chosen, why, and when to decide again.
 
 ## The test page's static server keeps the default accept queue
 
