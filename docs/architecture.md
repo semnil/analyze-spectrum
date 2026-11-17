@@ -89,6 +89,7 @@ graph TD
 graph LR
     root["analyze-spectrum/"]
     root --> wf[".github/workflows/"]
+    wf --> wf_issue["issue-auto-assign.yml<br>new issues: add semnil; pull requests: run the assignment tests"]
     wf --> wf_ci["ci.yaml<br>PR / push<br>runs pytest with the coverage of the Python package and of frontend/*.js and uploads both to Codecov<br>caches the apt package files and the Playwright browsers, saved only by the runs that are not PRs"]
     wf --> wf_rel["release.yaml<br>v* tag / workflow_dispatch on a tag"]
     wf --> wf_tag["tag-release.yml<br>after CI succeeds on a push to master, or on a workflow_dispatch given a commit: if it is a version bump, tags that commit and starts release.yaml"]
@@ -97,6 +98,7 @@ graph LR
     wf --> wf_chkt["workflow-checks-test.yml<br>runs the check's fixture tests, and the tests of dependabot-auto-merge.yml's<br>trigger, conditions and auto-merge decision, tag-release.yml's tag stage and ffmpeg-watch.yml's land stage and retry of detect"]
     wf --> wf_dam["dependabot-auto-merge.yml<br>on a Dependabot PR that is one commit at the head, written by Dependabot alone, committed by GitHub (web-flow) and with a verified signature, schedules an auto-merge for an update of the Python dependencies (uv) or of the submodule,<br>and for a semver patch or minor update of a GitHub Action. Required check auto-merge"]
     root --> ght[".github/tests/"]
+    ght --> ght_issue["issue-auto-assign.test.cjs<br>assignment, excluded issues, existing assignees and API errors, with a fake gh"]
     ght --> ght_sh["workflow-checks-test.sh<br>a test that runs workflow-checks.yml with a fake gh and fixture git trees"]
     ght --> ght_am["dependabot-auto-merge-test.sh<br>a test that dependabot-auto-merge.yml runs on every PR, with only its stages limited to Dependabot PRs,<br>and of which updates and commits (their authors, how many, whether the last is the head, who committed it, whether its signature is verified)<br>its stage schedules or turns off an auto-merge for, with a fake gh"]
     ght --> ght_tag["tag-release-test.sh<br>a test that runs tag-release.yml's check and tag stages with a fake gh and a fixture repository"]

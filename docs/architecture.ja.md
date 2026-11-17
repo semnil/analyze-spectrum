@@ -89,6 +89,7 @@ graph TD
 graph LR
     root["analyze-spectrum/"]
     root --> wf[".github/workflows/"]
+    wf --> wf_issue["issue-auto-assign.yml<br>新規 Issue の担当者に semnil を追加し、PR で割り当てテストを実行する"]
     wf --> wf_ci["ci.yaml<br>PR / push<br>Python パッケージと frontend/*.js のカバレッジ付きで pytest を走らせ、両方を Codecov へ送る<br>apt のパッケージファイルと Playwright のブラウザーをキャッシュし、保存するのは PR でない実行だけ"]
     wf --> wf_rel["release.yaml<br>v* タグ / タグを指定した workflow_dispatch"]
     wf --> wf_tag["tag-release.yml<br>master への push の CI が成功した後、またはコミットを指定した workflow_dispatch で: そのコミットが版上げなら、タグを付けて release.yaml を起動する"]
@@ -97,6 +98,7 @@ graph LR
     wf --> wf_chkt["workflow-checks-test.yml<br>その検査の fixture テストと、dependabot-auto-merge.yml の<br>トリガー・条件・自動マージの判定、tag-release.yml の tag 段、ffmpeg-watch.yml の land 段と detect のやり直しのテストを走らせる"]
     wf --> wf_dam["dependabot-auto-merge.yml<br>先頭が 1 コミットで、Dependabot だけが書き、GitHub (web-flow) がコミットし、署名が検証済みの Dependabot の PR について、Python の依存 (uv) か submodule の更新と、<br>GitHub Action の semver の patch か minor の更新に、自動マージを予約する。必須チェックは auto-merge"]
     root --> ght[".github/tests/"]
+    ght --> ght_issue["issue-auto-assign.test.cjs<br>gh の代用で割り当て・除外 Issue・既存の担当者・API エラーを確認する"]
     ght --> ght_sh["workflow-checks-test.sh<br>偽の gh と fixture の git ツリーで workflow-checks.yml を動かすテスト"]
     ght --> ght_am["dependabot-auto-merge-test.sh<br>dependabot-auto-merge.yml がすべての PR で走り、その段だけが Dependabot の PR に限られることと、<br>その段がどの更新とコミット (書いた人、数、最後が先頭か、誰がコミットしたか、署名が検証済みか) に<br>自動マージを予約し、または取り消すかを、偽の gh で確かめるテスト"]
     ght --> ght_tag["tag-release-test.sh<br>偽の gh と fixture のリポジトリで tag-release.yml の check 段と tag 段を動かすテスト"]
