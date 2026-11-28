@@ -1,11 +1,13 @@
 name: ffmpeg watch
 run-name: ffmpeg watch 🔭
 
-# Turns a new osxexperts.net ffmpeg build into a patch release, merging its own pull requests without review.
+# Turns a new osxexperts.net ffmpeg build, or a newer series for Windows on BtbN/FFmpeg-Builds, into a patch release,
+# merging its own pull requests without review.
 #
-# detect compares build_assets/ffmpeg.json with the osxexperts.net page (analyze_common.ffmpeg_release). When the
-# page offers other Apple Silicon builds, it requires the same release series in the latest release of
-# BtbN/FFmpeg-Builds, checks both macOS binaries against the page's SHA256 and keeps the new pin as an artifact.
+# detect compares build_assets/ffmpeg.json with the osxexperts.net page and the latest release of BtbN/FFmpeg-Builds
+# (analyze_common.ffmpeg_release). macOS takes the page's Apple Silicon builds, checked against the page's SHA256;
+# Windows takes the page's series when that release has its win64 build, and until then the newest series it has from
+# Windows' own up to the page's, which the detect step reports as a warning. When the pin changes, detect keeps the new pin as an artifact.
 # It also decides on a patch release: when __version__ equals the latest vX.Y.Z tag and either the pin changes now
 # or the pin on master already differs from the one that tag released: the pin file at the tag, or, for a tag without
 # it, the pin file as the first commit after the tag added it.
@@ -61,6 +63,7 @@ jobs:
       pin_update: ${{ steps.detect.outputs.pin_update }}
       bump: ${{ steps.detect.outputs.bump }}
       series: ${{ steps.detect.outputs.series }}
+      windows_series: ${{ steps.detect.outputs.windows_series }}
       version: ${{ steps.detect.outputs.version }}
       next_version: ${{ steps.detect.outputs.next_version }}
       release_sha: ${{ steps.detect.outputs.release_sha }}
@@ -98,7 +101,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Compare the Pin with osxexperts.net 🔭
+      - name: Compare the Pin with osxexperts.net and BtbN 🔭
         id: detect
         timeout-minutes: 10
         env:
@@ -123,6 +126,13 @@ jobs:
             echo "::warning::detect could not connect on attempt ${DETECT_ATTEMPT} of ${MAX_DETECT_ATTEMPTS}; retry dispatches attempt ${next} on another runner"
             echo "next_attempt=${next}" >> "${GITHUB_OUTPUT}"
             exit 0
+          fi
+          if [[ "${status}" -eq 0 ]]; then
+            macos_series=$(sed -n 's/^series=//p' "${GITHUB_OUTPUT}" | tail -n 1)
+            windows_series=$(sed -n 's/^windows_series=//p' "${GITHUB_OUTPUT}" | tail -n 1)
+            if [[ "${windows_series}" != "${macos_series}" ]]; then
+              echo "::warning::BtbN/FFmpeg-Builds has no win64 build of the ffmpeg ${macos_series} series yet; Windows bundles ${windows_series}"
+            fi
           fi
           exit "${status}"
 
@@ -248,6 +258,7 @@ jobs:
           PIN_UPDATE: ${{ needs.detect.outputs.pin_update }}
           BUMP: ${{ needs.detect.outputs.bump }}
           SERIES: ${{ needs.detect.outputs.series }}
+          WINDOWS_SERIES: ${{ needs.detect.outputs.windows_series }}
           VERSION: ${{ needs.detect.outputs.version }}
           NEXT_VERSION: ${{ needs.detect.outputs.next_version }}
           RELEASE_SHA: ${{ needs.detect.outputs.release_sha }}
@@ -376,16 +387,24 @@ jobs:
             echo "merged #${pr}"
           }
 
+          if [[ "${WINDOWS_SERIES}" == "${SERIES}" ]]; then
+            bundled="${SERIES}"
+            windows_note=""
+          else
+            bundled="${SERIES} on macOS and ${WINDOWS_SERIES} on Windows"
+            windows_note=" BtbN/FFmpeg-Builds has no win64 build of the ${SERIES} series yet, so Windows bundles ${WINDOWS_SERIES}."
+          fi
+
           if [[ "${PIN_UPDATE}" == true ]]; then
-            branch="ffmpeg-watch/pin-${SERIES}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            branch="ffmpeg-watch/pin-${SERIES}-${WINDOWS_SERIES}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             start "${branch}"
             cp "${CANDIDATE}" "${pin_file}"
             diff=$(git diff -- "${pin_file}")
             fence=$(printf '\140\140\140')
             body=$(printf '%s\n\n%sdiff\n%s\n%s\n\n%s\n' \
-              "Update the bundled ffmpeg / ffprobe to the Apple Silicon build on osxexperts.net and the ${SERIES} series of BtbN/FFmpeg-Builds. The two macOS files were checked against the SHA256 on the page, and the files fetched on both OSes passed tests/test_ffmpeg_binary.py." \
+              "Update the bundled ffmpeg / ffprobe to the Apple Silicon build of ${SERIES} on osxexperts.net and the ${WINDOWS_SERIES} series of BtbN/FFmpeg-Builds.${windows_note} The macOS files are checked against the SHA256 on the page when they change, and the files fetched on both OSes passed tests/test_ffmpeg_binary.py." \
               "${fence}" "${diff}" "${fence}" "${run_url}")
-            land "${branch}" "build: update the bundled ffmpeg to ${SERIES}" "${body}" "${pin_file}"
+            land "${branch}" "build: update the bundled ffmpeg to ${bundled}" "${body}" "${pin_file}"
           fi
 
           if [[ "${BUMP}" == true ]]; then
@@ -402,7 +421,7 @@ jobs:
               echo "::error::could not write __version__ = \"${NEXT_VERSION}\" to ${version_file}"
               exit 1
             fi
-            body=$(printf '%s\n\n%s\n' "Patch release that bundles ffmpeg ${SERIES}. It contains only the version bump." "${run_url}")
+            body=$(printf '%s\n\n%s\n' "Patch release that bundles ffmpeg ${bundled}. It contains only the version bump." "${run_url}")
             land "${branch}" "chore: update the version to v${NEXT_VERSION}" "${body}" "${version_file}"
             echo "the CI run of the merge on master starts tag-release.yml for v${NEXT_VERSION}"
           elif [[ -n "${RELEASE_SHA}" ]]; then
