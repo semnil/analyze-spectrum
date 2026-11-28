@@ -93,7 +93,7 @@ graph LR
     wf --> wf_ci["ci.yaml<br>PR / push<br>Python パッケージと frontend/*.js のカバレッジ付きで pytest を走らせ、両方を Codecov へ送る<br>apt のパッケージファイルと Playwright のブラウザーをキャッシュし、保存するのは PR でない実行だけ"]
     wf --> wf_rel["release.yaml<br>v* タグ / タグを指定した workflow_dispatch"]
     wf --> wf_tag["tag-release.yml<br>master への push の CI が成功した後、またはコミットを指定した workflow_dispatch で: そのコミットが版上げなら、タグを付けて release.yaml を起動する"]
-    wf --> wf_ffw["ffmpeg-watch.yml<br>毎日、osxexperts.net の新しい ffmpeg を検出し、固定値の更新と版上げの PR を<br>GitHub App のトークンで作り、レビューなしでマージする<br>detect が接続できないときは、自分自身を dispatch して別のランナーで detect をやり直す (3 回まで)"]
+    wf --> wf_ffw["ffmpeg-watch.yml<br>毎日、osxexperts.net の新しい ffmpeg か、BtbN/FFmpeg-Builds の Windows 向けの新しい系列を検出し、固定値の更新と版上げの PR を<br>GitHub App のトークンで作り、レビューなしでマージする<br>detect が接続できないときは、自分自身を dispatch して別のランナーで detect をやり直す (3 回まで)"]
     wf --> wf_chk["workflow-checks.yml<br>すべての PR で、uses: の SHA 固定と、同じリポジトリを参照するときの規則を確かめる"]
     wf --> wf_chkt["workflow-checks-test.yml<br>その検査の fixture テストと、dependabot-auto-merge.yml の<br>トリガー・条件・自動マージの判定、tag-release.yml の tag 段、ffmpeg-watch.yml の land 段と detect のやり直しのテストを走らせる"]
     wf --> wf_dam["dependabot-auto-merge.yml<br>先頭が 1 コミットで、Dependabot だけが書き、GitHub (web-flow) がコミットし、署名が検証済みの Dependabot の PR について、Python の依存 (uv) か submodule の更新と、<br>GitHub Action の semver の patch か minor の更新に、自動マージを予約する。必須チェックは auto-merge"]

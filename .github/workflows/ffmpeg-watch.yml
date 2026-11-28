@@ -1,7 +1,8 @@
 name: ffmpeg watch
 run-name: ffmpeg watch 🔭
 
-# Turns a new osxexperts.net ffmpeg build into a patch release, merging its own pull requests without review.
+# Turns a new osxexperts.net ffmpeg build, or a newer series for Windows on BtbN/FFmpeg-Builds, into a patch release,
+# merging its own pull requests without review.
 #
 # detect compares build_assets/ffmpeg.json with the osxexperts.net page and the latest release of BtbN/FFmpeg-Builds
 # (analyze_common.ffmpeg_release). macOS takes the page's Apple Silicon builds, checked against the page's SHA256;
@@ -100,7 +101,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Compare the Pin with osxexperts.net 🔭
+      - name: Compare the Pin with osxexperts.net and BtbN 🔭
         id: detect
         timeout-minutes: 10
         env:
