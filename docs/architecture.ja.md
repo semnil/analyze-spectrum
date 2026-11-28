@@ -165,7 +165,7 @@ graph LR
     root --> r_iss["installer.iss"]
     root --> r_lic["THIRD_PARTY_LICENSES.txt"]
     root --> r_gpl["licenses/<br>GPL v2 / v3 の全文 (THIRD_PARTY_LICENSES.txt の FFmpeg の節が指す。<br>spec が同じ階層に同梱する)"]
-    root --> ba_pin["build_assets/ffmpeg.json<br>同梱する ffmpeg / ffprobe の系列と、macOS のビルドの URL と SHA256"]
+    root --> ba_pin["build_assets/ffmpeg.json<br>OS ごとに同梱する ffmpeg / ffprobe の系列と、macOS のビルドの URL と SHA256"]
     root --> ba_sum["build_assets/checksums.json<br>同梱する uPlot のファイルの版と SHA256"]
     root --> ba_icon["build_assets/icon_draft.svg<br>icon.ico / icon.png / icon.iconset の元 (PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.icons build_assets)"]
     root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (git で追跡しない)"]

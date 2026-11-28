@@ -141,7 +141,8 @@ def main():
         sha = git("rev-parse", f"refs/heads/{head}")
         state["next_pr"] += 1
         state["prs"].append({"number": state["next_pr"], "head": head, "state": "OPEN", "opened_by": token,
-                             "merged_by": None, "merge": None, "auto": None})
+                             "merged_by": None, "merge": None, "auto": None, "title": opts.get("--title"),
+                             "body": opts.get("--body")})
         if token == APP:
             for workflow, event in REQUIRED.items():
                 failing = os.environ.get("FAIL_RUN") == workflow
@@ -292,7 +293,8 @@ fi
 mkdir -p "$work/detect-bin"
 cat > "$work/detect-bin/python" <<'EOF'
 #!/usr/bin/env bash
-# The detect CLI: exits FAKE_DETECT_STATUS, and appends two outputs to --github-output when that is 0.
+# The detect CLI: exits FAKE_DETECT_STATUS, and appends its outputs to --github-output when that is 0 (series 9.1,
+# windows_series FAKE_WINDOWS_SERIES or 9.1).
 if [ "$1 $2 $3" != "-m analyze_common.ffmpeg_release detect" ]; then
   echo "fake python: unexpected $*" >&2
   exit 99
@@ -303,7 +305,9 @@ while [ $# -gt 0 ]; do
   if [ "$1" = --github-output ]; then out="$2"; fi
   shift
 done
-if [ "$FAKE_DETECT_STATUS" -eq 0 ]; then printf 'pin_update=false\nbump=false\n' >> "$out"; fi
+if [ "$FAKE_DETECT_STATUS" -eq 0 ]; then
+  printf 'pin_update=false\nbump=false\nseries=9.1\nwindows_series=%s\n' "${FAKE_WINDOWS_SERIES:-9.1}" >> "$out"
+fi
 exit "$FAKE_DETECT_STATUS"
 EOF
 chmod +x "$work/detect-bin/python"
@@ -319,11 +323,13 @@ check_detect() {
   : > "$work/detect-calls"
   if out=$(env PATH="$work/detect-bin:$PATH" FAKE_DETECT_STATUS="$cli" FAKE_DETECT_CALLS="$work/detect-calls" \
     DETECT_ATTEMPT="$attempt" MAX_DETECT_ATTEMPTS="$max_attempts" GITHUB_OUTPUT="$work/detect-output" \
+    FAKE_WINDOWS_SERIES="${FAKE_WINDOWS_SERIES:-}" \
     RUNNER_TEMP="$work" GH_TOKEN="$github_token" bash -e -o pipefail -c "$detect_step" 2>&1 < /dev/null); then
     step_exit=0
   else
     step_exit=$?
   fi
+  out_of_last_detect="$out"
   got=$(printf 'exit=%s\nruns=%s\n' "$step_exit" "$(wc -l < "$work/detect-calls" | tr -d ' ')"; cat "$work/detect-output")
   want=$(printf 'exit=%s\nruns=%s\n' "$want_exit" "$want_runs"; if [ $# -gt 0 ]; then printf '%s\n' "$@"; fi)
   if [ "$got" != "$want" ]; then
@@ -347,7 +353,18 @@ check_detect "detect that could not connect on attempt $((max_attempts - 1)) han
   3 $((max_attempts - 1)) 0 1 "next_attempt=${max_attempts}"
 check_detect "detect that could not connect on the last attempt fails with the CLI's exit" 3 "$max_attempts" 3 1
 check_detect "detect that fails otherwise fails without a next attempt" 1 1 1 1
-check_detect "detect that succeeds keeps the CLI's outputs and has no next attempt" 0 1 0 1 "pin_update=false" "bump=false"
+check_detect "detect that succeeds keeps the CLI's outputs and has no next attempt" 0 1 0 1 "pin_update=false" "bump=false" \
+  "series=9.1" "windows_series=9.1"
+count=$((count + 1))
+if [[ "$out_of_last_detect" == *"::warning::"* ]]; then
+  failures=$((failures + 1))
+  echo "FAIL detect with one series for both OSes must not warn"
+else
+  echo "ok   detect with one series for both OSes does not warn"
+fi
+want_error="::warning::BtbN/FFmpeg-Builds has no win64 build of the ffmpeg 9.1 series yet; Windows bundles 9.0"
+FAKE_WINDOWS_SERIES=9.0 check_detect "detect warns while Windows bundles an earlier series" 0 1 0 1 "pin_update=false" "bump=false" \
+  "series=9.1" "windows_series=9.0"
 for attempt in 0 x 1.5 ''; do
   want_error="detect_attempt must be a positive integer, not '${attempt}'"
   check_detect "detect_attempt '${attempt}' fails before the CLI runs" 3 "$attempt" 1 0
@@ -434,10 +451,10 @@ run_land() {
   mkdir "$work/land-process"
   git clone -q --depth 1 "file://$work/remote.git" "$work/land" 2>/dev/null
   if out=$(cd "$work/land" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \
-    "$@" PATH="$work/bin:$PATH" LAND_DIR="$work/land-process" FAKE_STATE="$work/state.json" \
+    SERIES=9.0 WINDOWS_SERIES=9.0 "$@" PATH="$work/bin:$PATH" LAND_DIR="$work/land-process" FAKE_STATE="$work/state.json" \
     FAKE_REMOTE="$work/remote.git" FAKE_APP_TOKEN="$app_token" FAKE_GITHUB_TOKEN="$github_token" \
     FAKE_APP_SLUG="$app_slug" FAKE_BOT_ID="$bot_id" GH_TOKEN="$github_token" APP_TOKEN="$app_token" \
-    APP_SLUG="$app_slug" PIN_UPDATE="$pin_update" BUMP="$bump" SERIES=9.0 VERSION=1.4.1 NEXT_VERSION=1.4.2 \
+    APP_SLUG="$app_slug" PIN_UPDATE="$pin_update" BUMP="$bump" VERSION=1.4.1 NEXT_VERSION=1.4.2 \
     RELEASE_SHA="$release_sha" CANDIDATE="$work/candidate.json" GITHUB_SERVER_URL=https://github.com \
     GITHUB_REPOSITORY=o/r GITHUB_RUN_ID=7 GITHUB_RUN_ATTEMPT=1 RUNNER_DEBUG='' \
     python3 -c 'import os, sys; os.setpgid(0, 0); os.execvp(sys.argv[1], sys.argv[1:])' \
@@ -501,11 +518,68 @@ author="author ${app_slug}[bot] <${bot_id}+${app_slug}[bot]@users.noreply.github
 run_land true true ""
 check "a new pin and a bump land with the App's token, and the bump's merge starts CI on master" \
   "exit=0" \
-  "master=Merge pull request #11 from o/ffmpeg-watch/pin-9.0-7-1 | Merge pull request #12 from o/ffmpeg-watch/bump-v1.4.2-7-1" \
+  "master=Merge pull request #11 from o/ffmpeg-watch/pin-9.0-9.0-7-1 | Merge pull request #12 from o/ffmpeg-watch/bump-v1.4.2-7-1" \
   "version=1.4.2" "pin=9.0" \
-  "pr ffmpeg-watch/pin-9.0 MERGED opened_by=${app_token} merged_by=${app_token}" \
+  "pr ffmpeg-watch/pin-9.0-9.0 MERGED opened_by=${app_token} merged_by=${app_token}" \
   "pr ffmpeg-watch/bump-v1.4.2 MERGED opened_by=${app_token} merged_by=${app_token}" \
   "dispatches=" "push_ci_on_last_merge=1" "$author" "$author"
+
+# check_texts <name> <pin title> <text in the pin body> <text not in the pin body> <text in the bump body>: the titles
+# and bodies of the two pull requests the last run_land opened.
+check_texts() {
+  local name="$1" title="$2" in_pin="$3" not_in_pin="$4" in_bump="$5" pin_body bump_body
+  count=$((count + 1))
+  pin_body=$(jq -r '.prs[] | select(.head | startswith("ffmpeg-watch/pin-")) | .body' "$work/state.json")
+  bump_body=$(jq -r '.prs[] | select(.head | startswith("ffmpeg-watch/bump-")) | .body' "$work/state.json")
+  if [ "$(jq -r '.prs[] | select(.number > 10) | .title' "$work/state.json")" = "$(printf '%s\nchore: update the version to v1.4.2' "$title")" ] \
+    && [[ "$pin_body" == *"$in_pin"* ]] && [[ "$pin_body" != *"$not_in_pin"* ]] && [[ "$bump_body" == *"$in_bump"* ]]; then
+    echo "ok   ${name}"
+  else
+    failures=$((failures + 1))
+    echo "FAIL ${name}"
+    jq -r '.prs[] | select(.number > 10) | "     \(.title) | \(.body | split("\n")[0])"' "$work/state.json"
+  fi
+}
+
+count=$((count + 1))
+if [ "$(yq '.jobs.detect.outputs.windows_series' "$workflow_path")" = '${{ steps.detect.outputs.windows_series }}' ] \
+  && [ "$(yq '.jobs.detect.outputs.series' "$workflow_path")" = '${{ steps.detect.outputs.series }}' ] \
+  && [ "$(yq '.jobs.land.steps[] | select(.name == "Land 🛬") | .env.WINDOWS_SERIES' "$workflow_path")" = '${{ needs.detect.outputs.windows_series }}' ] \
+  && [ "$(yq '.jobs.land.steps[] | select(.name == "Land 🛬") | .env.SERIES' "$workflow_path")" = '${{ needs.detect.outputs.series }}' ]; then
+  echo "ok   wiring: land reads the macOS and the Windows series detect reports"
+else
+  failures=$((failures + 1))
+  echo "FAIL wiring: the series or windows_series of detect's outputs or of land's env changed"
+fi
+
+check_texts "a pin with one series for both OSes names it once" "build: update the bundled ffmpeg to 9.0" \
+  "the Apple Silicon build of 9.0 on osxexperts.net and the 9.0 series of BtbN/FFmpeg-Builds." "Windows bundles" \
+  "Patch release that bundles ffmpeg 9.0. "
+
+run_land true true "" SERIES=9.1 WINDOWS_SERIES=9.0
+check "a pin whose Windows series stays behind lands under both series" \
+  "exit=0" \
+  "master=Merge pull request #11 from o/ffmpeg-watch/pin-9.1-9.0-7-1 | Merge pull request #12 from o/ffmpeg-watch/bump-v1.4.2-7-1" \
+  "version=1.4.2" "pin=9.0" \
+  "pr ffmpeg-watch/pin-9.1-9.0 MERGED opened_by=${app_token} merged_by=${app_token}" \
+  "pr ffmpeg-watch/bump-v1.4.2 MERGED opened_by=${app_token} merged_by=${app_token}" \
+  "dispatches=" "push_ci_on_last_merge=1" "$author" "$author"
+check_texts "a pin whose Windows series stays behind names both series" \
+  "build: update the bundled ffmpeg to 9.1 on macOS and 9.0 on Windows" \
+  "BtbN/FFmpeg-Builds has no win64 build of the 9.1 series yet, so Windows bundles 9.0." "the 9.1 series of BtbN" \
+  "Patch release that bundles ffmpeg 9.1 on macOS and 9.0 on Windows. "
+
+run_land false true "" SERIES=9.1 WINDOWS_SERIES=9.0
+count=$((count + 1))
+if [ "$land_status" -eq 0 ] \
+  && [ "$(jq -r '[.prs[] | select(.number > 10) | .head | sub("-7-1$"; "")] | join(" ")' "$work/state.json")" = ffmpeg-watch/bump-v1.4.2 ] \
+  && [[ "$(jq -r '.prs[] | select(.number > 10) | .body' "$work/state.json")" == "Patch release that bundles ffmpeg 9.1 on macOS and 9.0 on Windows. "* ]]; then
+  echo "ok   a bump resumed on its own while Windows stays behind names both series"
+else
+  failures=$((failures + 1))
+  echo "FAIL a bump resumed on its own while Windows stays behind must name both series"
+  jq -r '.prs[] | select(.number > 10) | "     \(.head) | \(.body | split("\n")[0])"' "$work/state.json"
+fi
 
 run_land false true ""
 check "a bump left by an earlier run lands on its own" \
@@ -532,21 +606,21 @@ want_error="run 103 failure"
 run_land true true "" FAIL_RUN=workflow-checks.yml
 check "a failing required run stops land before the merge" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
-  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+  "pr ffmpeg-watch/pin-9.0-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 
 want_error="no pull_request_target run of workflow-checks.yml on"
 run_land true true "" NO_TARGET_RUN=1
 check "a pull request without its pull_request_target run stops land" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
-  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+  "pr ffmpeg-watch/pin-9.0-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 
 # codecov/project reports after the runs, so the merge waits for it: here on the fifth poll.
 run_land true true "" CODECOV_AFTER=5
 check "a required check that reports after the runs is waited for before the merge" \
   "exit=0" \
-  "master=Merge pull request #11 from o/ffmpeg-watch/pin-9.0-7-1 | Merge pull request #12 from o/ffmpeg-watch/bump-v1.4.2-7-1" \
+  "master=Merge pull request #11 from o/ffmpeg-watch/pin-9.0-9.0-7-1 | Merge pull request #12 from o/ffmpeg-watch/bump-v1.4.2-7-1" \
   "version=1.4.2" "pin=9.0" \
-  "pr ffmpeg-watch/pin-9.0 MERGED opened_by=${app_token} merged_by=${app_token}" \
+  "pr ffmpeg-watch/pin-9.0-9.0 MERGED opened_by=${app_token} merged_by=${app_token}" \
   "pr ffmpeg-watch/bump-v1.4.2 MERGED opened_by=${app_token} merged_by=${app_token}" \
   "dispatches=" "push_ci_on_last_merge=1" "$author" "$author"
 count=$((count + 1))
@@ -581,14 +655,14 @@ want_error="a required check of #11 failed"
 run_land true true "" CODECOV=failure
 check "a required check that fails after the runs stops land before the merge" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
-  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+  "pr ffmpeg-watch/pin-9.0-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 late_success "a required check that fails after the runs"
 
 want_error="#11 did not merge within 10 minutes of its runs passing"
 run_land true true "" CODECOV=never
 check "a pull request that does not merge stops land after its wait" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
-  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+  "pr ffmpeg-watch/pin-9.0-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 late_success "a pull request that does not merge in time"
 
 # Once the auto-merge is enabled, a failed poll, a failed enabling call and a cancelled job each turn it off on the
@@ -597,20 +671,20 @@ want_error="HTTP 502"
 run_land true true "" CODECOV=never VIEW_FAIL=1
 check "a poll that fails after the auto-merge is enabled stops land" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
-  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+  "pr ffmpeg-watch/pin-9.0-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 late_success "a poll that fails after the auto-merge is enabled"
 
 want_error="HTTP 502"
 run_land true true "" CODECOV=never AUTO_FAIL=1
 check "a call that enables the auto-merge and then fails stops land" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
-  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+  "pr ffmpeg-watch/pin-9.0-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 late_success "a call that enables the auto-merge and then fails"
 
 run_land true true "" CODECOV=never LAND_SIGNAL=1
 check "a job cancelled while land waits stops land" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
-  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+  "pr ffmpeg-watch/pin-9.0-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 count=$((count + 1))
 if [ "$land_status" -eq 130 ]; then
   echo "ok   a job cancelled while land waits: land ends at the SIGINT, before the SIGTERM"
@@ -624,7 +698,7 @@ want_error="could not turn the auto-merge of #11 off, so it can still merge"
 run_land true true "" CODECOV=failure DISABLE_FAIL=1
 check "an auto-merge that cannot be turned off is reported" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
-  "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+  "pr ffmpeg-watch/pin-9.0-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
 
 count=$((count + 1))
 wired() {
