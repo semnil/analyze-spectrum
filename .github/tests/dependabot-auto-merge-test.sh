@@ -2,7 +2,7 @@
 # Checks that dependabot-auto-merge.yml reports `auto-merge` on every pull request: only pull_request starts it, the
 # job has no condition of its own, its steps alone are limited to pull requests dependabot[bot] opened, and a failure of
 # the metadata step lets the job go on to the deciding step, and the runs for one pull request share a concurrency
-# group. Then runs the step that decides, against a fake gh, for
+# group that keeps every waiting run. Then runs the step that decides, against a fake gh, for
 # each outcome of the metadata step, package ecosystem and update type fetch-metadata can report and for the commits
 # of the pull request (their authors, how many there are, whether the last is the head, who committed
 # it and whether its signature is verified): which get auto-merge enabled (pinned to the head commit), which get an
@@ -49,12 +49,15 @@ expect "the deciding step reads the ecosystem from fetch-metadata" "$(yq "${deci
   '${{ steps.metadata.outputs.package-ecosystem }}'
 expect "the deciding step reads the update type from fetch-metadata" "$(yq "${decide} | .env.UPDATE_TYPE" "$workflow_path")" \
   '${{ steps.metadata.outputs.update-type }}'
-# The deciding step runs after a failed metadata step only when that failure does not fail the job (dependabot-auto-merge.yml:42).
+# The deciding step runs after a failed metadata step only when that failure does not fail the job (dependabot-auto-merge.yml:46).
 expect "a failed metadata step does not fail the job" "$(yq '.jobs."auto-merge".steps[0].continue-on-error' "$workflow_path")" true
 expect "the deciding step reads the outcome of the metadata step" "$(yq "${decide} | .env.METADATA_OUTCOME" "$workflow_path")" \
   '${{ steps.metadata.outcome }}'
 expect "the runs for one pull request share a concurrency group" "$(yq '.jobs."auto-merge".concurrency.group' "$workflow_path")" \
   'dependabot-auto-merge-${{ github.event.pull_request.number }}'
+# The default queue keeps one waiting run and cancels it when another arrives (dependabot-auto-merge.yml:42).
+expect "every run that waits for another run for the pull request stays queued" "$(yq '.jobs."auto-merge".concurrency.queue' "$workflow_path")" max
+expect "no run for the pull request cancels the one in progress" "$(yq '.jobs."auto-merge".concurrency.cancel-in-progress' "$workflow_path")" null
 
 script=$(yq "${decide} | .run" "$workflow_path")
 head=0123456789abcdef0123456789abcdef01234567
